@@ -1,0 +1,3 @@
+& ".\dist\win-unpacked\Outil PME.exe"
+
+npm run build

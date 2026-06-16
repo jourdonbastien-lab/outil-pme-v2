@@ -1,0 +1,58 @@
+[
+    {
+        "cid": 0,
+        "dflt_value": null,
+        "name": "id",
+        "notnull": 0,
+        "pk": 1,
+        "type": "INTEGER"
+    },
+    {
+        "cid": 1,
+        "dflt_value": null,
+        "name": "title",
+        "notnull": 1,
+        "pk": 0,
+        "type": "TEXT"
+    },
+    {
+        "cid": 2,
+        "dflt_value": null,
+        "name": "start_date",
+        "notnull": 1,
+        "pk": 0,
+        "type": "TEXT"
+    },
+    {
+        "cid": 3,
+        "dflt_value": null,
+        "name": "end_date",
+        "notnull": 1,
+        "pk": 0,
+        "type": "TEXT"
+    },
+    {
+        "cid": 4,
+        "dflt_value": null,
+        "name": "client_id",
+        "notnull": 0,
+        "pk": 0,
+        "type": "INTEGER"
+    },
+    {
+        "cid": 5,
+        "dflt_value": null,
+        "name": "created_at",
+        "notnull": 0,
+        "pk": 0,
+        "type": "TEXT"
+    },
+    {
+        "cid": 6,
+        "dflt_value": null,
+        "name": "type",
+        "notnull": 0,
+        "pk": 0,
+        "type": "TEXT"
+    }
+]

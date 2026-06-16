@@ -1,0 +1,42 @@
+{
+  "name": "outil-pme-v2",
+  "version": "1.0.0",
+  "description": "Outil PME",
+  "main": "electron.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "electron": "electron .",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "@fullcalendar/core": "^6.1.20",
+    "@fullcalendar/daygrid": "^6.1.20",
+    "@fullcalendar/interaction": "^6.1.20",
+    "@fullcalendar/timegrid": "^6.1.20",
+    "better-sqlite3": "^12.10.0",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "googleapis": "^173.0.0",
+    "multer": "^2.1.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
+    "electron": "^40.10.2",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.pme.outil",
+    "productName": "Outil PME",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.cache/**"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  }
+}

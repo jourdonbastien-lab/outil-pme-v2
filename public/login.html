@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connexion - A2 METAL</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="login-body">
+  <div class="login-wrapper">
+    <div class="login-card">
+      <div class="login-logo">A2 METAL</div>
+      <h1>Connexion</h1>
+
+      <form method="POST" action="/login">
+        <label for="username">Nom d'utilisateur</label>
+        <input
+          id="username"
+          type="text"
+          name="username"
+          autocomplete="username"
+          required
+        />
+
+        <label for="password">Mot de passe</label>
+        <input
+          id="password"
+          type="password"
+          name="password"
+          autocomplete="current-password"
+          required
+        />
+
+        <button type="submit">Se connecter</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
