@@ -147,6 +147,15 @@ function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+const MEASUREMENTS_PUBLIC_DIR = path.join(__dirname, 'modules', 'measurements', 'public');
+const MEASUREMENT_SHEETS = {
+  escalier: 'measurements.html',
+  'garde-corps': 'garde-corps.html',
+  portail: 'portail.html',
+  cloture: 'cloture.html',
+};
+const MEASUREMENTS_ASSETS = new Set(['measurements.css', 'measurements.js', 'module-sheet.js']);
+
 function safeResolveInside(baseDir, ...parts) {
   const base = path.resolve(baseDir);
   const target = path.resolve(base, ...parts);
@@ -161,17 +170,13 @@ function normalizeKey(str) {
 /* ===================== DB INIT ===================== */
 
 let dataDir;
+const appDataDir = process.env.APPDATA ? path.join(process.env.APPDATA, 'Outil PME') : null;
+const localDataDir = path.join(__dirname, 'data');
 
-try {
-  const electron = require('electron');
-
-  if (electron.app && electron.app.isPackaged) {
-    dataDir = path.join(process.env.APPDATA, 'Outil PME');
-  } else {
-    dataDir = path.join(__dirname, 'data');
-  }
-} catch {
-  dataDir = path.join(__dirname, 'data');
+if (appDataDir && fs.existsSync(path.join(appDataDir, 'app.db'))) {
+  dataDir = appDataDir;
+} else {
+  dataDir = localDataDir;
 }
 ensureDir(dataDir);
 
@@ -211,6 +216,36 @@ function ensureColumn(table, col, type) {
 }
 
 // Tables
+try {
+  db.prepare(`
+    ALTER TABLE client_orders
+    ADD COLUMN planned_hours REAL DEFAULT 0
+  `).run();
+} catch {}
+try {
+  db.prepare(`
+    ALTER TABLE client_orders
+    ADD COLUMN planned_hours REAL DEFAULT 0
+  `).run();
+} catch {}
+try {
+  db.prepare(`
+    ALTER TABLE users
+    ADD COLUMN role TEXT DEFAULT 'admin'
+  `).run();
+} catch {}
+try {
+  db.prepare(`
+    UPDATE users
+    SET role = 'admin'
+    WHERE username IN ('admin','Bastien')
+  `).run();
+
+  db.prepare(`
+    INSERT INTO users (username, password, role)
+    VALUES ('atelier', 'atelier123', 'atelier')
+  `).run();
+} catch {}
 db.prepare(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -353,7 +388,18 @@ try {
     ADD COLUMN photos TEXT
   `).run();
 } catch {}
-
+try {
+  db.prepare(`
+    ALTER TABLE quotes
+    ADD COLUMN notes TEXT
+  `).run();
+} catch {}
+try {
+  db.prepare(`
+    ALTER TABLE tasks
+    ADD COLUMN to_invoice INTEGER DEFAULT 0
+  `).run();
+} catch {}
 console.log('UTILISATEURS =', users);
 
 console.log(users);
@@ -389,14 +435,26 @@ ensureColumn('supplier_orders', 'status', 'TEXT');
 
 const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
 if (userCount === 0) {
-  db.prepare('INSERT INTO users (username, password) VALUES (?, ?)').run('admin', 'admin');
-  db.prepare('INSERT INTO users (username, password) VALUES (?, ?)').run('Bastien', 'Escalier233!');
+db.prepare(`
+  INSERT INTO users (username, password, role)
+  VALUES (?, ?, ?)
+`).run('admin', 'admin', 'admin');
+
+db.prepare(`
+  INSERT INTO users (username, password, role)
+  VALUES (?, ?, ?)
+`).run('Bastien', 'Escalier233!', 'admin');
+
+db.prepare(`
+  INSERT INTO users (username, password, role)
+  VALUES (?, ?, ?)
+`).run('atelier', 'atelier123', 'atelier');
 }
 
 /* ===================== INIT DIRS ===================== */
 
 // Dossier clients sur TON PC (Windows-friendly : Bureau)
-const CLIENT_PC_DIR = path.join(getHomeDir(), 'Desktop', 'A2_METAL', 'clients_pc');
+const CLIENT_PC_DIR = 'C:\\A2 Métal\\Clients';
 ensureDir(CLIENT_PC_DIR);
 
 // Dossiers de fichiers pour chaque commande client (côté appli)
@@ -532,9 +590,23 @@ app.use((req, res, next) => {
 
 /* ===================== GOOGLE (optionnel) ===================== */
 
+const envFilePath = path.join(__dirname, '.env');
+if (fs.existsSync(envFilePath)) {
+  const envContent = fs.readFileSync(envFilePath, 'utf8');
+  for (const rawLine of envContent.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eqIndex = line.indexOf('=');
+    if (eqIndex <= 0) continue;
+    const key = line.slice(0, eqIndex).trim();
+    const value = line.slice(eqIndex + 1).trim();
+    if (!(key in process.env)) process.env[key] = value;
+  }
+}
+
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/google/callback';
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://desktop-stqqsqi.tail3d293a.ts.net:3000/google/callback';
 
 const oauth2Client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
 
@@ -546,6 +618,9 @@ function dashboardTemplate(req, content) {
 
 function pageTemplate(req, title, content) {
   const stats = req.navStats || { tasksTodo: 0, eventsToday: 0, clientOrders: 0, supplierOrders: 0 };
+
+  const isAtelier =
+    req.session?.user?.role === 'atelier';
 
   return `
 <!DOCTYPE html>
@@ -572,45 +647,107 @@ function pageTemplate(req, title, content) {
     <aside class="sidebar">
       <div class="logo">A2 METAL</div>
       <nav>
-        <a href="/dashboard" class="${req.path === '/dashboard' ? 'active' : ''}">📊 Dashboard</a>
 
-        <a href="/tasks" class="${req.path === '/tasks' ? 'active' : ''}">
-          ✅ Tâches
-          ${stats.tasksTodo > 0 ? `<span class="nav-badge">${stats.tasksTodo}</span>` : ''}
-        </a>
+${isAtelier ? `
 
-        <a href="/clients" class="${req.path.startsWith('/clients') ? 'active' : ''}">👤 Clients</a>
 
-        <a href="/agenda" class="${req.path === '/agenda' ? 'active' : ''}">
-          📅 Agenda
-          ${stats.eventsToday > 0 ? `<span class="nav-badge">${stats.eventsToday}</span>` : ''}
-        </a>
 
-        <a href="/orders/clients" class="${req.path.startsWith('/orders/clients') ? 'active' : ''}">
-          📦 Commandes clients
-          ${stats.clientOrders > 0 ? `<span class="nav-badge">${stats.clientOrders}</span>` : ''}
-        </a>
+  <a href="/orders/clients"
+     class="${req.path.startsWith('/orders/clients') ? 'active' : ''}">
+     📦 Commandes clients
+  </a>
 
-        <a href="/orders/suppliers" class="${req.path.startsWith('/orders/suppliers') ? 'active' : ''}">
-          📑 Commandes fournisseurs
-          ${stats.supplierOrders > 0 ? `<span class="nav-badge">${stats.supplierOrders}</span>` : ''}
-        </a>
+  <a href="/orders/suppliers"
+     class="${req.path.startsWith('/orders/suppliers') ? 'active' : ''}">
+     📑 Commandes fournisseurs
+  </a>
 
-        <a href="/devis" class="${req.path.startsWith('/devis') ? 'active' : ''}">🧾 Devis</a>
+  <a href="/outils/logibarre">
+     📏 Logibarre
+  </a>
 
-        <a href="/materials" class="${req.path.startsWith('/materials') ? 'active' : ''}">
-          🧱 Bibliothèque matière
-        </a>
-<li>
- <a href="/outils/logibarre">📏 Logibarre</a>
-</li>
-<li>
-  <a href="/outils/logitole">📐 Logitôle</a>
+  <a href="/outils/logitole">
+     📐 Logitôle
+  </a>
 
-</li>
+    <a href="/outils/prises-cotes"
+      class="${req.path.startsWith('/outils/prises-cotes') ? 'active' : ''}">
+      📋 Prises de cotes
+    </a>
 
-        <a href="/logout" class="logout">🚪 Déconnexion</a>
-      </nav>
+      <a href="/dashboard/prototype"
+        class="${req.path === '/dashboard/prototype' ? 'active' : ''}">
+        ✨ Dashboard Prototype
+      </a>
+
+` : `
+
+  <a href="/dashboard"
+     class="${req.path === '/dashboard' ? 'active' : ''}">
+     📊 Dashboard
+  </a>
+
+  <a href="/tasks"
+     class="${req.path === '/tasks' ? 'active' : ''}">
+     ✅ Tâches
+     ${stats.tasksTodo > 0 ? `<span class="nav-badge">${stats.tasksTodo}</span>` : ''}
+  </a>
+
+  <a href="/clients"
+     class="${req.path.startsWith('/clients') ? 'active' : ''}">
+     👤 Clients
+  </a>
+
+  <a href="/agenda"
+     class="${req.path === '/agenda' ? 'active' : ''}">
+     📅 Agenda
+  </a>
+
+  <a href="/orders/clients"
+     class="${req.path.startsWith('/orders/clients') ? 'active' : ''}">
+     📦 Commandes clients
+  </a>
+
+  <a href="/orders/suppliers"
+     class="${req.path.startsWith('/orders/suppliers') ? 'active' : ''}">
+     📑 Commandes fournisseurs
+  </a>
+
+  <a href="/devis"
+     class="${req.path.startsWith('/devis') ? 'active' : ''}">
+     🧾 Devis
+  </a>
+
+  <a href="/materials"
+     class="${req.path.startsWith('/materials') ? 'active' : ''}">
+     🧱 Bibliothèque matière
+  </a>
+
+  <a href="/outils/logibarre">
+     📏 Logibarre
+  </a>
+
+  <a href="/outils/logitole">
+     📐 Logitôle
+  </a>
+
+    <a href="/outils/prises-cotes"
+      class="${req.path.startsWith('/outils/prises-cotes') ? 'active' : ''}">
+      📋 Prises de cotes
+    </a>
+
+      <a href="/dashboard/prototype"
+        class="${req.path === '/dashboard/prototype' ? 'active' : ''}">
+        ✨ Dashboard Prototype
+      </a>
+
+`}
+
+<a href="/logout" class="logout">
+  🚪 Déconnexion
+</a>
+
+</nav>
     </aside>
 <button id="mobileMenuBtn" class="mobile-menu-btn">
 ☰
@@ -656,12 +793,18 @@ app.post('/login', (req, res) => {
     return res.status(401).send('Login incorrect');
   }
 
-  req.session.user = {
-    id: user.id,
-    username: user.username
-  };
+req.session.user = {
+  id: user.id,
+  username: user.username,
+  role: user.role
+};
 
-  res.redirect('/dashboard');
+res.redirect('/dashboard');
+
+
+
+
+
 });
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
 
@@ -691,7 +834,30 @@ const clientOrders = db
     ORDER BY date DESC, id DESC
     LIMIT 5
   `)
-  .all();
+  .all()
+  .map(o => {
+
+    const realMinutes = db.prepare(`
+      SELECT COALESCE(SUM(minutes_total),0) AS total
+      FROM chantier_hours
+      WHERE client = ?
+      AND order_name = ?
+    `).get(o.name, o.description);
+
+    const actualHours =
+      Number(realMinutes.total || 0) / 60;
+
+    const plannedHours =
+      Number(o.planned_hours || 0);
+
+    return {
+      ...o,
+      chantierStatus:
+        plannedHours > 0 && actualHours > plannedHours
+          ? '🔴'
+          : '🟢'
+    };
+  });
 
   const supplierOrders = db
     .prepare('SELECT * FROM supplier_orders ORDER BY date DESC, id DESC LIMIT 5')
@@ -743,6 +909,13 @@ const clientOrdersList =
 
           const dateLabel = (o.date || '').slice(0, 10);
           const statusLabel = o.status || 'En cours';
+          const planned = Number(o.planned_hours || 0);
+const actual = Number(o.actual_hours || 0);
+
+const statusDot =
+  actual > planned
+    ? '🔴'
+    : '🟢';
 
           return `
             <article class="order-card">
@@ -753,18 +926,22 @@ const clientOrdersList =
               <header class="order-card-header">
                 <div>
                   <div class="order-card-title">
-                    <span class="order-card-client">${escHtml(o.name)}</span>
+<span class="order-card-client">
+  ${req.session?.user?.role !== 'atelier' ? o.chantierStatus + ' ' : ''}
+  ${escHtml(o.name)}
+</span>
                     <span class="order-card-id">#${o.id}</span>
                   </div>
 
-                  <div class="order-card-meta">
-                    <span class="order-card-date">
-                      📅 ${escHtml(dateLabel || '—')}
-                    </span>
-                    <span class="order-card-status badge">
-                      ${escHtml(statusLabel)}
-                    </span>
-                  </div>
+                <div class="order-card-meta">
+  
+  <span class="order-card-date">
+    📅 ${escHtml(dateLabel || '—')}
+  </span>
+  <span class="order-card-status badge">
+    ${escHtml(statusLabel)}
+  </span>
+</div>
                 </div>
               </header>
 
@@ -851,8 +1028,184 @@ const clientOrdersList =
   );
 });
 
+app.get('/dashboard/prototype', requireLogin, (req, res) => {
+  const openTasks = db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status != 'Terminée'").get().c;
+  const eventsThisWeek = db
+    .prepare(`
+      SELECT COUNT(*) AS c
+      FROM events
+      WHERE start_date IS NOT NULL
+        AND datetime(start_date) >= datetime('now')
+        AND datetime(start_date) < datetime('now', '+7 days')
+    `)
+    .get().c;
+  const openClientOrders = db.prepare("SELECT COUNT(*) AS c FROM client_orders WHERE status != 'Terminée'").get().c;
+  const openSupplierOrders = db.prepare("SELECT COUNT(*) AS c FROM supplier_orders WHERE status != 'Terminée'").get().c;
 
-/* ===================== TASKS ===================== */
+  const recentTasks = db
+    .prepare(`
+      SELECT title, status
+      FROM tasks
+      ORDER BY created_at DESC, id DESC
+      LIMIT 6
+    `)
+    .all();
+
+  const upcomingEvents = db
+    .prepare(`
+      SELECT title, start_date
+      FROM events
+      WHERE start_date IS NOT NULL
+        AND datetime(start_date) >= datetime('now')
+      ORDER BY datetime(start_date) ASC
+      LIMIT 6
+    `)
+    .all();
+
+  const recentOrders = db
+    .prepare(`
+      SELECT id, name, description, date, status
+      FROM client_orders
+      ORDER BY date DESC, id DESC
+      LIMIT 6
+    `)
+    .all();
+
+  const tasksHtml = recentTasks.length
+    ? recentTasks
+        .map(
+          (t) => `
+      <li>
+        <span>${escHtml(t.title || 'Sans titre')}</span>
+        <span class="proto-chip">${escHtml(t.status || 'À faire')}</span>
+      </li>
+    `
+        )
+        .join('')
+    : '<li><span>Aucune tâche récente</span></li>';
+
+  const eventsHtml = upcomingEvents.length
+    ? upcomingEvents
+        .map((e) => {
+          const day = String(e.start_date || '').slice(0, 10);
+          const hour = String(e.start_date || '').slice(11, 16);
+          return `
+      <li>
+        <span>${escHtml(e.title || 'Événement')}</span>
+        <span class="proto-muted">${escHtml(day)}${hour ? ' · ' + escHtml(hour) : ''}</span>
+      </li>
+    `;
+        })
+        .join('')
+    : '<li><span>Aucun rendez-vous planifié</span></li>';
+
+  const ordersHtml = recentOrders.length
+    ? recentOrders
+        .map((o) => {
+          const safeClientFolder = safeName(o.name || 'Client');
+          const orderFolderName = safeName(
+            o.description && o.description.trim() !== ''
+              ? o.description
+              : `Commande_${o.id}`
+          );
+          const clientFolderUrl = `/pc-folders/${encodeURIComponent(
+            safeClientFolder
+          )}/${encodeURIComponent(orderFolderName)}`;
+
+          const day = String(o.date || '').slice(0, 10) || '—';
+          const status = o.status || 'En cours';
+          return `
+      <article class="order-card modern-order-card">
+        <a class="order-card-link" href="${clientFolderUrl}" aria-label="Ouvrir la commande"></a>
+
+        <header class="order-card-header modern-order-card-header">
+          <div>
+            <div class="order-card-title">
+              <span class="order-card-client">${escHtml(o.name || 'Client')}</span>
+              <span class="order-card-id">#${o.id}</span>
+            </div>
+            <div class="order-card-meta modern-order-card-meta">
+              <span class="order-card-date">📅 ${escHtml(day)}</span>
+              <span class="order-card-status badge">${escHtml(status)}</span>
+            </div>
+          </div>
+        </header>
+
+        <div class="order-card-body modern-order-card-body">
+          <p class="order-card-description">${escHtml(o.description || '—')}</p>
+        </div>
+      </article>
+    `;
+        })
+        .join('')
+    : '<p class="empty">Aucune commande récente</p>';
+
+  res.send(
+    dashboardTemplate(
+      req,
+      `
+      <div class="proto-shell">
+        <section class="proto-hero">
+          <div>
+            <p class="proto-eyebrow">Prototype UI</p>
+            <h1>Dashboard Nouvelle Génération</h1>
+            <p class="proto-sub">Vue synthétique rapide pour le pilotage quotidien.</p>
+          </div>
+          <div class="proto-hero-actions">
+            <a class="btn btn-primary" href="/dashboard">Retour dashboard classique</a>
+            <a class="btn btn-secondary" href="/outils/prises-cotes">Prises de cotes</a>
+          </div>
+        </section>
+
+        <section class="proto-kpis">
+          <article class="proto-kpi">
+            <p class="proto-kpi-label">Tâches ouvertes</p>
+            <p class="proto-kpi-value">${openTasks}</p>
+          </article>
+          <article class="proto-kpi">
+            <p class="proto-kpi-label">RDV 7 jours</p>
+            <p class="proto-kpi-value">${eventsThisWeek}</p>
+          </article>
+          <article class="proto-kpi">
+            <p class="proto-kpi-label">Cmd clients</p>
+            <p class="proto-kpi-value">${openClientOrders}</p>
+          </article>
+          <article class="proto-kpi">
+            <p class="proto-kpi-label">Cmd fournisseurs</p>
+            <p class="proto-kpi-value">${openSupplierOrders}</p>
+          </article>
+        </section>
+
+        <section class="proto-grid">
+          <article class="proto-panel">
+            <h2>Activité tâches</h2>
+            <ul class="proto-list">
+              ${tasksHtml}
+            </ul>
+          </article>
+
+          <article class="proto-panel">
+            <h2>Prochains rendez-vous</h2>
+            <ul class="proto-list">
+              ${eventsHtml}
+            </ul>
+          </article>
+
+          <article class="proto-panel proto-panel-wide">
+            <h2>Dernières commandes clients</h2>
+            <div class="orders-cards-grid modern-orders-grid">
+              ${ordersHtml}
+            </div>
+          </article>
+        </section>
+      </div>
+      `
+    )
+  );
+});
+
+
+/* ===================== KS ===================== */
 
 app.get('/tasks', requireLogin, (req, res) => {
   const rows = db
@@ -916,31 +1269,49 @@ app.get('/tasks', requireLogin, (req, res) => {
             ${escHtml(t.status)}
           </div>
 
-          <div class="task-card-actions">
+  <div class="task-card-actions">
 
-            ${
-              t.status !== 'Terminée'
-                ? `
-                <form method="POST" action="/tasks/done">
-                  <input type="hidden" name="id" value="${t.id}" />
-                  <button class="btn primary">
-                    ✅ Terminer
-                  </button>
-                </form>
-                `
-                : `
-                <form method="POST"
-                      action="/tasks/delete"
-                      onsubmit="return confirm('Supprimer cette tâche ?');">
-                  <input type="hidden" name="id" value="${t.id}" />
-                  <button class="btn danger">
-                    🗑️ Supprimer
-                  </button>
-                </form>
-                `
-            }
-
+  ${
+    t.status !== 'Terminée'
+      ? `
+      <form method="POST" action="/tasks/done">
+        <input type="hidden" name="id" value="${t.id}" />
+        <button class="btn primary">
+          ✅ Terminer
+        </button>
+      </form>
+      `
+      : `
+      ${
+        Number(t.to_invoice || 0) === 1
+          ? `
+          <div class="task-badge-invoice">
+            💰 À facturer
           </div>
+          `
+          : `
+          <form method="POST"
+                action="/tasks/to-invoice">
+            <input type="hidden" name="id" value="${t.id}" />
+            <button class="btn warning">
+              📄 À facturer
+            </button>
+          </form>
+          `
+      }
+
+      <form method="POST"
+            action="/tasks/delete"
+            onsubmit="return confirm('Supprimer cette tâche ?');">
+        <input type="hidden" name="id" value="${t.id}" />
+        <button class="btn danger">
+          🗑️ Supprimer
+        </button>
+      </form>
+      `
+  }
+
+</div>
 
         </div>
       `)
@@ -952,8 +1323,28 @@ app.get('/tasks', requireLogin, (req, res) => {
     )
   );
 });
+app.post('/tasks/to-invoice', requireLogin, (req, res) => {
 
+  db.prepare(`
+    UPDATE tasks
+    SET to_invoice = 1
+    WHERE id = ?
+  `).run(req.body.id);
 
+  res.redirect('/tasks');
+
+});
+app.post('/tasks/to-invoice', requireLogin, (req, res) => {
+
+  db.prepare(`
+    UPDATE tasks
+    SET to_invoice = 1
+    WHERE id = ?
+  `).run(req.body.id);
+
+  res.redirect('/tasks');
+
+});
 /* ===================== AGENDA ===================== */
 app.get('/agenda', requireLogin, (req, res) => {
 
@@ -963,25 +1354,52 @@ app.get('/agenda', requireLogin, (req, res) => {
     ORDER BY start_date ASC
   `).all();
 
-  const days = {
-    1: [],
-    2: [],
-    3: [],
-    4: [],
-    5: []
-  };
+const now = new Date();
 
-  events.forEach(e => {
+const monday = new Date(now);
+monday.setDate(
+  now.getDate() -
+  ((now.getDay() + 6) % 7)
+);
+monday.setHours(0,0,0,0);
 
-    const date = new Date(e.start_date);
-    const day = date.getDay();
+const sunday = new Date(monday);
+sunday.setDate(monday.getDate() + 7);
 
-    if(day >= 1 && day <= 5){
-      days[day].push(e);
-    }
+const weekEvents = events.filter(e => {
 
-  });
+  const d = new Date(e.start_date);
 
+  return d >= monday && d < sunday;
+
+});
+
+const days = {
+  1: [],
+  2: [],
+  3: [],
+  4: [],
+  5: []
+};
+
+weekEvents.forEach(e => {
+
+  const date = new Date(e.start_date);
+  const day = date.getDay();
+
+  if(day >= 1 && day <= 5){
+    days[day].push(e);
+  }
+
+});
+Object.values(days).forEach(list => {
+
+  list.sort((a,b) =>
+    new Date(a.start_date) -
+    new Date(b.start_date)
+  );
+
+});
   const dayNames = {
     1: 'Lundi',
     2: 'Mardi',
@@ -1213,6 +1631,86 @@ document.getElementById('save-event').onclick = () => {
   );
 
 });
+
+/* ===================== PRISES DE COTES ===================== */
+
+app.get('/outils/prises-cotes', requireLogin, (req, res) => {
+  const cards = [
+    {
+      href: '/outils/prises-cotes/escalier',
+      icon: '🪜',
+      title: 'Escalier',
+      desc: 'Fiche de prises de cotes Escalier',
+    },
+    {
+      href: '/outils/prises-cotes/garde-corps',
+      icon: '🧱',
+      title: 'Garde-corps',
+      desc: 'Fiche de prises de cotes Garde-corps',
+    },
+    {
+      href: '/outils/prises-cotes/portail',
+      icon: '🚪',
+      title: 'Portail',
+      desc: 'Fiche de prises de cotes Portail',
+    },
+    {
+      href: '/outils/prises-cotes/cloture',
+      icon: '🧰',
+      title: 'Clôture',
+      desc: 'Fiche de prises de cotes Clôture',
+    },
+  ]
+    .map(
+      (item) => `
+      <a class="card" href="${item.href}">
+        <div class="card-icon">${item.icon}</div>
+        <div class="card-main">
+          <div class="card-title">${escHtml(item.title)}</div>
+          <div class="card-sub">${escHtml(item.desc)}</div>
+        </div>
+        <div class="card-cta">Ouvrir</div>
+      </a>
+    `
+    )
+    .join('');
+
+  res.send(
+    pageTemplate(
+      req,
+      'Prises de cotes',
+      `
+      <div class="page-head">
+        <h1>Prises de cotes</h1>
+        <p class="muted">Choisir un module pour ouvrir sa fiche terrain.</p>
+      </div>
+
+      <section class="cards-grid">
+        ${cards}
+      </section>
+      `
+    )
+  );
+});
+
+app.get('/outils/prises-cotes/:module', requireLogin, (req, res, next) => {
+  const moduleName = String(req.params.module || '').trim().toLowerCase();
+  const fileName = MEASUREMENT_SHEETS[moduleName];
+
+  if (!fileName) return next();
+
+  const filePath = path.join(MEASUREMENTS_PUBLIC_DIR, fileName);
+  return res.sendFile(filePath);
+});
+
+app.get('/outils/prises-cotes/:asset', requireLogin, (req, res, next) => {
+  const asset = String(req.params.asset || '').trim();
+  if (!MEASUREMENTS_ASSETS.has(asset)) return next();
+
+  const filePath = path.join(MEASUREMENTS_PUBLIC_DIR, asset);
+  return res.sendFile(filePath);
+});
+
 /* ===================== GOOGLE OAUTH ROUTES ===================== */
 
 app.get('/google/auth', requireLogin, (req, res) => {
@@ -1240,6 +1738,7 @@ app.get('/google/callback', requireLogin, async (req, res) => {
 
 // Synchronisation des événements internes → Google Agenda (sans doublons)
 app.get('/google/sync', requireLogin, async (req, res) => {
+  
   if (!req.session.googleTokens) {
     return res.redirect('/google/auth');
   }
@@ -1251,64 +1750,169 @@ app.get('/google/sync', requireLogin, async (req, res) => {
     auth: oauth2Client,
   });
 
-  const events = db.prepare('SELECT * FROM events').all();
+
 
   try {
-    for (const e of events) {
-      const startIso = new Date(e.start_date).toISOString();
-      const endIso = new Date(e.end_date || e.start_date).toISOString();
+    const GOOGLE_CALENDAR_ID =
+'family00522959929950336958@group.calendar.google.com';
 
-      const existing = await calendar.events.list({
-        calendarId: 'primary',
-        privateExtendedProperty: `a2_event_id=${e.id}`,
-        maxResults: 1,
-      });
+const now = new Date();
 
-      if (existing.data.items && existing.data.items.length > 0) {
-        const googleEvent = existing.data.items[0];
+const oneWeekAgo = new Date();
+oneWeekAgo.setDate(now.getDate() - 7);
 
-        await calendar.events.update({
-          calendarId: 'primary',
-          eventId: googleEvent.id,
-          requestBody: {
-            summary: e.title,
-            start: {
-              dateTime: startIso,
-              timeZone: 'Europe/Paris',
-            },
-            end: {
-              dateTime: endIso,
-              timeZone: 'Europe/Paris',
-            },
-            extendedProperties: {
-              private: {
-                a2_event_id: String(e.id),
-              },
-            },
-          },
-        });
-      } else {
-        await calendar.events.insert({
-          calendarId: 'primary',
-          requestBody: {
-            summary: e.title,
-            start: {
-              dateTime: startIso,
-              timeZone: 'Europe/Paris',
-            },
-            end: {
-              dateTime: endIso,
-              timeZone: 'Europe/Paris',
-            },
-            extendedProperties: {
-              private: {
-                a2_event_id: String(e.id),
-              },
-            },
-          },
-        });
+const googleEvents = await calendar.events.list({
+  calendarId: GOOGLE_CALENDAR_ID,
+  singleEvents: true,
+  timeMin: oneWeekAgo.toISOString(),
+  maxResults: 2500
+});
+const googleIds = new Set(
+  (googleEvents.data.items || []).map(e => e.id)
+);
+
+
+
+const localEvents = db.prepare(`
+  SELECT *
+  FROM events
+  WHERE start_date >= ?
+`).all(oneWeekAgo.toISOString());
+
+for (const e of localEvents) {
+
+  if (!googleIds.has(e.google_event_id)) {
+
+    db.prepare(`
+      DELETE FROM events
+      WHERE id = ?
+    `).run(e.id);
+
+  }
+}
+for (const g of googleEvents.data.items || []) {
+
+  const existing = db.prepare(`
+    SELECT *
+    FROM events
+    WHERE google_event_id = ?
+  `).get(g.id);
+
+  if (!existing) {
+
+ const start =
+  g.start?.dateTime || g.start?.date;
+
+const end =
+  g.end?.dateTime || g.end?.date;
+
+console.log(
+  'IMPORT GOOGLE',
+  g.summary,
+  start,
+  end
+);
+
+if (!start || !end) {
+  console.log('ÉVÉNEMENT IGNORÉ');
+  continue;
+}
+
+db.prepare(`
+  INSERT INTO events (
+    title,
+    start_date,
+    end_date,
+    google_event_id,
+    type
+  )
+  VALUES (?, ?, ?, ?, ?)
+`).run(
+  g.summary || 'Sans titre',
+  start,
+  end,
+  g.id,
+  'chantier'
+);
+
+  }
+}
+
+const allEvents = db.prepare(`
+  SELECT *
+  FROM events
+  WHERE start_date >= ?
+`).all(oneWeekAgo.toISOString());
+
+for (const e of allEvents) {
+
+  console.log('EVENT =', e);
+
+  const startDate = new Date(e.start_date);
+  const endDate = new Date(e.end_date || e.start_date);
+
+  if (isNaN(startDate.getTime())) {
+    console.error('DATE DEBUT INVALIDE', e);
+    continue;
+  }
+
+  if (isNaN(endDate.getTime())) {
+    console.error('DATE FIN INVALIDE', e);
+    continue;
+  }
+
+  const startIso = startDate.toISOString();
+  const endIso = endDate.toISOString();
+
+  // Déjà lié à Google → mise à jour
+  if (e.google_event_id) {
+
+    await calendar.events.update({
+      calendarId: GOOGLE_CALENDAR_ID,
+      eventId: e.google_event_id,
+      requestBody: {
+        summary: e.title,
+        start: {
+          dateTime: startIso,
+          timeZone: 'Europe/Paris',
+        },
+        end: {
+          dateTime: endIso,
+          timeZone: 'Europe/Paris',
+        }
+      }
+    });
+
+    continue;
+  }
+
+  // Pas encore lié → création Google
+  const created = await calendar.events.insert({
+    calendarId: GOOGLE_CALENDAR_ID,
+    requestBody: {
+      summary: e.title,
+      start: {
+        dateTime: startIso,
+        timeZone: 'Europe/Paris',
+      },
+      end: {
+        dateTime: endIso,
+        timeZone: 'Europe/Paris',
       }
     }
+  });
+
+  db.prepare(`
+    UPDATE events
+    SET google_event_id = ?
+    WHERE id = ?
+  `).run(
+    created.data.id,
+    e.id
+  );
+
+}
+    
 
     res.send(`
       <h2>✅ Synchronisation Google Agenda terminée (sans doublons)</h2>
@@ -1325,7 +1929,21 @@ app.get('/google/sync', requireLogin, async (req, res) => {
 });
 
 
+app.get('/google/calendars', async (req, res) => {
 
+  oauth2Client.setCredentials(req.session.googleTokens);
+
+  const calendar = google.calendar({
+    version: 'v3',
+    auth: oauth2Client
+  });
+
+  const result = await calendar.calendarList.list();
+
+  console.log(result.data.items);
+
+  res.send('OK');
+});
 /* ===================== CLIENTS ===================== */
 
 app.get('/clients', requireLogin, (req, res) => {
@@ -1347,39 +1965,41 @@ app.get('/clients', requireLogin, (req, res) => {
 
   // Merge
   const merged = [];
+for (const c of dbClients) {
+  const folder = safeName(c.name);
+  const clientDir = path.join(CLIENT_PC_DIR, folder);
+  ensureDir(clientDir);
 
-  for (const c of dbClients) {
-    const folder = safeName(c.name);
-    const clientDir = path.join(CLIENT_PC_DIR, folder);
-    ensureDir(clientDir);
+  merged.push({
+    id: c.id,
+    name: c.name,
+    address: c.address,
+    postal_code: c.postal_code,
+    city: c.city,
+    email: c.email,
+    phone: c.phone,
+    folder,
+    source: 'db',
+  });
+}
 
-    merged.push({
-      name: c.name,
-      address: c.address,
-      postal_code: c.postal_code,
-      city: c.city,
-      email: c.email,
-      phone: c.phone,
-      folder,
-      source: 'db',
-    });
-  }
-
-  for (const folder of pcFolders) {
+for (const folder of pcFolders) {
   if (!dbMap.has(normalizeKey(folder))) {
 
-      merged.push({
-        name: folder,
-        address: '',
-        postal_code: '',
-        city: '',
-        email: '',
-        phone: '',
-        folder,
-        source: 'pc',
-      });
-    }
+    merged.push({
+      id: null,
+      name: folder,
+      address: '',
+      postal_code: '',
+      city: '',
+      email: '',
+      phone: '',
+      folder,
+      source: 'pc',
+    });
+
   }
+}
 
   merged.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }));
 
@@ -1387,20 +2007,54 @@ app.get('/clients', requireLogin, (req, res) => {
     ? merged
         .map(
           (c) => `
-          <a class="card client-card"
-             href="/clients/${encodeURIComponent(c.folder)}"
-             data-name="${escHtml((c.name || '').toLowerCase())}">
-            <div class="card-icon">👤</div>
-            <div class="card-main">
-              <div class="card-title">${escHtml(c.name)}</div>
-              <div class="card-sub">
-                ${escHtml(c.city || '—')}
-                ${c.phone ? ' · ' + escHtml(c.phone) : ''}
-              </div>
-              ${c.email ? `<div class="card-sub">${escHtml(c.email)}</div>` : ''}
-            </div>
-            <div class="card-cta">${c.source === 'pc' ? '📂 PC' : '🗄️ DB'}</div>
-          </a>
+<div class="client-card-modern">
+
+  <a class="client-card-link"
+     href="/clients/${encodeURIComponent(c.folder)}">
+
+    <div class="client-header">
+      <div class="client-name">
+        ${escHtml(c.name)}
+      </div>
+
+      <span class="client-source">
+        ${c.source === 'pc' ? '📂 PC' : '🗄️ DB'}
+      </span>
+    </div>
+
+    <div class="client-infos">
+
+      ${c.city ? `
+        <div>📍 ${escHtml(c.city)}</div>
+      ` : ''}
+
+      ${c.phone ? `
+        <div>📞 ${escHtml(c.phone)}</div>
+      ` : ''}
+
+      ${c.email ? `
+        <div>✉️ ${escHtml(c.email)}</div>
+      ` : ''}
+
+    </div>
+
+  </a>
+
+  ${c.source === 'db' ? `
+  <form method="POST"
+        action="/clients/delete"
+        onsubmit="return confirm('Supprimer définitivement ce client ?');">
+
+    <input type="hidden" name="id" value="${c.id}">
+
+    <button class="client-delete-btn">
+      🗑️
+    </button>
+
+  </form>
+  ` : ''}
+
+</div>
         `
         )
         .join('')
@@ -1592,10 +2246,23 @@ app.get('/clients/:client', requireLogin, (req, res) => {
     )
   );
 });
+app.post('/clients/delete', requireLogin, (req, res) => {
 
+  console.log(req.body);
+
+  db.prepare(`
+    DELETE FROM clients
+    WHERE id = ?
+  `).run(req.body.id);
+
+  res.redirect('/clients');
+
+});
 /* ===================== COMMANDES CLIENTS ===================== */
 
 app.get('/orders/clients', requireLogin, (req, res) => {
+  const isAtelier =
+  req.session?.user?.role === 'atelier';
   const orders = db
     .prepare(
       `
@@ -1631,30 +2298,51 @@ app.get('/orders/clients', requireLogin, (req, res) => {
             const dateLabel = (o.date || '').slice(0, 10);
             const priceLabel = (o.price || 0).toFixed(2) + ' €';
             const statusLabel = o.status || 'En cours';
+const realMinutes = db.prepare(`
+  SELECT COALESCE(SUM(minutes_total),0) AS total
+  FROM chantier_hours
+  WHERE client = ?
+  AND order_name = ?
+`).get(o.name, o.description);
 
+const actualHours =
+  Number(realMinutes.total || 0) / 60;
+
+const plannedHours =
+  Number(o.planned_hours || 0);
+
+const statusDot =
+  plannedHours > 0 && actualHours > plannedHours
+    ? '🔴'
+    : '🟢';
             return `
-              <article class="order-card">
+              <article class="order-card modern-order-card">
                 <a class="order-card-link" href="${clientFolderUrl}" aria-label="Ouvrir le dossier"></a>
 
-                <header class="order-card-header">
+                <header class="order-card-header modern-order-card-header">
                   <div>
                     <div class="order-card-title">
-                      <span class="order-card-client">${escHtml(o.name)}</span>
+                     <span class="order-card-client">
+  ${!isAtelier ? statusDot + ' ' : ''}
+  ${escHtml(o.name)}
+</span>
                       <span class="order-card-id">#${o.id}</span>
                     </div>
-                    <div class="order-card-meta">
+                    <div class="order-card-meta modern-order-card-meta">
                       <span class="order-card-date">📅 ${escHtml(dateLabel || '—')}</span>
                       <span class="order-card-status badge">${escHtml(statusLabel)}</span>
                     </div>
                   </div>
 
-                  <div class="order-card-amount">
-                    <div class="order-card-amount-label">Montant</div>
-                    <div class="order-card-amount-value">${escHtml(priceLabel)}</div>
-                  </div>
+                ${!isAtelier ? `
+<div class="order-card-amount">
+  <div class="order-card-amount-label">Montant</div>
+  <div class="order-card-amount-value">${escHtml(priceLabel)}</div>
+</div>
+` : ''}
                 </header>
 
-                <div class="order-card-body">
+                <div class="order-card-body modern-order-card-body">
                   <p class="order-card-description">${escHtml(o.description || '—')}</p>
                 </div>
 
@@ -1712,16 +2400,25 @@ app.get('/orders/clients', requireLogin, (req, res) => {
         <datalist id="pc-clients">${pcFoldersOptions}</datalist>
       </form>
 
-      ${infoBar(
-        `
-          <div class="kpi"><div class="kpi-label">Commandes</div><div class="kpi-value">${orders.length}</div></div>
-          <div class="kpi"><div class="kpi-label">Total en cours</div><div class="kpi-value">${totalAmount.toFixed(2)} €</div></div>
-        `,
-        `<a class="btn btn-secondary" href="/clients">← Voir clients</a>`
-      )}
+${infoBar(
+  `
+    <div class="kpi">
+      <div class="kpi-label">Commandes</div>
+      <div class="kpi-value">${orders.length}</div>
+    </div>
 
-      <section class="orders-cards-section">
-        <div class="orders-cards-grid">${cards}</div>
+    ${!isAtelier ? `
+    <div class="kpi">
+      <div class="kpi-label">Total en cours</div>
+      <div class="kpi-value">${totalAmount.toFixed(2)} €</div>
+    </div>
+    ` : ''}
+  `,
+  `<a class="btn btn-secondary" href="/clients">← Voir clients</a>`
+)}
+
+      <section class="orders-cards-section modern-orders-section">
+        <div class="orders-cards-grid modern-orders-grid">${cards}</div>
       </section>
       `
     )
@@ -1958,6 +2655,21 @@ app.get('/pc-folders/:client', requireLogin, (req, res) => {
 });
 
 app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
+
+  const isAtelier =
+    req.session?.user?.role === 'atelier';
+
+  const atelierFolders = [
+    'Plans',
+    'Photos',
+    'Commandes',
+    'Heure chantier'
+  ];
+
+  const foldersToShow = isAtelier
+    ? STANDARD_SUBFOLDERS.filter(f => atelierFolders.includes(f))
+    : STANDARD_SUBFOLDERS;
+
   const client = safeName(req.params.client);
   const order = safeName(req.params.order);
 
@@ -1969,7 +2681,8 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
 
   ensureStandardSubfolders(orderDir);
 
-  const cards = STANDARD_SUBFOLDERS.map(
+  const cards = foldersToShow.map(
+
     (type) => `
       <a class="card" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}">
         <div class="card-icon">📂</div>
@@ -1991,7 +2704,7 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
     </div>
 
     ${infoBar(
-      `<div class="kpi"><div class="kpi-label">Dossiers</div><div class="kpi-value">${STANDARD_SUBFOLDERS.length}</div></div>`,
+      `<div class="kpi"><div class="kpi-label">Dossiers</div><div class="kpi-value">${foldersToShow.length}</div></div>`,
       `
         <a class="btn btn-secondary" href="/clients/${encodeURIComponent(client)}">← Retour client</a>
         <a class="btn btn-primary" href="/pc-folders/${encodeURIComponent(client)}">← Retour commandes</a>
@@ -2021,21 +2734,47 @@ app.get('/pc-folders/:client/:order/:type', requireLogin, (req, res) => {
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
   const files = entries.filter((e) => e.isFile()).map((e) => e.name);
 
-  const list = files.length
-    ? `<ul class="file-list">` +
-      files
-        .map(
-          (f) => `
-        <li class="file-item">
-          <a href="/pc-file/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}/${encodeURIComponent(f)}">
-            ${escHtml(f)}
-          </a>
-        </li>
-      `
-        )
-        .join('') +
-      `</ul>`
-    : `<div class="empty-state">Aucun fichier dans ce dossier.</div>`;
+const list = files.length
+  ? `
+    <div class="files-grid">
+      ${files.map(f => {
+
+        const ext = path.extname(f).toLowerCase();
+
+        let icon = '📄';
+
+        if (ext === '.dxf') icon = '📐';
+        else if (ext === '.pdf') icon = '📄';
+        else if (['.jpg','.jpeg','.png','.webp'].includes(ext)) icon = '🖼️';
+
+        return `
+          <div class="file-card">
+
+            <div class="file-icon">
+              ${icon}
+            </div>
+
+            <div class="file-name">
+              ${escHtml(f)}
+            </div>
+
+            <a
+              class="btn btn-primary"
+              href="/pc-file/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}/${encodeURIComponent(f)}"
+              target="_blank">
+
+              Ouvrir
+
+            </a>
+
+          </div>
+        `;
+
+      }).join('')}
+    </div>
+  `
+  : `<div class="empty-state">Aucun fichier dans ce dossier.</div>`;
+    
 
   const content = `
     ${breadcrumb([
@@ -2063,6 +2802,13 @@ app.get('/pc-folders/:client/:order/:type', requireLogin, (req, res) => {
 
     <div class="panel-soft" style="margin-top:14px">
       <h2>Fichiers</h2>
+      <div class="back-command-btn">
+  <a
+    class="btn btn-primary"
+    href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">
+    ← Retour commande
+  </a>
+</div>
       ${list}
     </div>
 
@@ -2138,7 +2884,20 @@ iframe{
   <button class="close-btn" onclick="history.back()">✕</button>
 </div>
 
-<iframe src="/pc-file-raw/${client}/${order}/${type}/${file}"></iframe>
+${file.toLowerCase().endsWith('.pdf')
+  ? `
+    <embed
+      src="/pc-file-raw/${client}/${order}/${type}/${file}"
+      type="application/pdf"
+      width="100%"
+      height="100%">
+  `
+  : `
+    <iframe
+      src="/pc-file-raw/${client}/${order}/${type}/${file}">
+    </iframe>
+  `
+}
 
 </body>
 </html>
@@ -2190,6 +2949,26 @@ function renderHeuresChantier(req, res) {
     .all(client, order);
 
   const totalMinutes = rows.reduce((sum, r) => sum + (r.minutes_total || 0), 0);
+  const orderDb = db.prepare(`
+  SELECT planned_hours
+  FROM client_orders
+  WHERE name = ?
+  AND description = ?
+  ORDER BY id DESC
+  LIMIT 1
+`).get(client, order);
+
+const plannedHours =
+  Number(orderDb?.planned_hours || 0);
+
+const actualHours =
+  totalMinutes / 60;
+
+const diffHours =
+  actualHours - plannedHours;
+
+const isOver =
+  actualHours > plannedHours;
 
   const since7 = new Date();
   since7.setDate(since7.getDate() - 7);
@@ -2264,11 +3043,70 @@ function renderHeuresChantier(req, res) {
         <p class="muted">Client : <strong>${escHtml(client)}</strong> · Commande : <strong>${escHtml(order)}</strong></p>
       </div>
 
-      ${infoBar(
+  ${infoBar(
+  `
+    <div class="kpi">
+      <div class="kpi-label">Total chantier</div>
+      <div class="kpi-value">
+        ${fmtMinutes(totalMinutes)}
+      </div>
+    </div>
+
+    <div class="kpi">
+      <div class="kpi-label">7 derniers jours</div>
+      <div class="kpi-value">
+        ${fmtMinutes(last7)}
+      </div>
+    </div>
+
+    ${
+      req.session?.user?.role !== 'atelier'
+        ? `
+        <div class="kpi">
+          <div class="kpi-label">Heures prévues</div>
+          <div class="kpi-value">
+            ${plannedHours.toFixed(1)} h
+            <form method="POST" action="/chantier-hours/planned-hours">
+  <input
+    type="hidden"
+    name="client"
+    value="${escHtml(client)}">
+
+  <input
+    type="hidden"
+    name="order"
+    value="${escHtml(order)}">
+
+  <input
+    type="number"
+    step="0.5"
+    name="planned_hours"
+    value="${plannedHours}">
+
+  <button type="submit">
+    Enregistrer
+  </button>
+</form>
+          </div>
+        </div>
+
+        <div class="kpi">
+          <div class="kpi-label">Écart</div>
+          <div
+            class="kpi-value"
+            style="
+              color:${isOver ? '#d32f2f' : '#2e7d32'};
+              font-weight:bold;
+            "
+          >
+            ${diffHours >= 0 ? '+' : ''}
+            ${diffHours.toFixed(1)} h
+          </div>
+        </div>
         `
-          <div class="kpi"><div class="kpi-label">Total chantier</div><div class="kpi-value">${fmtMinutes(totalMinutes)}</div></div>
-          <div class="kpi"><div class="kpi-label">7 derniers jours</div><div class="kpi-value">${fmtMinutes(last7)}</div></div>
-        `,
+        : ''
+    }
+  `,
         `
           <a class="btn btn-secondary" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">← Retour commande</a>
           <a class="btn btn-primary" href="/clients/${encodeURIComponent(client)}">← Retour client</a>
@@ -2388,7 +3226,23 @@ app.get('/chantier-hours/export.csv', requireLogin, (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="heures_${safeSegment(client)}_${safeSegment(order)}.csv"`);
   res.send(header + lines + '\n');
 });
+app.post('/chantier-hours/planned-hours', requireLogin, (req, res) => {
 
+  db.prepare(`
+    UPDATE client_orders
+    SET planned_hours = ?
+    WHERE name = ?
+    AND description = ?
+  `).run(
+    Number(req.body.planned_hours || 0),
+    req.body.client,
+    req.body.order
+  );
+
+  res.redirect(
+    `/pc-folders/${encodeURIComponent(req.body.client)}/${encodeURIComponent(req.body.order)}/Heure chantier`
+  );
+});
 /* ===================== DEVIS ===================== */
 
 // LISTE DEVIS
@@ -2662,13 +3516,35 @@ const photos =
   fs.existsSync(photoDir)
     ? fs.readdirSync(photoDir)
     : [];
-    const photosHtml = photos.map(photo => `
-  <a href="/quote-photos/${id}/${encodeURIComponent(photo)}" target="_blank">
-    <img
-      src="/quote-photos/${id}/${encodeURIComponent(photo)}"
-      class="quote-photo"
-    >
-  </a>
+const photosHtml = photos.map(photo => `
+  <div class="quote-photo-card">
+
+    <a href="/quote-photos/${id}/${encodeURIComponent(photo)}"
+       target="_blank">
+
+      <img
+        src="/quote-photos/${id}/${encodeURIComponent(photo)}"
+        class="quote-photo">
+    </a>
+
+    <form method="POST"
+          action="/devis/${id}/photo/delete"
+          onsubmit="return confirm('Supprimer ce fichier ?');">
+
+      <input
+        type="hidden"
+        name="photo"
+        value="${escHtml(photo)}">
+
+      <button
+        type="submit"
+        class="btn danger">
+        🗑️ Supprimer
+      </button>
+
+    </form>
+
+  </div>
 `).join('');
   const materials = db
     .prepare('SELECT * FROM materials ORDER BY COALESCE(type,\'\'), name')
@@ -3270,6 +4146,7 @@ function printPlan() {
           <option value="Laser">Laser</option>
           <option value="Galvanisation">Galvanisation</option>
           <option value="Thermolaquage">Thermolaquage</option>
+          <option value="Matières">Matières</option>
         </select>
       </div>
 
@@ -3474,6 +4351,24 @@ ${lines.length ? lines.map(l => `
     )
   );
 });
+app.post('/devis/:id/photo/delete', requireLogin, (req, res) => {
+
+  const id = Number(req.params.id);
+  const photo = path.basename(req.body.photo || '');
+
+  const photoPath = path.join(
+    QUOTE_PHOTO_DIR,
+    String(id),
+    photo
+  );
+
+  if (fs.existsSync(photoPath)) {
+    fs.unlinkSync(photoPath);
+  }
+
+  res.redirect('/devis/' + id);
+
+});
 app.get('/devis/line/:id/edit', requireLogin, (req, res) => {
 
   const line = db
@@ -3640,8 +4535,35 @@ app.post('/devis/line/material', requireLogin, (req, res) => {
 
 // ACCEPTER DEVIS
 app.post('/devis/:id/accept', requireLogin, (req, res) => {
+
   try {
+
     const quoteId = Number(req.params.id);
+
+    const lines = db.prepare(`
+      SELECT *
+      FROM quote_lines
+      WHERE quote_id = ?
+    `).all(quoteId);
+    console.log('LIGNES DU DEVIS :');
+console.log(JSON.stringify(lines, null, 2));
+
+let plannedHours = 0;
+
+for (const line of lines) {
+
+  const label =
+    String(line.label || '').toLowerCase();
+
+  if (label.includes('main')) {
+    plannedHours += Number(line.qty || 0);
+  }
+
+}
+
+console.log('HEURES PREVUES =', plannedHours);
+
+
     const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(quoteId);
     if (!quote) return res.status(404).send('Devis introuvable');
 
@@ -3654,8 +4576,10 @@ app.post('/devis/:id/accept', requireLogin, (req, res) => {
     const safeClient = safeName(clientName);
 
     // Total du devis (serveur)
-    const lines = db.prepare('SELECT total FROM quote_lines WHERE quote_id = ?').all(quoteId);
-    const total = lines.reduce((s, l) => s + (Number(l.total) || 0), 0);
+   const totalLines = db.prepare(
+  'SELECT total FROM quote_lines WHERE quote_id = ?'
+).all(quoteId);
+    const total = totalLines.reduce((s, l) => s + (Number(l.total) || 0), 0);
 
     const marginPct = Number(quote.margin_pct ?? 0);
     const totalWithMargin = round2(total * (1 + marginPct / 100));
@@ -3689,20 +4613,65 @@ const existing = db
     const orderDir = path.join(clientDir, safeOrder);
     ensureDir(orderDir);
     ensureStandardSubfolders(orderDir);
+const devisDir = path.join(orderDir, 'Devis');
 
+
+let descriptif = '';
+
+descriptif += `CLIENT : ${clientName}\n`;
+descriptif += `PROJET : ${orderTitle}\n`;
+descriptif += `DATE : ${new Date().toLocaleDateString('fr-FR')}\n\n`;
+
+descriptif += 'DESCRIPTIF DU DEVIS\n';
+descriptif += '===================\n\n';
+
+for (const line of lines) {
+
+  descriptif += `${line.qty || 1} x ${line.label || ''}`;
+
+  if (line.unit_price) {
+    descriptif += ` - ${line.unit_price} €`;
+  }
+
+  descriptif += '\n';
+}
+
+descriptif += '\n';
+descriptif += `TOTAL : ${totalWithMargin.toFixed(2)} €\n`;
+
+fs.writeFileSync(
+  path.join(devisDir, 'Descriptif devis.txt'),
+  descriptif,
+  'utf8'
+);
     // 4) Commande DB (prix = total avec marge)
-    db.prepare(
-      `
-      INSERT INTO client_orders (name, description, date, price, status, created_at)
-      VALUES (?, ?, ?, ?, 'En cours', ?)
-      `
-    ).run(
-      clientName,
-      orderTitle,
-      isoDate(),
-      totalWithMargin,
-      new Date().toISOString()
-    );
+    console.log('HEURES PREVUES =', plannedHours);
+    console.log('quoteId =', quoteId);
+console.log('plannedHours =', plannedHours);
+console.log('clientName =', clientName);
+console.log('orderTitle =', orderTitle);
+  db.prepare(
+  `
+  INSERT INTO client_orders
+  (
+    name,
+    description,
+    date,
+    price,
+    planned_hours,
+    status,
+    created_at
+  )
+  VALUES (?, ?, ?, ?, ?, 'En cours', ?)
+  `
+).run(
+  clientName,
+  orderTitle,
+  isoDate(),
+  totalWithMargin,
+  plannedHours,
+  new Date().toISOString()
+);
 
     // 5) MAJ devis
     db.prepare("UPDATE quotes SET status = 'Accepté' WHERE id = ?").run(quoteId);
@@ -4261,68 +5230,7 @@ function printSheets() {
 });
 
 
-/* ===================== GOOGLE OAUTH (optionnel) ===================== */
 
-app.get('/google/auth', requireLogin, (req, res) => {
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    return res.status(400).send('Google OAuth non configuré (GOOGLE_CLIENT_ID/SECRET manquants).');
-  }
-
-  const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/calendar'],
-    prompt: 'consent',
-  });
-
-  res.redirect(url);
-});
-
-app.get('/google/callback', requireLogin, async (req, res) => {
-  try {
-    const { tokens } = await oauth2Client.getToken(req.query.code);
-    oauth2Client.setCredentials(tokens);
-    req.session.googleTokens = tokens;
-    res.redirect('/agenda');
-  } catch (err) {
-    console.error(err);
-    res.send('Erreur connexion Google');
-  }
-});
-
-app.get('/google/sync', requireLogin, async (req, res) => {
-  if (!req.session.googleTokens) return res.redirect('/google/auth');
-
-  oauth2Client.setCredentials(req.session.googleTokens);
-
-  const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-  const events = db.prepare('SELECT * FROM events').all();
-
-  try {
-    for (const e of events) {
-      const startIso = new Date(e.start_date).toISOString();
-      const endIso = new Date(e.end_date || e.start_date).toISOString();
-
-      await calendar.events.insert({
-        calendarId: 'primary',
-        requestBody: {
-          summary: e.title,
-          start: { dateTime: startIso, timeZone: 'Europe/Paris' },
-          end: { dateTime: endIso, timeZone: 'Europe/Paris' },
-        },
-      });
-    }
-
-    res.send('<h2>✅ Synchronisation Google Agenda terminée</h2><a href="/agenda">Retour à l’agenda</a>');
-
-  } catch (err) {
-    console.error('Erreur Google :', err.response ? err.response.data : err);
-    res.send(
-      '<h2>❌ Erreur lors de la synchro Google</h2>' +
-      '<pre>' + escHtml(String(err)) + '</pre>' +
-      '<a href="/agenda">Retour à l’agenda</a>'
-    );
-  }
-});
 
 /* ===================== ERREURS ===================== */
 

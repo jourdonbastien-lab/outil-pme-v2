@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fiche de prises de cotes - Portail</title>
+  <link rel="stylesheet" href="measurements.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Prises de cotes</p>
+        <h1>Fiche Portail</h1>
+        <p class="hero-text">Même style de fiche, adaptée aux relevés portails et motorisations.</p>
+      </div>
+      <div class="hero-actions">
+        <button id="saveBtn" type="button" class="primary">Enregistrer</button>
+        <button id="loadBtn" type="button">Réouvrir</button>
+        <button id="resetBtn" type="button">Nouvelle fiche</button>
+        <button id="printBtn" type="button">Imprimer</button>
+      </div>
+    </header>
+
+    <main class="sheet-wrap">
+      <form id="measurementForm" class="sheet" autocomplete="on" data-storage-key="outil-pme.portail.measurements" data-module-label="Portail">
+        <section class="sheet-header">
+          <div>
+            <p class="sheet-kicker">Module chantier</p>
+            <h2>Portail</h2>
+            <p class="sheet-intro">Fiche terrain claire pour fabrication et pose.</p>
+          </div>
+          <div class="save-panel">
+            <label for="recordName">Nom de fiche</label>
+            <input id="recordName" name="recordName" type="text" placeholder="Ex : Durand - Portail entrée" />
+            <p id="saveStatus" class="save-status">Aucune sauvegarde chargée</p>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-title">
+            <h3>Informations générales</h3>
+            <p>Les informations de base de l'intervention.</p>
+          </div>
+          <div class="grid grid-4">
+            <label class="field"><span>Client</span><input name="client" type="text" /></label>
+            <label class="field"><span>Chantier</span><input name="chantier" type="text" /></label>
+            <label class="field"><span>Date</span><input name="date" type="date" /></label>
+            <label class="field"><span>Technicien</span><input name="technicien" type="text" /></label>
+          </div>
+        </section>
+
+        <section class="block split-block">
+          <div>
+            <div class="block-title">
+              <h3>Type de portail</h3>
+              <p>Choix principal.</p>
+            </div>
+            <div class="choice-list compact-list">
+              <label class="choice-row"><input name="typePortail" type="checkbox" value="Battant 2 vantaux" /><span class="choice-box"></span><span class="choice-text">Battant 2 vantaux</span></label>
+              <label class="choice-row"><input name="typePortail" type="checkbox" value="Battant 1 vantail" /><span class="choice-box"></span><span class="choice-text">Battant 1 vantail</span></label>
+              <label class="choice-row"><input name="typePortail" type="checkbox" value="Coulissant" /><span class="choice-box"></span><span class="choice-text">Coulissant</span></label>
+              <label class="choice-row"><input name="typePortail" type="checkbox" value="Autoportant" /><span class="choice-box"></span><span class="choice-text">Autoportant</span></label>
+            </div>
+          </div>
+
+          <div>
+            <div class="block-title">
+              <h3>Motorisation</h3>
+              <p>Prévision d'automatisme.</p>
+            </div>
+            <div class="choice-list">
+              <label class="choice-row"><input name="motorisation" type="checkbox" value="Aucune" /><span class="choice-box"></span><span class="choice-text">Aucune</span></label>
+              <label class="choice-row"><input name="motorisation" type="checkbox" value="Bras" /><span class="choice-box"></span><span class="choice-text">Bras</span></label>
+              <label class="choice-row"><input name="motorisation" type="checkbox" value="Vérin" /><span class="choice-box"></span><span class="choice-text">Vérin</span></label>
+              <label class="choice-row"><input name="motorisation" type="checkbox" value="Crémaillère" /><span class="choice-box"></span><span class="choice-text">Crémaillère</span></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-title">
+            <h3>Dimensions</h3>
+            <p>Cotes principales de passage et de fabrication.</p>
+          </div>
+          <div class="grid grid-5">
+            <label class="field"><span>Largeur entre piliers (mm)</span><input name="largeurEntrePiliers" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Hauteur portail (mm)</span><input name="hauteurPortail" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Retombée pilier gauche (mm)</span><input name="pilierGauche" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Retombée pilier droit (mm)</span><input name="pilierDroit" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Jeu au sol (mm)</span><input name="jeuAuSol" type="number" min="0" step="1" /></label>
+          </div>
+        </section>
+
+        <section class="block split-block">
+          <div>
+            <div class="block-title">
+              <h3>Remplissage</h3>
+              <p>Finition visuelle du portail.</p>
+            </div>
+            <div class="choice-list">
+              <label class="choice-row"><input name="remplissage" type="checkbox" value="Plein" /><span class="choice-box"></span><span class="choice-text">Plein</span></label>
+              <label class="choice-row"><input name="remplissage" type="checkbox" value="Ajouré" /><span class="choice-box"></span><span class="choice-text">Ajouré</span></label>
+              <label class="choice-row"><input name="remplissage" type="checkbox" value="Semi-ajouré" /><span class="choice-box"></span><span class="choice-text">Semi-ajouré</span></label>
+              <label class="choice-row"><input name="remplissage" type="checkbox" value="Barreaux" /><span class="choice-box"></span><span class="choice-text">Barreaux</span></label>
+            </div>
+          </div>
+
+          <div>
+            <div class="block-title">
+              <h3>Finitions</h3>
+              <p>Traitement de surface.</p>
+            </div>
+            <div class="choice-list">
+              <label class="choice-row"><input name="finitions" type="checkbox" value="Brut" /><span class="choice-box"></span><span class="choice-text">Brut</span></label>
+              <label class="choice-row"><input name="finitions" type="checkbox" value="Thermolaqué" /><span class="choice-box"></span><span class="choice-text">Thermolaqué</span></label>
+              <label class="choice-row"><input name="finitions" type="checkbox" value="Galvanisé" /><span class="choice-box"></span><span class="choice-text">Galvanisé</span></label>
+              <label class="choice-row"><input name="finitions" type="checkbox" value="Aspect corten" /><span class="choice-box"></span><span class="choice-text">Aspect corten</span></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="block media-block">
+          <div>
+            <div class="block-title">
+              <h3>Photos</h3>
+              <p>Ajoutez plusieurs vues chantier.</p>
+            </div>
+            <label class="upload-box">
+              <span>Ajouter plusieurs photos</span>
+              <input id="photoInput" name="photos" type="file" accept="image/*" multiple />
+            </label>
+            <div id="photoGallery" class="photo-grid"></div>
+          </div>
+
+          <div>
+            <div class="block-title">
+              <h3>Observations</h3>
+              <p>Notes libres, contraintes et remarques.</p>
+            </div>
+            <textarea id="observations" name="observations" rows="12" placeholder="Pente d'accès, alimentation électrique, gonds existants, points particuliers..."></textarea>
+          </div>
+        </section>
+      </form>
+    </main>
+  </div>
+
+  <template id="photoItemTemplate">
+    <figure class="photo-card">
+      <img alt="Photo chantier" />
+      <button type="button" class="photo-remove">Supprimer</button>
+    </figure>
+  </template>
+
+  <script type="module" src="module-sheet.js"></script>
+</body>
+</html>

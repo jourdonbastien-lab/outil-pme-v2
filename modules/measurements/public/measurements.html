@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fiche de prises de cotes - Escalier</title>
+  <link rel="stylesheet" href="measurements.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Prises de cotes</p>
+        <h1>Fiche Escalier</h1>
+        <p class="hero-text">Une fiche chantier simple, lisible et rapide, pensée pour tablette ou ordinateur.</p>
+      </div>
+      <div class="hero-actions">
+        <button id="saveBtn" type="button" class="primary">Enregistrer</button>
+        <button id="loadBtn" type="button">Réouvrir</button>
+        <button id="resetBtn" type="button">Nouvelle fiche</button>
+        <button id="printBtn" type="button">Imprimer</button>
+      </div>
+    </header>
+
+    <main class="sheet-wrap">
+      <form id="measurementForm" class="sheet" autocomplete="on">
+        <section class="sheet-header">
+          <div>
+            <p class="sheet-kicker">Module chantier</p>
+            <h2>Escalier</h2>
+            <p class="sheet-intro">Relevé terrain sans calcul automatique ni dessin technique.</p>
+          </div>
+          <div class="save-panel">
+            <label for="recordName">Nom de fiche</label>
+            <input id="recordName" name="recordName" type="text" placeholder="Ex : Dupont - Escalier entrée" />
+            <p id="saveStatus" class="save-status">Aucune sauvegarde chargée</p>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-title">
+            <h3>Informations générales</h3>
+            <p>Les informations de base de l'intervention.</p>
+          </div>
+          <div class="grid grid-4">
+            <label class="field">
+              <span>Client</span>
+              <input name="client" type="text" />
+            </label>
+            <label class="field">
+              <span>Chantier</span>
+              <input name="chantier" type="text" />
+            </label>
+            <label class="field">
+              <span>Date</span>
+              <input name="date" type="date" />
+            </label>
+            <label class="field">
+              <span>Technicien</span>
+              <input name="technicien" type="text" />
+            </label>
+          </div>
+        </section>
+
+        <section class="block split-block">
+          <div>
+            <div class="block-title">
+              <h3>Type d'escalier</h3>
+              <p>Choix principal.</p>
+            </div>
+            <div class="choice-list compact-list">
+              <label class="choice-row">
+                <input name="typeEscalier" type="checkbox" value="Droit" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Droit</span>
+              </label>
+              <label class="choice-row">
+                <input name="typeEscalier" type="checkbox" value="Quart tournant" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Quart tournant</span>
+              </label>
+              <label class="choice-row">
+                <input name="typeEscalier" type="checkbox" value="Deux quarts tournants" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Deux quarts tournants</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <div class="block-title">
+              <h3>Structure</h3>
+              <p>Plusieurs choix possibles.</p>
+            </div>
+            <div class="choice-list">
+              <label class="choice-row">
+                <input name="structure" type="checkbox" value="Limon central" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Limon central</span>
+              </label>
+              <label class="choice-row">
+                <input name="structure" type="checkbox" value="Double limon" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Double limon</span>
+              </label>
+              <label class="choice-row">
+                <input name="structure" type="checkbox" value="Crémaillère" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Crémaillère</span>
+              </label>
+              <label class="choice-row">
+                <input name="structure" type="checkbox" value="Suspendu" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Suspendu</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-title">
+            <h3>Marches</h3>
+            <p>Décrivez les marches et le matériau.</p>
+          </div>
+          <div class="grid grid-5">
+            <label class="field">
+              <span>Type</span>
+              <select name="marchesType">
+                <option value=""></option>
+                <option>Bois</option>
+                <option>Métal</option>
+                <option>Verre</option>
+                <option>Pierre</option>
+                <option>Mixte</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Épaisseur (mm)</span>
+              <input name="marchesEpaisseur" type="number" min="0" step="1" />
+            </label>
+            <label class="field">
+              <span>Essence</span>
+              <input name="marchesEssence" type="text" />
+            </label>
+            <label class="field">
+              <span>Largeur (mm)</span>
+              <input name="marchesLargeur" type="number" min="0" step="1" />
+            </label>
+            <label class="field">
+              <span>Nombre si connu</span>
+              <input name="marchesNombre" type="number" min="0" step="1" />
+            </label>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-title">
+            <h3>Dimensions</h3>
+            <p>Mesures relevées sur chantier.</p>
+          </div>
+          <div class="dimensions-layout">
+            <div class="grid grid-4">
+              <label class="field"><span>Hauteur (mm)</span><input name="hauteur" type="number" min="0" step="1" /></label>
+              <label class="field"><span>Longueur (mm)</span><input name="longueur" type="number" min="0" step="1" /></label>
+              <label class="field"><span>Largeur (mm)</span><input name="largeur" type="number" min="0" step="1" /></label>
+              <label class="field"><span>Trémie (mm)</span><input name="tremie" type="number" min="0" step="1" /></label>
+              <label class="field">
+                <span>Type de trémie</span>
+                <select name="tremieType">
+                  <option value="rectangle">Rectangle</option>
+                  <option value="l">En L</option>
+                </select>
+              </label>
+              <label class="field"><span>Reculement (mm)</span><input name="reculement" type="number" min="0" step="1" /></label>
+              <label class="field"><span>Échappée (mm)</span><input name="echappee" type="number" min="0" step="1" /></label>
+              <label class="field"><span>Nez de marche (mm)</span><input name="nezDeMarche" type="number" min="0" step="1" /></label>
+            </div>
+
+            <div class="tremie-fields">
+              <div class="tremie-group" data-tremie-group="rectangle">
+                <div class="mini-title">Cotes de la trémie rectangle</div>
+                <div class="mini-grid">
+                  <label class="field"><span><em class="field-tag">A</em>Longueur trémie (mm)</span><input name="tremieLongueur" type="number" min="0" step="1" /></label>
+                  <label class="field"><span><em class="field-tag">B</em>Largeur trémie (mm)</span><input name="tremieLargeur" type="number" min="0" step="1" /></label>
+                </div>
+              </div>
+
+              <div class="tremie-group" data-tremie-group="l">
+                <div class="mini-title">Cotes de la trémie en L</div>
+                <div class="mini-grid mini-grid-l">
+                  <label class="field"><span><em class="field-tag">A</em>Grand côté (mm)</span><input name="tremieLGrandeLongueur" type="number" min="0" step="1" /></label>
+                  <label class="field"><span><em class="field-tag">B</em>Grande largeur (mm)</span><input name="tremieLGrandeLargeur" type="number" min="0" step="1" /></label>
+                  <label class="field"><span><em class="field-tag">C</em>Retour du L (mm)</span><input name="tremieLRetourLongueur" type="number" min="0" step="1" /></label>
+                  <label class="field"><span><em class="field-tag">D</em>Largeur du retour (mm)</span><input name="tremieLRetourLargeur" type="number" min="0" step="1" /></label>
+                </div>
+              </div>
+            </div>
+
+            <aside class="plan-panel">
+              <div class="plan-head">
+                <h4>Plan vu de dessus</h4>
+                <p>Le schéma s’adapte selon Droit, Quart tournant, Deux quarts tournants et le type de trémie.</p>
+              </div>
+              <canvas id="topViewCanvas" width="560" height="420"></canvas>
+              <div class="plan-legend">
+                <span><i class="legend-line"></i>Emprise escalier</span>
+                <span><i class="legend-dim"></i>Cotes à reporter</span>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="block split-block">
+          <div>
+            <div class="block-title">
+              <h3>Finitions</h3>
+              <p>Traitement et rendu.</p>
+            </div>
+            <div class="choice-list">
+              <label class="choice-row">
+                <input name="finitions" type="checkbox" value="Brut" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Brut</span>
+              </label>
+              <label class="choice-row">
+                <input name="finitions" type="checkbox" value="Thermolaqué" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Thermolaqué</span>
+              </label>
+              <label class="choice-row">
+                <input name="finitions" type="checkbox" value="Galvanisé" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Galvanisé</span>
+              </label>
+              <label class="choice-row">
+                <input name="finitions" type="checkbox" value="Inox" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Inox</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <div class="block-title">
+              <h3>Pose</h3>
+              <p>Contexte de pose.</p>
+            </div>
+            <div class="choice-list">
+              <label class="choice-row">
+                <input name="pose" type="checkbox" value="Sol fini" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Sol fini</span>
+              </label>
+              <label class="choice-row">
+                <input name="pose" type="checkbox" value="Réservation" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Réservation</span>
+              </label>
+              <label class="choice-row">
+                <input name="pose" type="checkbox" value="Dalle béton" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Dalle béton</span>
+              </label>
+              <label class="choice-row">
+                <input name="pose" type="checkbox" value="Ossature bois" />
+                <span class="choice-box"></span>
+                <span class="choice-text">Ossature bois</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="block media-block">
+          <div>
+            <div class="block-title">
+              <h3>Photos</h3>
+              <p>Ajoutez plusieurs vues chantier.</p>
+            </div>
+            <label class="upload-box">
+              <span>Ajouter plusieurs photos</span>
+              <input id="photoInput" name="photos" type="file" accept="image/*" multiple />
+            </label>
+            <div id="photoGallery" class="photo-grid"></div>
+          </div>
+
+          <div>
+            <div class="block-title">
+              <h3>Observations</h3>
+              <p>Notes libres, contraintes et remarques.</p>
+            </div>
+            <textarea id="observations" name="observations" rows="12" placeholder="Notes chantier, points particuliers, contraintes d'accès, finitions à confirmer..."></textarea>
+          </div>
+        </section>
+
+      </form>
+    </main>
+  </div>
+
+  <template id="photoItemTemplate">
+    <figure class="photo-card">
+      <img alt="Photo chantier" />
+      <button type="button" class="photo-remove">Supprimer</button>
+    </figure>
+  </template>
+
+  <script type="module" src="measurements.js"></script>
+</body>
+</html>

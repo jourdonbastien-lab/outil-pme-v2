@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fiche de prises de cotes - Clôture</title>
+  <link rel="stylesheet" href="measurements.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Prises de cotes</p>
+        <h1>Fiche Clôture</h1>
+        <p class="hero-text">Même design de fiche pour les relevés de clôture.</p>
+      </div>
+      <div class="hero-actions">
+        <button id="saveBtn" type="button" class="primary">Enregistrer</button>
+        <button id="loadBtn" type="button">Réouvrir</button>
+        <button id="resetBtn" type="button">Nouvelle fiche</button>
+        <button id="printBtn" type="button">Imprimer</button>
+      </div>
+    </header>
+
+    <main class="sheet-wrap">
+      <form id="measurementForm" class="sheet" autocomplete="on" data-storage-key="outil-pme.cloture.measurements" data-module-label="Clôture">
+        <section class="sheet-header">
+          <div>
+            <p class="sheet-kicker">Module chantier</p>
+            <h2>Clôture</h2>
+            <p class="sheet-intro">Fiche de cotes rapide pour fabrication et pose.</p>
+          </div>
+          <div class="save-panel">
+            <label for="recordName">Nom de fiche</label>
+            <input id="recordName" name="recordName" type="text" placeholder="Ex : Leroy - Clôture jardin" />
+            <p id="saveStatus" class="save-status">Aucune sauvegarde chargée</p>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-title">
+            <h3>Informations générales</h3>
+            <p>Les informations de base de l'intervention.</p>
+          </div>
+          <div class="grid grid-4">
+            <label class="field"><span>Client</span><input name="client" type="text" /></label>
+            <label class="field"><span>Chantier</span><input name="chantier" type="text" /></label>
+            <label class="field"><span>Date</span><input name="date" type="date" /></label>
+            <label class="field"><span>Technicien</span><input name="technicien" type="text" /></label>
+          </div>
+        </section>
+
+        <section class="block split-block">
+          <div>
+            <div class="block-title">
+              <h3>Type de clôture</h3>
+              <p>Choix principal.</p>
+            </div>
+            <div class="choice-list compact-list">
+              <label class="choice-row"><input name="typeCloture" type="checkbox" value="Panneaux rigides" /><span class="choice-box"></span><span class="choice-text">Panneaux rigides</span></label>
+              <label class="choice-row"><input name="typeCloture" type="checkbox" value="Barreaudée" /><span class="choice-box"></span><span class="choice-text">Barreaudée</span></label>
+              <label class="choice-row"><input name="typeCloture" type="checkbox" value="Lames occultantes" /><span class="choice-box"></span><span class="choice-text">Lames occultantes</span></label>
+              <label class="choice-row"><input name="typeCloture" type="checkbox" value="Sur muret" /><span class="choice-box"></span><span class="choice-text">Sur muret</span></label>
+            </div>
+          </div>
+
+          <div>
+            <div class="block-title">
+              <h3>Implantation</h3>
+              <p>Contexte de terrain.</p>
+            </div>
+            <div class="choice-list">
+              <label class="choice-row"><input name="implantation" type="checkbox" value="Terrain plat" /><span class="choice-box"></span><span class="choice-text">Terrain plat</span></label>
+              <label class="choice-row"><input name="implantation" type="checkbox" value="Terrain en pente" /><span class="choice-box"></span><span class="choice-text">Terrain en pente</span></label>
+              <label class="choice-row"><input name="implantation" type="checkbox" value="Escaliers extérieurs" /><span class="choice-box"></span><span class="choice-text">Escaliers extérieurs</span></label>
+              <label class="choice-row"><input name="implantation" type="checkbox" value="Limite mitoyenne" /><span class="choice-box"></span><span class="choice-text">Limite mitoyenne</span></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-title">
+            <h3>Dimensions</h3>
+            <p>Cotes principales de clôture.</p>
+          </div>
+          <div class="grid grid-5">
+            <label class="field"><span>Linéaire total (mm)</span><input name="lineaireTotal" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Hauteur clôture (mm)</span><input name="hauteurCloture" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Nombre de poteaux</span><input name="nombrePoteaux" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Entraxe moyen (mm)</span><input name="entraxeMoyen" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Épaisseur muret (mm)</span><input name="epaisseurMuret" type="number" min="0" step="1" /></label>
+          </div>
+        </section>
+
+        <section class="block split-block">
+          <div>
+            <div class="block-title">
+              <h3>Fondations / pose</h3>
+              <p>Conditions de pose.</p>
+            </div>
+            <div class="choice-list">
+              <label class="choice-row"><input name="pose" type="checkbox" value="Scellement béton" /><span class="choice-box"></span><span class="choice-text">Scellement béton</span></label>
+              <label class="choice-row"><input name="pose" type="checkbox" value="Platine" /><span class="choice-box"></span><span class="choice-text">Platine</span></label>
+              <label class="choice-row"><input name="pose" type="checkbox" value="Chevillage chimique" /><span class="choice-box"></span><span class="choice-text">Chevillage chimique</span></label>
+              <label class="choice-row"><input name="pose" type="checkbox" value="Pré-perçage nécessaire" /><span class="choice-box"></span><span class="choice-text">Pré-perçage nécessaire</span></label>
+            </div>
+          </div>
+
+          <div>
+            <div class="block-title">
+              <h3>Finitions</h3>
+              <p>Traitement de surface.</p>
+            </div>
+            <div class="choice-list">
+              <label class="choice-row"><input name="finitions" type="checkbox" value="Brut" /><span class="choice-box"></span><span class="choice-text">Brut</span></label>
+              <label class="choice-row"><input name="finitions" type="checkbox" value="Thermolaqué" /><span class="choice-box"></span><span class="choice-text">Thermolaqué</span></label>
+              <label class="choice-row"><input name="finitions" type="checkbox" value="Galvanisé" /><span class="choice-box"></span><span class="choice-text">Galvanisé</span></label>
+              <label class="choice-row"><input name="finitions" type="checkbox" value="PVC" /><span class="choice-box"></span><span class="choice-text">PVC</span></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="block media-block">
+          <div>
+            <div class="block-title">
+              <h3>Photos</h3>
+              <p>Ajoutez plusieurs vues chantier.</p>
+            </div>
+            <label class="upload-box">
+              <span>Ajouter plusieurs photos</span>
+              <input id="photoInput" name="photos" type="file" accept="image/*" multiple />
+            </label>
+            <div id="photoGallery" class="photo-grid"></div>
+          </div>
+
+          <div>
+            <div class="block-title">
+              <h3>Observations</h3>
+              <p>Notes libres, contraintes et remarques.</p>
+            </div>
+            <textarea id="observations" name="observations" rows="12" placeholder="Angles de terrain, passages techniques, servitudes, contraintes de voisinage..."></textarea>
+          </div>
+        </section>
+      </form>
+    </main>
+  </div>
+
+  <template id="photoItemTemplate">
+    <figure class="photo-card">
+      <img alt="Photo chantier" />
+      <button type="button" class="photo-remove">Supprimer</button>
+    </figure>
+  </template>
+
+  <script type="module" src="module-sheet.js"></script>
+</body>
+</html>
