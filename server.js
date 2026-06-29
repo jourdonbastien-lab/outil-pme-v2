@@ -232,220 +232,241 @@ console.log('Dossier storage :', STORAGE_DIR);
 
 const db = new Database(dbPath);
 
+initializeSqlite(db);
+
 /* ===================== TABLES + MIGRATIONS ===================== */
 
-function ensureColumn(table, col, type) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
-  const exists = cols.some((c) => c.name === col);
-  if (!exists) {
-    db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`).run();
-    console.log(`✅ Ajout colonne ${table}.${col}`);
+function initializeSqlite(database) {
+  function ensureColumn(table, col, type) {
+    const cols = database.prepare(`PRAGMA table_info(${table})`).all();
+    const exists = cols.some((c) => c.name === col);
+    if (!exists) {
+      database.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`).run();
+      console.log(`✅ Ajout colonne ${table}.${col}`);
+    }
+  }
+
+  createSqliteTables(database);
+  runSqliteMigrations(ensureColumn);
+  runSqliteNormalizations(database);
+  initializeDefaultUsers(database);
+  logSqliteDebug(database);
+}
+
+function createSqliteTables(database) {
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE,
+      password TEXT
+    )
+  `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS clients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      address TEXT,
+      postal_code TEXT,
+      city TEXT,
+      email TEXT,
+      phone TEXT,
+      created_at TEXT
+    )
+  `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT,
+      status TEXT,
+      client_id INTEGER,
+      created_at TEXT
+    )
+  `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      created_at TEXT
+    )
+  `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS client_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      date TEXT NOT NULL,
+      price REAL DEFAULT 0,
+      status TEXT DEFAULT 'En cours',
+      created_at TEXT
+    )
+  `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS supplier_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      date TEXT NOT NULL,
+      status TEXT DEFAULT 'En cours',
+      created_at TEXT
+    )
+  `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS chantier_hours (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client TEXT NOT NULL,
+      order_name TEXT NOT NULL,
+      work_date TEXT NOT NULL,
+      start_time TEXT,
+      end_time TEXT,
+      break_minutes INTEGER DEFAULT 0,
+      minutes_total INTEGER DEFAULT 0,
+      note TEXT,
+      created_at TEXT
+    )
+  `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS quotes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      client_name TEXT,
+      client_email TEXT,
+      client_phone TEXT,
+      client_address TEXT,
+      status TEXT DEFAULT 'Brouillon',
+      created_at TEXT NOT NULL
+    )
+  `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS quote_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quote_id INTEGER NOT NULL,
+      category TEXT,
+      label TEXT NOT NULL,
+      qty REAL NOT NULL,
+      unit TEXT NOT NULL,
+      unit_price REAL NOT NULL,
+      total REAL NOT NULL,
+      position INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL
+    )
+  `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS materials (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT,
+      name TEXT,
+      unit TEXT,
+      price REAL NOT NULL DEFAULT 0,
+      kg_per_m REAL,
+      density REAL,
+      created_at TEXT
+    )
+  `).run();
+}
+
+function runSqliteMigrations(ensureColumn) {
+  ensureColumn('users', 'role', "TEXT DEFAULT 'admin'");
+  ensureColumn('clients', 'address', 'TEXT');
+  ensureColumn('clients', 'postal_code', 'TEXT');
+  ensureColumn('clients', 'city', 'TEXT');
+  ensureColumn('clients', 'email', 'TEXT');
+  ensureColumn('clients', 'phone', 'TEXT');
+  ensureColumn('clients', 'created_at', 'TEXT');
+  ensureColumn('events', 'type', 'TEXT');
+  ensureColumn('client_orders', 'planned_hours', 'REAL DEFAULT 0');
+  ensureColumn('client_orders', 'status', 'TEXT');
+  ensureColumn('supplier_orders', 'status', 'TEXT');
+  ensureColumn('tasks', 'status', 'TEXT');
+  ensureColumn('tasks', 'to_invoice', 'INTEGER DEFAULT 0');
+  ensureColumn('quotes', 'title', 'TEXT');
+  ensureColumn('quotes', 'client_name', 'TEXT');
+  ensureColumn('quotes', 'client_email', 'TEXT');
+  ensureColumn('quotes', 'client_phone', 'TEXT');
+  ensureColumn('quotes', 'client_address', 'TEXT');
+  ensureColumn('quotes', 'status', 'TEXT');
+  ensureColumn('quotes', 'created_at', 'TEXT');
+  ensureColumn('quotes', 'margin_pct', 'REAL');
+  ensureColumn('quotes', 'notes', 'TEXT');
+  ensureColumn('quotes', 'photos', 'TEXT');
+  ensureColumn('materials', 'type', 'TEXT');
+  ensureColumn('materials', 'name', 'TEXT');
+  ensureColumn('materials', 'unit', 'TEXT');
+  ensureColumn('materials', 'price', 'REAL');
+  ensureColumn('materials', 'kg_per_m', 'REAL');
+  ensureColumn('materials', 'density', 'REAL');
+  ensureColumn('materials', 'created_at', 'TEXT');
+}
+
+function runSqliteNormalizations(database) {
+  database.prepare(`UPDATE materials SET type = 'tube' WHERE type IS NULL OR type = ''`).run();
+  database.prepare(`
+    UPDATE users
+    SET role = 'admin'
+    WHERE username IN ('admin','Bastien')
+  `).run();
+}
+
+function initializeDefaultUsers(database) {
+  const userCount = database.prepare('SELECT COUNT(*) AS c FROM users').get().c;
+  if (userCount === 0) {
+    database.prepare(`
+      INSERT INTO users (username, password, role)
+      VALUES (?, ?, ?)
+    `).run('admin', 'admin', 'admin');
+
+    database.prepare(`
+      INSERT INTO users (username, password, role)
+      VALUES (?, ?, ?)
+    `).run('Bastien', 'Escalier233!', 'admin');
+
+    database.prepare(`
+      INSERT INTO users (username, password, role)
+      VALUES (?, ?, ?)
+    `).run('atelier', 'atelier123', 'atelier');
+    return;
+  }
+
+  const atelierExists = database
+    .prepare('SELECT id FROM users WHERE username = ?')
+    .get('atelier');
+
+  if (!atelierExists) {
+    database.prepare(`
+      INSERT INTO users (username, password, role)
+      VALUES (?, ?, ?)
+    `).run('atelier', 'atelier123', 'atelier');
   }
 }
 
-// Tables de base : toujours créer avant les migrations, SELECT ou UPDATE.
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    password TEXT
-  )
-`).run();
+function logSqliteDebug(database) {
+  console.log('TASKS');
+  console.log(database.prepare('PRAGMA table_info(tasks)').all());
 
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS clients (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    address TEXT,
-    postal_code TEXT,
-    city TEXT,
-    email TEXT,
-    phone TEXT,
-    created_at TEXT
-  )
-`).run();
+  console.log('CLIENT_ORDERS');
+  console.log(database.prepare('PRAGMA table_info(client_orders)').all());
 
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    status TEXT,
-    client_id INTEGER,
-    created_at TEXT
-  )
-`).run();
+  console.log('SUPPLIER_ORDERS');
+  console.log(database.prepare('PRAGMA table_info(supplier_orders)').all());
 
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    start_date TEXT,
-    end_date TEXT,
-    created_at TEXT
-  )
-`).run();
+  const sqliteUsers = database.prepare(
+    'SELECT id, username, password FROM users'
+  ).all();
 
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS client_orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT,
-    date TEXT NOT NULL,
-    price REAL DEFAULT 0,
-    status TEXT DEFAULT 'En cours',
-    created_at TEXT
-  )
-`).run();
-
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS supplier_orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    description TEXT,
-    date TEXT NOT NULL,
-    status TEXT DEFAULT 'En cours',
-    created_at TEXT
-  )
-`).run();
-
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS chantier_hours (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client TEXT NOT NULL,
-    order_name TEXT NOT NULL,
-    work_date TEXT NOT NULL,
-    start_time TEXT,
-    end_time TEXT,
-    break_minutes INTEGER DEFAULT 0,
-    minutes_total INTEGER DEFAULT 0,
-    note TEXT,
-    created_at TEXT
-  )
-`).run();
-
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS quotes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    client_name TEXT,
-    client_email TEXT,
-    client_phone TEXT,
-    client_address TEXT,
-    status TEXT DEFAULT 'Brouillon',
-    created_at TEXT NOT NULL
-  )
-`).run();
-
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS quote_lines (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    quote_id INTEGER NOT NULL,
-    category TEXT,
-    label TEXT NOT NULL,
-    qty REAL NOT NULL,
-    unit TEXT NOT NULL,
-    unit_price REAL NOT NULL,
-    total REAL NOT NULL,
-    position INTEGER DEFAULT 0,
-    created_at TEXT NOT NULL
-  )
-`).run();
-
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS materials (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    type TEXT,                     -- 'tube' | 'beam' | 'sheet'
-    name TEXT,
-    unit TEXT,
-    price REAL NOT NULL DEFAULT 0, -- €/m pour tube, €/kg pour beam/sheet
-    kg_per_m REAL,
-    density REAL,
-    created_at TEXT
-  )
-`).run();
-
-// Migrations sûres après création des tables.
-ensureColumn('users', 'role', "TEXT DEFAULT 'admin'");
-ensureColumn('clients', 'address', 'TEXT');
-ensureColumn('clients', 'postal_code', 'TEXT');
-ensureColumn('clients', 'city', 'TEXT');
-ensureColumn('clients', 'email', 'TEXT');
-ensureColumn('clients', 'phone', 'TEXT');
-ensureColumn('clients', 'created_at', 'TEXT');
-ensureColumn('events', 'type', 'TEXT');
-ensureColumn('client_orders', 'planned_hours', 'REAL DEFAULT 0');
-ensureColumn('client_orders', 'status', 'TEXT');
-ensureColumn('supplier_orders', 'status', 'TEXT');
-ensureColumn('tasks', 'status', 'TEXT');
-ensureColumn('tasks', 'to_invoice', 'INTEGER DEFAULT 0');
-ensureColumn('quotes', 'title', 'TEXT');
-ensureColumn('quotes', 'client_name', 'TEXT');
-ensureColumn('quotes', 'client_email', 'TEXT');
-ensureColumn('quotes', 'client_phone', 'TEXT');
-ensureColumn('quotes', 'client_address', 'TEXT');
-ensureColumn('quotes', 'status', 'TEXT');
-ensureColumn('quotes', 'created_at', 'TEXT');
-ensureColumn('quotes', 'margin_pct', 'REAL');
-ensureColumn('quotes', 'notes', 'TEXT');
-ensureColumn('quotes', 'photos', 'TEXT');
-ensureColumn('materials', 'type', 'TEXT');
-ensureColumn('materials', 'name', 'TEXT');
-ensureColumn('materials', 'unit', 'TEXT');
-ensureColumn('materials', 'price', 'REAL');
-ensureColumn('materials', 'kg_per_m', 'REAL');
-ensureColumn('materials', 'density', 'REAL');
-ensureColumn('materials', 'created_at', 'TEXT');
-
-// Normalisations après migrations.
-db.prepare(`UPDATE materials SET type = 'tube' WHERE type IS NULL OR type = ''`).run();
-db.prepare(`
-  UPDATE users
-  SET role = 'admin'
-  WHERE username IN ('admin','Bastien')
-`).run();
-try {
-  db.prepare(`
-    INSERT INTO users (username, password, role)
-    VALUES ('atelier', 'atelier123', 'atelier')
-  `).run();
-} catch {}
-
-console.log('TASKS');
-console.log(db.prepare("PRAGMA table_info(tasks)").all());
-
-console.log('CLIENT_ORDERS');
-console.log(db.prepare("PRAGMA table_info(client_orders)").all());
-
-console.log('SUPPLIER_ORDERS');
-console.log(db.prepare("PRAGMA table_info(supplier_orders)").all());
-
-const users = db.prepare(
-  'SELECT id, username, password FROM users'
-).all();
-
-console.log('UTILISATEURS =', users);
-console.log(users);
-console.log('BASE =', dbPath);
-console.log('UTILISATEURS =', users);
-
-/* ===================== USERS INIT ===================== */
-
-const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
-if (userCount === 0) {
-db.prepare(`
-  INSERT INTO users (username, password, role)
-  VALUES (?, ?, ?)
-`).run('admin', 'admin', 'admin');
-
-db.prepare(`
-  INSERT INTO users (username, password, role)
-  VALUES (?, ?, ?)
-`).run('Bastien', 'Escalier233!', 'admin');
-
-db.prepare(`
-  INSERT INTO users (username, password, role)
-  VALUES (?, ?, ?)
-`).run('atelier', 'atelier123', 'atelier');
+  console.log('UTILISATEURS =', sqliteUsers);
+  console.log(sqliteUsers);
+  console.log('BASE =', dbPath);
+  console.log('UTILISATEURS =', sqliteUsers);
 }
 /* ===================== STANDARD SUBFOLDERS ===================== */
 
