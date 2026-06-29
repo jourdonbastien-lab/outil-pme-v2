@@ -7,20 +7,47 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const { google } = require('googleapis');
 const multer = require('multer');
-const QUOTE_PHOTO_DIR = path.join(
-  process.env.APPDATA,
-  'Outil PME',
-  'quote_photos'
-);
-
-if (!fs.existsSync(QUOTE_PHOTO_DIR)) {
-  fs.mkdirSync(QUOTE_PHOTO_DIR, { recursive: true });
-}
+const { readDatabaseConfig } = require('./lib/databaseConfig');
 const app = express();
+
+const envFilePath = path.join(__dirname, '.env');
+if (fs.existsSync(envFilePath)) {
+  const envContent = fs.readFileSync(envFilePath, 'utf8');
+  for (const rawLine of envContent.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eqIndex = line.indexOf('=');
+    if (eqIndex <= 0) continue;
+    const key = line.slice(0, eqIndex).trim();
+    const value = line.slice(eqIndex + 1).trim();
+    if (!(key in process.env)) process.env[key] = value;
+  }
+}
+
+function envBool(name, defaultValue = false) {
+  const value = String(process.env[name] ?? '').trim().toLowerCase();
+  if (!value) return defaultValue;
+  return ['1', 'true', 'yes', 'on'].includes(value);
+}
+
 const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || '0.0.0.0';
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const TRUST_PROXY = envBool('TRUST_PROXY', NODE_ENV === 'production');
+const SESSION_SECRET = process.env.SESSION_SECRET || 'outil-pme-secret';
+const SESSION_COOKIE_SECURE = envBool('SESSION_COOKIE_SECURE', NODE_ENV === 'production');
+const SESSION_COOKIE_SAMESITE = process.env.SESSION_COOKIE_SAMESITE || 'lax';
+
+if (TRUST_PROXY) {
+  app.set('trust proxy', 1);
+}
 
 app.get('/test', (req, res) => {
   res.send('SERVEUR OK');
+});
+
+app.get('/healthz', (req, res) => {
+  res.status(200).send('ok');
 });
 
 
@@ -132,10 +159,6 @@ function gridCards(cardsHtml) {
   return `<section class="cards-grid">${cardsHtml}</section>`;
 }
 
-function getHomeDir() {
-  return process.env.USERPROFILE || process.env.HOME || __dirname;
-}
-
 function uniqueFolder(baseDir, wanted) {
   let name = wanted;
   let i = 2;
@@ -146,6 +169,37 @@ function uniqueFolder(baseDir, wanted) {
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
+
+function resolveStoragePath(value, fallback) {
+  const raw = String(value || fallback || '').trim();
+  const target = raw || path.join(__dirname, 'storage');
+  return path.isAbsolute(target) ? path.normalize(target) : path.join(__dirname, target);
+}
+
+const STORAGE_DIR = resolveStoragePath(process.env.OUTIL_PME_STORAGE_DIR, path.join(__dirname, 'storage'));
+const DATA_DIR = resolveStoragePath(process.env.OUTIL_PME_DATA_DIR, path.join(STORAGE_DIR, 'data'));
+const DATABASE_CONFIG = readDatabaseConfig(process.env);
+
+if (DATABASE_CONFIG.client !== 'sqlite') {
+  throw new Error(`DB_CLIENT=${DATABASE_CONFIG.client} est préparé, mais le code métier utilise encore SQLite. Garder DB_CLIENT=sqlite jusqu'à la migration PostgreSQL.`);
+}
+
+const DB_PATH = resolveStoragePath(DATABASE_CONFIG.sqlite.path, path.join(DATA_DIR, 'app.db'));
+const CLIENT_PC_DIR = resolveStoragePath(process.env.OUTIL_PME_CLIENTS_DIR, path.join(STORAGE_DIR, 'clients'));
+const CLIENT_ORDER_FILES_DIR = resolveStoragePath(
+  process.env.OUTIL_PME_ATTACHMENTS_DIR || process.env.OUTIL_PME_CLIENT_ORDER_FILES_DIR,
+  path.join(STORAGE_DIR, 'client_orders_files')
+);
+const QUOTE_PHOTO_DIR = resolveStoragePath(process.env.OUTIL_PME_QUOTE_PHOTO_DIR, path.join(STORAGE_DIR, 'quote_photos'));
+const PDF_STORAGE_DIR = resolveStoragePath(process.env.OUTIL_PME_PDF_DIR, path.join(STORAGE_DIR, 'pdf'));
+
+ensureDir(STORAGE_DIR);
+ensureDir(DATA_DIR);
+ensureDir(path.dirname(DB_PATH));
+ensureDir(CLIENT_PC_DIR);
+ensureDir(CLIENT_ORDER_FILES_DIR);
+ensureDir(QUOTE_PHOTO_DIR);
+ensureDir(PDF_STORAGE_DIR);
 
 const MEASUREMENTS_PUBLIC_DIR = path.join(__dirname, 'modules', 'measurements', 'public');
 const MEASUREMENT_SHEETS = {
@@ -169,40 +223,14 @@ function normalizeKey(str) {
 }
 /* ===================== DB INIT ===================== */
 
-let dataDir;
-const appDataDir = process.env.APPDATA ? path.join(process.env.APPDATA, 'Outil PME') : null;
-const localDataDir = path.join(__dirname, 'data');
-
-if (appDataDir && fs.existsSync(path.join(appDataDir, 'app.db'))) {
-  dataDir = appDataDir;
-} else {
-  dataDir = localDataDir;
-}
-ensureDir(dataDir);
-
-const dbPath = path.join(dataDir, 'app.db');
+const dataDir = DATA_DIR;
+const dbPath = DB_PATH;
 
 console.log('Base SQLite :', dbPath);
-console.log('Utilisateur Windows =', process.env.USERPROFILE);
+console.log('Dossier storage :', STORAGE_DIR);
 
 
 const db = new Database(dbPath);
-
-console.log('TASKS');
-console.log(db.prepare("PRAGMA table_info(tasks)").all());
-
-console.log('CLIENT_ORDERS');
-console.log(db.prepare("PRAGMA table_info(client_orders)").all());
-
-console.log('SUPPLIER_ORDERS');
-console.log(db.prepare("PRAGMA table_info(supplier_orders)").all());
-
-const users = db.prepare(
-  'SELECT id, username, password FROM users'
-).all();
-
-console.log(users);
-
 
 /* ===================== TABLES + MIGRATIONS ===================== */
 
@@ -215,37 +243,7 @@ function ensureColumn(table, col, type) {
   }
 }
 
-// Tables
-try {
-  db.prepare(`
-    ALTER TABLE client_orders
-    ADD COLUMN planned_hours REAL DEFAULT 0
-  `).run();
-} catch {}
-try {
-  db.prepare(`
-    ALTER TABLE client_orders
-    ADD COLUMN planned_hours REAL DEFAULT 0
-  `).run();
-} catch {}
-try {
-  db.prepare(`
-    ALTER TABLE users
-    ADD COLUMN role TEXT DEFAULT 'admin'
-  `).run();
-} catch {}
-try {
-  db.prepare(`
-    UPDATE users
-    SET role = 'admin'
-    WHERE username IN ('admin','Bastien')
-  `).run();
-
-  db.prepare(`
-    INSERT INTO users (username, password, role)
-    VALUES ('atelier', 'atelier123', 'atelier')
-  `).run();
-} catch {}
+// Tables de base : toujours créer avant les migrations, SELECT ou UPDATE.
 db.prepare(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -266,16 +264,6 @@ db.prepare(`
     created_at TEXT
   )
 `).run();
-
-// 🔒 migrations sûres (corrige les anciennes bases)
-ensureColumn('clients', 'address', 'TEXT');
-ensureColumn('clients', 'postal_code', 'TEXT');
-ensureColumn('clients', 'city', 'TEXT');
-ensureColumn('clients', 'email', 'TEXT');
-ensureColumn('clients', 'phone', 'TEXT');
-ensureColumn('clients', 'created_at', 'TEXT');
-ensureColumn('events', 'type', 'TEXT');
-
 
 db.prepare(`
   CREATE TABLE IF NOT EXISTS tasks (
@@ -375,39 +363,21 @@ db.prepare(`
     created_at TEXT
   )
 `).run();
-try {
-  db.prepare(`
-    ALTER TABLE quotes
-    ADD COLUMN notes TEXT
-  `).run();
-} catch {}
 
-try {
-  db.prepare(`
-    ALTER TABLE quotes
-    ADD COLUMN photos TEXT
-  `).run();
-} catch {}
-try {
-  db.prepare(`
-    ALTER TABLE quotes
-    ADD COLUMN notes TEXT
-  `).run();
-} catch {}
-try {
-  db.prepare(`
-    ALTER TABLE tasks
-    ADD COLUMN to_invoice INTEGER DEFAULT 0
-  `).run();
-} catch {}
-console.log('UTILISATEURS =', users);
-
-console.log(users);
-
-console.log('BASE =', dbPath);
-console.log('UTILISATEURS =', users);
-
-// Migrations "quotes"
+// Migrations sûres après création des tables.
+ensureColumn('users', 'role', "TEXT DEFAULT 'admin'");
+ensureColumn('clients', 'address', 'TEXT');
+ensureColumn('clients', 'postal_code', 'TEXT');
+ensureColumn('clients', 'city', 'TEXT');
+ensureColumn('clients', 'email', 'TEXT');
+ensureColumn('clients', 'phone', 'TEXT');
+ensureColumn('clients', 'created_at', 'TEXT');
+ensureColumn('events', 'type', 'TEXT');
+ensureColumn('client_orders', 'planned_hours', 'REAL DEFAULT 0');
+ensureColumn('client_orders', 'status', 'TEXT');
+ensureColumn('supplier_orders', 'status', 'TEXT');
+ensureColumn('tasks', 'status', 'TEXT');
+ensureColumn('tasks', 'to_invoice', 'INTEGER DEFAULT 0');
 ensureColumn('quotes', 'title', 'TEXT');
 ensureColumn('quotes', 'client_name', 'TEXT');
 ensureColumn('quotes', 'client_email', 'TEXT');
@@ -416,8 +386,8 @@ ensureColumn('quotes', 'client_address', 'TEXT');
 ensureColumn('quotes', 'status', 'TEXT');
 ensureColumn('quotes', 'created_at', 'TEXT');
 ensureColumn('quotes', 'margin_pct', 'REAL');
-
-// Migrations "materials"
+ensureColumn('quotes', 'notes', 'TEXT');
+ensureColumn('quotes', 'photos', 'TEXT');
 ensureColumn('materials', 'type', 'TEXT');
 ensureColumn('materials', 'name', 'TEXT');
 ensureColumn('materials', 'unit', 'TEXT');
@@ -426,11 +396,38 @@ ensureColumn('materials', 'kg_per_m', 'REAL');
 ensureColumn('materials', 'density', 'REAL');
 ensureColumn('materials', 'created_at', 'TEXT');
 
-// Normalisation : éviter type NULL (supprime le crash sur .toUpperCase)
+// Normalisations après migrations.
 db.prepare(`UPDATE materials SET type = 'tube' WHERE type IS NULL OR type = ''`).run();
-ensureColumn('tasks', 'status', 'TEXT');
-ensureColumn('client_orders', 'status', 'TEXT');
-ensureColumn('supplier_orders', 'status', 'TEXT');
+db.prepare(`
+  UPDATE users
+  SET role = 'admin'
+  WHERE username IN ('admin','Bastien')
+`).run();
+try {
+  db.prepare(`
+    INSERT INTO users (username, password, role)
+    VALUES ('atelier', 'atelier123', 'atelier')
+  `).run();
+} catch {}
+
+console.log('TASKS');
+console.log(db.prepare("PRAGMA table_info(tasks)").all());
+
+console.log('CLIENT_ORDERS');
+console.log(db.prepare("PRAGMA table_info(client_orders)").all());
+
+console.log('SUPPLIER_ORDERS');
+console.log(db.prepare("PRAGMA table_info(supplier_orders)").all());
+
+const users = db.prepare(
+  'SELECT id, username, password FROM users'
+).all();
+
+console.log('UTILISATEURS =', users);
+console.log(users);
+console.log('BASE =', dbPath);
+console.log('UTILISATEURS =', users);
+
 /* ===================== USERS INIT ===================== */
 
 const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
@@ -450,17 +447,6 @@ db.prepare(`
   VALUES (?, ?, ?)
 `).run('atelier', 'atelier123', 'atelier');
 }
-
-/* ===================== INIT DIRS ===================== */
-
-// Dossier clients sur TON PC (Windows-friendly : Bureau)
-const CLIENT_PC_DIR = 'C:\\A2 Métal\\Clients';
-ensureDir(CLIENT_PC_DIR);
-
-// Dossiers de fichiers pour chaque commande client (côté appli)
-const CLIENT_ORDER_FILES_DIR = path.join(dataDir, 'client_orders_files');
-ensureDir(CLIENT_ORDER_FILES_DIR);
-
 /* ===================== STANDARD SUBFOLDERS ===================== */
 
 const STANDARD_SUBFOLDERS = ['Devis', 'Plans', 'Factures', 'Photos', 'Commandes', 'Heure chantier'];
@@ -551,13 +537,13 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
   name: 'outil-pme.sid',
-  secret: 'outil-pme-secret',
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false,        // ⚠️ OBLIGATOIRE pour Electron
+    secure: SESSION_COOKIE_SECURE,
     httpOnly: true,
-    sameSite: 'lax'       // ⚠️ important
+    sameSite: SESSION_COOKIE_SAMESITE
   }
 }));
 
@@ -577,8 +563,8 @@ app.use((req, res, next) => {
     const eventsToday = db.prepare('SELECT COUNT(*) AS c FROM events WHERE start_date LIKE ?').get(`${today}%`).c;
     const clientOrders = db.prepare("SELECT COUNT(*) AS c FROM client_orders WHERE status != 'Terminée'").get().c;
     const supplierOrders = db
-  .prepare("SELECT COUNT(*) AS c FROM supplier_orders WHERE status != 'Terminée'")
-  .get().c;
+      .prepare("SELECT COUNT(*) AS c FROM supplier_orders WHERE status IS NULL OR TRIM(status) = '' OR status != 'Terminée'")
+      .get().c;
 
     req.navStats = { tasksTodo, eventsToday, clientOrders, supplierOrders };
   } catch (err) {
@@ -589,20 +575,6 @@ app.use((req, res, next) => {
 });
 
 /* ===================== GOOGLE (optionnel) ===================== */
-
-const envFilePath = path.join(__dirname, '.env');
-if (fs.existsSync(envFilePath)) {
-  const envContent = fs.readFileSync(envFilePath, 'utf8');
-  for (const rawLine of envContent.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) continue;
-    const eqIndex = line.indexOf('=');
-    if (eqIndex <= 0) continue;
-    const key = line.slice(0, eqIndex).trim();
-    const value = line.slice(eqIndex + 1).trim();
-    if (!(key in process.env)) process.env[key] = value;
-  }
-}
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
@@ -675,9 +647,9 @@ ${isAtelier ? `
       📋 Prises de cotes
     </a>
 
-      <a href="/dashboard/prototype"
-        class="${req.path === '/dashboard/prototype' ? 'active' : ''}">
-        ✨ Dashboard Prototype
+      <a href="/dashboard"
+        class="${req.path === '/dashboard' ? 'active' : ''}">
+        Dashboard
       </a>
 
 ` : `
@@ -735,11 +707,6 @@ ${isAtelier ? `
       class="${req.path.startsWith('/outils/prises-cotes') ? 'active' : ''}">
       📋 Prises de cotes
     </a>
-
-      <a href="/dashboard/prototype"
-        class="${req.path === '/dashboard/prototype' ? 'active' : ''}">
-        ✨ Dashboard Prototype
-      </a>
 
 `}
 
@@ -809,7 +776,7 @@ res.redirect('/dashboard');
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
 
 /* ===================== DASHBOARD ===================== */
-app.get('/dashboard', requireLogin, (req, res) => {
+app.get('/dashboard/classic', requireLogin, (req, res) => {
  const upcomingEvents = db.prepare(`
   SELECT *
   FROM events
@@ -1028,7 +995,7 @@ const statusDot =
   );
 });
 
-app.get('/dashboard/prototype', requireLogin, (req, res) => {
+app.get('/dashboard', requireLogin, (req, res) => {
   const openTasks = db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status != 'Terminée'").get().c;
   const eventsThisWeek = db
     .prepare(`
@@ -1040,7 +1007,9 @@ app.get('/dashboard/prototype', requireLogin, (req, res) => {
     `)
     .get().c;
   const openClientOrders = db.prepare("SELECT COUNT(*) AS c FROM client_orders WHERE status != 'Terminée'").get().c;
-  const openSupplierOrders = db.prepare("SELECT COUNT(*) AS c FROM supplier_orders WHERE status != 'Terminée'").get().c;
+  const openSupplierOrders = db
+    .prepare("SELECT COUNT(*) AS c FROM supplier_orders WHERE status IS NULL OR TRIM(status) = '' OR status != 'Terminée'")
+    .get().c;
 
   const recentTasks = db
     .prepare(`
@@ -1066,6 +1035,15 @@ app.get('/dashboard/prototype', requireLogin, (req, res) => {
     .prepare(`
       SELECT id, name, description, date, status
       FROM client_orders
+      ORDER BY date DESC, id DESC
+      LIMIT 6
+    `)
+    .all();
+
+  const recentSupplierOrders = db
+    .prepare(`
+      SELECT id, name, description, date, status
+      FROM supplier_orders
       ORDER BY date DESC, id DESC
       LIMIT 6
     `)
@@ -1140,6 +1118,36 @@ app.get('/dashboard/prototype', requireLogin, (req, res) => {
         .join('')
     : '<p class="empty">Aucune commande récente</p>';
 
+  const supplierOrdersHtml = recentSupplierOrders.length
+    ? recentSupplierOrders
+        .map((o) => {
+          const day = String(o.date || '').slice(0, 10) || '—';
+          const status = o.status || 'En cours';
+          return `
+      <article class="order-card supplier-proto-card">
+        <header class="order-card-header supplier-proto-card-header">
+          <div>
+            <div class="order-card-title">
+              <span class="supplier-proto-label">Fournisseur</span>
+              <span class="order-card-client">${escHtml(o.name || 'Fournisseur')}</span>
+              <span class="order-card-id">#${o.id}</span>
+            </div>
+            <div class="order-card-meta supplier-proto-card-meta">
+              <span class="order-card-date">📅 ${escHtml(day)}</span>
+              <span class="order-card-status badge">${escHtml(status)}</span>
+            </div>
+          </div>
+        </header>
+
+        <div class="order-card-body supplier-proto-card-body">
+          <p class="order-card-description">${escHtml(o.description || '—')}</p>
+        </div>
+      </article>
+    `;
+        })
+        .join('')
+    : '<p class="empty">Aucune commande fournisseur récente</p>';
+
   res.send(
     dashboardTemplate(
       req,
@@ -1147,12 +1155,12 @@ app.get('/dashboard/prototype', requireLogin, (req, res) => {
       <div class="proto-shell">
         <section class="proto-hero">
           <div>
-            <p class="proto-eyebrow">Prototype UI</p>
-            <h1>Dashboard Nouvelle Génération</h1>
-            <p class="proto-sub">Vue synthétique rapide pour le pilotage quotidien.</p>
+            <p class="proto-eyebrow">Pilotage quotidien</p>
+            <h1>Tableau de bord</h1>
+            <p class="proto-sub">Vue synthétique rapide pour suivre les priorités, les rendez-vous et les commandes.</p>
           </div>
           <div class="proto-hero-actions">
-            <a class="btn btn-primary" href="/dashboard">Retour dashboard classique</a>
+            <a class="btn btn-primary" href="/tasks">Tâches</a>
             <a class="btn btn-secondary" href="/outils/prises-cotes">Prises de cotes</a>
           </div>
         </section>
@@ -1197,11 +1205,22 @@ app.get('/dashboard/prototype', requireLogin, (req, res) => {
               ${ordersHtml}
             </div>
           </article>
+
+          <article class="proto-panel proto-panel-wide">
+            <h2>Dernières commandes fournisseurs</h2>
+            <div class="orders-cards-grid modern-orders-grid">
+              ${supplierOrdersHtml}
+            </div>
+          </article>
         </section>
       </div>
       `
     )
   );
+});
+
+app.get('/dashboard/prototype', requireLogin, (req, res) => {
+  res.redirect('/dashboard');
 });
 
 
@@ -5344,6 +5363,6 @@ app.post('/agenda/delete', requireLogin, (req, res) => {
 
 /* ===================== START ===================== */
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Serveur démarré sur le port ${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`Serveur démarré sur ${HOST}:${PORT}`);
 });

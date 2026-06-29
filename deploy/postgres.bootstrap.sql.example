@@ -1,0 +1,9 @@
+-- Exemple de préparation PostgreSQL pour une étape future.
+-- À adapter avant exécution sur le VPS.
+-- SQLite reste actif tant que DB_CLIENT=sqlite.
+
+CREATE ROLE outil_pme WITH LOGIN PASSWORD 'replace-with-strong-password';
+CREATE DATABASE outil_pme OWNER outil_pme;
+
+-- Optionnel si l'application est déployée avec une base dédiée :
+-- GRANT ALL PRIVILEGES ON DATABASE outil_pme TO outil_pme;

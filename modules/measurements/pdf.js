@@ -252,10 +252,11 @@ module.exports = {
   savePdf,
 };
 
-// Self-test: generate a sample PDF to verify the engine works. The test
-// writes `modules/measurements/test-output.pdf` and resolves when done.
+// Self-test: generate a sample PDF to verify the engine works.
 async function runSelfTest() {
-  const out = path.join(__dirname, 'test-output.pdf');
+  const storageRoot = process.env.OUTIL_PME_STORAGE_DIR || path.join(process.cwd(), 'storage');
+  const pdfDir = process.env.OUTIL_PME_PDF_DIR || path.join(storageRoot, 'pdf');
+  const out = path.join(pdfDir, 'test-output.pdf');
   const doc = createDocument();
   addHeader(doc, 'Fiche de prise de cotes - Exemples', { date: new Date().toLocaleDateString() });
   addClientInfo(doc, { name: 'SARL Exemple', address: '1 Rue Test, 75000 Paris', phone: '01 23 45 67 89' });

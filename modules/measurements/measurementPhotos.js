@@ -70,7 +70,9 @@ function _hashFile(filePath) {
  * @param {string} rootDir
  */
 function createPhotoManager(rootDir) {
-  const root = rootDir ? path.resolve(rootDir) : path.resolve('data', 'photos');
+  const storageRoot = process.env.OUTIL_PME_STORAGE_DIR || path.join(process.cwd(), 'storage');
+  const defaultRoot = process.env.OUTIL_PME_MEASUREMENT_PHOTO_DIR || path.join(storageRoot, 'measurement_photos');
+  const root = path.resolve(rootDir || defaultRoot);
 
   async function _measurementDir(measurementId) {
     const dir = path.join(root, String(measurementId));
