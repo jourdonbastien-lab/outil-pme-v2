@@ -193,6 +193,36 @@ button {
   width:100%;
 }
 
+.login-help{
+  color:#5f6673;
+  line-height:1.45;
+  margin:0 0 18px;
+}
+
+.login-error{
+  background:#fff1f1;
+  border:1px solid #f0b5b5;
+  color:#9f1d1d;
+  padding:10px 12px;
+  border-radius:8px;
+  margin:0 0 16px;
+}
+
+.login-code-input{
+  font-size:24px;
+  letter-spacing:0;
+  text-align:center;
+}
+
+.login-secondary-form{
+  margin-top:10px;
+}
+
+.login-card button.btn-secondary{
+  background:#eef0f3;
+  color:#1f2937;
+}
+
 @media (max-width:768px){
 
   .login-wrapper{
