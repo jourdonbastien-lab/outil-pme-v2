@@ -3603,3 +3603,319 @@ button:hover {
     pointer-events:none;
   }
 }
+
+/* =========================
+   Suivi des chantiers
+   ========================= */
+
+.chantiers-page,
+.chantier-detail{
+  display:grid;
+  gap:16px;
+}
+
+.chantiers-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+}
+
+.chantiers-form{
+  padding:16px;
+  border:1px solid #e5e7eb;
+  border-radius:14px;
+  background:#fff;
+  box-shadow:0 5px 14px rgba(15,23,42,.07);
+}
+
+.chantiers-form h2{
+  margin:0 0 14px;
+  font-size:18px;
+}
+
+.chantiers-form-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+}
+
+.chantiers-form label{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width:0;
+}
+
+.chantiers-form label span{
+  color:#6b7280;
+  font-size:12px;
+  font-weight:800;
+}
+
+.chantiers-form input,
+.chantiers-form select,
+.chantiers-form textarea{
+  width:100%;
+  border:1px solid #d1d5db;
+  border-radius:10px;
+  background:#fff;
+  color:#111827;
+}
+
+.chantiers-form textarea{
+  resize:vertical;
+}
+
+.chantiers-form-wide{
+  grid-column:1 / -1;
+}
+
+.chantiers-form-actions{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:14px;
+}
+
+.chantiers-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+}
+
+.chantier-card,
+.chantier-detail-hero,
+.chantier-detail-panel,
+.chantier-metric{
+  border:1px solid #e5e7eb;
+  border-radius:14px;
+  background:#fff;
+  box-shadow:0 5px 14px rgba(15,23,42,.07);
+}
+
+.chantier-card{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  padding:15px;
+}
+
+.chantier-card-head{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.chantier-card h3{
+  margin:0;
+  color:#111827;
+  font-size:18px;
+  overflow-wrap:anywhere;
+}
+
+.chantier-card p,
+.chantier-detail-hero p,
+.chantier-detail-panel p{
+  margin:5px 0 0;
+  color:#6b7280;
+  overflow-wrap:anywhere;
+}
+
+.chantier-status{
+  align-self:flex-start;
+  white-space:nowrap;
+  padding:6px 9px;
+  border-radius:999px;
+  background:#f3f4f6;
+  color:#374151;
+  font-size:12px;
+  font-weight:800;
+}
+
+.chantier-status-0{ background:#f3f4f6; color:#374151; }
+.chantier-status-1{ background:#fff7ed; color:#c2410c; }
+.chantier-status-2{ background:#eff6ff; color:#1d4ed8; }
+.chantier-status-3{ background:#fef9c3; color:#854d0e; }
+.chantier-status-4{ background:#dcfce7; color:#166534; }
+.chantier-status-5{ background:#ede9fe; color:#6d28d9; }
+
+.chantier-hours-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:8px;
+}
+
+.chantier-hours-grid div,
+.chantier-metric{
+  padding:10px;
+  border-radius:10px;
+  background:#f9fafb;
+}
+
+.chantier-hours-grid span,
+.chantier-metric span{
+  display:block;
+  color:#6b7280;
+  font-size:12px;
+  font-weight:800;
+}
+
+.chantier-hours-grid strong,
+.chantier-metric strong{
+  display:block;
+  margin-top:4px;
+  color:#111827;
+  font-size:18px;
+}
+
+.chantier-over{
+  color:#b91c1c !important;
+}
+
+.chantier-progress{
+  height:9px;
+  overflow:hidden;
+  border-radius:999px;
+  background:#e5e7eb;
+}
+
+.chantier-progress span{
+  display:block;
+  height:100%;
+  border-radius:999px;
+  background:#ff7a00;
+}
+
+.chantier-progress-label{
+  color:#6b7280;
+  font-size:12px;
+  font-weight:700;
+}
+
+.chantier-open-btn{
+  align-self:flex-start;
+}
+
+.chantier-detail-hero{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  padding:18px;
+}
+
+.chantier-detail-hero h1{
+  margin:10px 0 0;
+}
+
+.chantier-detail-grid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:12px;
+}
+
+.chantier-metric{
+  background:#fff;
+}
+
+.chantier-metric strong{
+  font-size:24px;
+}
+
+.chantier-detail-panel{
+  padding:16px;
+}
+
+.chantier-detail-panel h2{
+  margin:0 0 12px;
+  font-size:18px;
+}
+
+.chantier-progress-large{
+  height:12px;
+}
+
+.chantier-dates{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:12px;
+}
+
+.chantier-dates span{
+  padding:6px 9px;
+  border-radius:999px;
+  background:#f3f4f6;
+  color:#4b5563;
+  font-size:12px;
+  font-weight:700;
+}
+
+@media (max-width: 1100px){
+  .chantiers-grid,
+  .chantier-detail-grid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+
+  .chantiers-form-grid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px){
+  .chantiers-head,
+  .chantier-detail-hero{
+    flex-direction:column;
+  }
+
+  .chantiers-head .btn,
+  .chantier-detail-hero .btn{
+    width:100%;
+  }
+
+  .chantiers-form{
+    padding:14px;
+    border-radius:12px;
+  }
+
+  .chantiers-form-grid,
+  .chantiers-grid,
+  .chantier-detail-grid{
+    grid-template-columns:1fr;
+  }
+
+  .chantiers-form-actions{
+    justify-content:stretch;
+  }
+
+  .chantiers-form-actions .btn{
+    width:100%;
+  }
+
+  .chantier-card,
+  .chantier-detail-hero,
+  .chantier-detail-panel,
+  .chantier-metric{
+    border-radius:12px;
+  }
+
+  .chantier-card-head{
+    flex-direction:column;
+  }
+
+  .chantier-hours-grid{
+    grid-template-columns:1fr 1fr 1fr;
+  }
+
+  .chantier-hours-grid div{
+    padding:9px 7px;
+  }
+
+  .chantier-hours-grid strong{
+    font-size:16px;
+  }
+
+  .chantier-open-btn{
+    width:100%;
+  }
+}
