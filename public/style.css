@@ -2113,6 +2113,384 @@ button:hover {
   }
 }
 
+/* =========================
+   Dashboard professionnel
+   ========================= */
+
+.dash-shell{
+  display:grid;
+  gap:18px;
+}
+
+.dash-today{
+  display:grid;
+  grid-template-columns:minmax(0, 1.1fr) minmax(360px, .9fr);
+  gap:18px;
+  align-items:stretch;
+  padding:22px;
+  border-radius:16px;
+  background:#111827;
+  color:#fff;
+  box-shadow:0 12px 28px rgba(15,23,42,.18);
+}
+
+.dash-eyebrow{
+  margin:0 0 8px;
+  color:#ff7a00;
+  font-size:12px;
+  font-weight:800;
+  text-transform:uppercase;
+}
+
+.dash-today h1{
+  margin:0;
+  color:#fff;
+  font-size:30px;
+  line-height:1.12;
+}
+
+.dash-today p{
+  margin:10px 0 0;
+  color:#d1d5db;
+}
+
+.dash-today-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+}
+
+.dash-today-stat{
+  padding:14px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:12px;
+  background:rgba(255,255,255,.07);
+}
+
+.dash-today-stat span{
+  display:block;
+  color:#d1d5db;
+  font-size:12px;
+  line-height:1.25;
+}
+
+.dash-today-stat strong{
+  display:block;
+  margin-top:6px;
+  color:#fff;
+  font-size:28px;
+  line-height:1;
+}
+
+.dash-quick-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+}
+
+.dash-quick-card{
+  display:grid;
+  grid-template-columns:44px 1fr auto;
+  gap:12px;
+  align-items:center;
+  padding:15px;
+  border:1px solid #e5e7eb;
+  border-radius:14px;
+  background:#fff;
+  color:#111827;
+  text-decoration:none;
+  box-shadow:0 5px 14px rgba(15,23,42,.07);
+}
+
+.dash-quick-card:hover{
+  border-color:#ffb066;
+  box-shadow:0 10px 24px rgba(15,23,42,.11);
+}
+
+.dash-quick-icon{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:44px;
+  height:44px;
+  border-radius:12px;
+  background:#fff3e6;
+  color:#c75f00;
+  font-size:13px;
+  font-weight:900;
+}
+
+.dash-quick-body{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+}
+
+.dash-quick-body span{
+  color:#6b7280;
+  font-size:13px;
+}
+
+.dash-quick-body strong{
+  color:#111827;
+  font-size:26px;
+  line-height:1;
+}
+
+.dash-quick-open,
+.dash-mini-link,
+.dash-card-button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:34px;
+  padding:7px 11px;
+  border-radius:8px;
+  background:#f3f4f6;
+  color:#374151;
+  font-size:12px;
+  font-weight:800;
+  text-decoration:none;
+}
+
+.dash-main-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+
+.dash-panel{
+  padding:16px;
+  border:1px solid #e5e7eb;
+  border-radius:14px;
+  background:#fff;
+  box-shadow:0 5px 14px rgba(15,23,42,.07);
+}
+
+.dash-panel-wide{
+  grid-column:1 / -1;
+}
+
+.dash-panel-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.dash-panel-head h2{
+  margin:0;
+  color:#111827;
+  font-size:18px;
+}
+
+.dash-panel-head a{
+  color:#c75f00;
+  font-size:13px;
+  font-weight:800;
+  text-decoration:none;
+}
+
+.dash-list{
+  display:grid;
+  gap:8px;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+
+.dash-list-item{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:11px 12px;
+  border-radius:10px;
+  background:#f9fafb;
+}
+
+.dash-list-item span{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+}
+
+.dash-list-item strong{
+  color:#111827;
+  overflow-wrap:anywhere;
+}
+
+.dash-list-item small{
+  color:#6b7280;
+}
+
+.dash-empty{
+  padding:14px;
+  border-radius:10px;
+  background:#f9fafb;
+  color:#6b7280;
+  list-style:none;
+}
+
+.dash-orders-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+}
+
+.dash-order-card{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  min-width:0;
+  padding:14px;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  background:#fff;
+}
+
+.dash-order-link{
+  position:absolute;
+  inset:0;
+  z-index:1;
+  border-radius:12px;
+}
+
+.dash-order-card header{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.dash-order-card strong,
+.dash-order-card p,
+.dash-order-meta,
+.dash-card-button{
+  position:relative;
+  z-index:2;
+}
+
+.dash-order-card strong{
+  color:#111827;
+  overflow-wrap:anywhere;
+}
+
+.dash-order-card p{
+  margin:5px 0 0;
+  color:#6b7280;
+  font-size:13px;
+  overflow-wrap:anywhere;
+}
+
+.dash-order-card header > span{
+  color:#9ca3af;
+  font-size:12px;
+  font-weight:800;
+}
+
+.dash-order-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.dash-order-meta span{
+  padding:4px 8px;
+  border-radius:999px;
+  background:#f3f4f6;
+  color:#4b5563;
+  font-size:12px;
+  font-weight:700;
+}
+
+.dash-card-button{
+  align-self:flex-start;
+  background:#ff7a00;
+  color:#111827;
+}
+
+@media (max-width: 1100px){
+  .dash-today{
+    grid-template-columns:1fr;
+  }
+
+  .dash-quick-grid,
+  .dash-orders-grid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px){
+  .dash-shell{
+    gap:12px;
+  }
+
+  .dash-today{
+    padding:16px;
+    border-radius:12px;
+  }
+
+  .dash-today h1{
+    font-size:24px;
+  }
+
+  .dash-today-grid,
+  .dash-quick-grid,
+  .dash-main-grid,
+  .dash-orders-grid{
+    grid-template-columns:1fr;
+  }
+
+  .dash-today-grid{
+    gap:8px;
+  }
+
+  .dash-today-stat{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:11px 12px;
+  }
+
+  .dash-today-stat strong{
+    margin:0;
+    font-size:24px;
+  }
+
+  .dash-quick-card{
+    grid-template-columns:40px 1fr auto;
+    padding:13px;
+  }
+
+  .dash-quick-icon{
+    width:40px;
+    height:40px;
+  }
+
+  .dash-panel{
+    padding:14px;
+    border-radius:12px;
+  }
+
+  .dash-list-item{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .dash-mini-link{
+    width:100%;
+  }
+
+  .dash-order-card{
+    border-radius:12px;
+  }
+}
+
 /* COMMANDES CLIENTS - CARTES MODERNES */
 .modern-orders-section {
   margin-top: 10px;

@@ -1384,89 +1384,129 @@ const statusDot =
 });
 
 app.get('/dashboard', requireLogin, (req, res) => {
+  const todayIso = isoDate();
+  const todayLabel = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+
   const openTasks = db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status != 'Terminée'").get().c;
-  const eventsThisWeek = db
-    .prepare(`
-      SELECT COUNT(*) AS c
-      FROM events
-      WHERE start_date IS NOT NULL
-        AND datetime(start_date) >= datetime('now')
-        AND datetime(start_date) < datetime('now', '+7 days')
-    `)
-    .get().c;
+  const eventsToday = db
+    .prepare("SELECT COUNT(*) AS c FROM events WHERE start_date LIKE ?")
+    .get(`${todayIso}%`).c;
+  const clientsCount = db.prepare('SELECT COUNT(*) AS c FROM clients').get().c;
   const openClientOrders = db.prepare("SELECT COUNT(*) AS c FROM client_orders WHERE status != 'Terminée'").get().c;
   const openSupplierOrders = db
     .prepare("SELECT COUNT(*) AS c FROM supplier_orders WHERE status IS NULL OR TRIM(status) = '' OR status != 'Terminée'")
     .get().c;
+  const quotesCount = db.prepare('SELECT COUNT(*) AS c FROM quotes').get().c;
 
-  const recentTasks = db
+  const priorityTasks = db
     .prepare(`
-      SELECT title, status
+      SELECT title, status, created_at
       FROM tasks
+      WHERE status != 'Terminée'
       ORDER BY created_at DESC, id DESC
-      LIMIT 6
+      LIMIT 5
     `)
     .all();
 
-  const upcomingEvents = db
+  const todayEvents = db
     .prepare(`
-      SELECT title, start_date
+      SELECT title, start_date, end_date, type
       FROM events
-      WHERE start_date IS NOT NULL
-        AND datetime(start_date) >= datetime('now')
+      WHERE start_date LIKE ?
       ORDER BY datetime(start_date) ASC
-      LIMIT 6
+      LIMIT 8
     `)
-    .all();
+    .all(`${todayIso}%`);
 
-  const recentOrders = db
+  const openOrders = db
     .prepare(`
       SELECT id, name, description, date, status
       FROM client_orders
+      WHERE status != 'Terminée'
       ORDER BY date DESC, id DESC
       LIMIT 6
     `)
     .all();
 
-  const recentSupplierOrders = db
-    .prepare(`
-      SELECT id, name, description, date, status
-      FROM supplier_orders
-      ORDER BY date DESC, id DESC
-      LIMIT 6
-    `)
-    .all();
+  const todayStats = [
+    { label: 'Tâches à faire', value: openTasks },
+    { label: 'Événements du jour', value: eventsToday },
+    { label: 'Cmd clients en cours', value: openClientOrders },
+    { label: 'Cmd fournisseurs en cours', value: openSupplierOrders },
+  ]
+    .map(
+      (item) => `
+      <article class="dash-today-stat">
+        <span>${escHtml(item.label)}</span>
+        <strong>${item.value}</strong>
+      </article>
+    `
+    )
+    .join('');
 
-  const tasksHtml = recentTasks.length
-    ? recentTasks
+  const quickCards = [
+    { icon: '✓', label: 'Tâches en cours', value: openTasks, href: '/tasks' },
+    { icon: 'A', label: 'Agenda aujourd’hui', value: eventsToday, href: '/agenda' },
+    { icon: 'C', label: 'Clients', value: clientsCount, href: '/clients' },
+    { icon: 'CC', label: 'Commandes clients', value: openClientOrders, href: '/orders/clients' },
+    { icon: 'CF', label: 'Commandes fournisseurs', value: openSupplierOrders, href: '/orders/suppliers' },
+    { icon: 'D', label: 'Devis', value: quotesCount, href: '/devis' },
+  ]
+    .map(
+      (card) => `
+      <a class="dash-quick-card" href="${card.href}">
+        <span class="dash-quick-icon">${escHtml(card.icon)}</span>
+        <span class="dash-quick-body">
+          <span>${escHtml(card.label)}</span>
+          <strong>${card.value}</strong>
+        </span>
+        <span class="dash-quick-open">Voir</span>
+      </a>
+    `
+    )
+    .join('');
+
+  const priorityTasksHtml = priorityTasks.length
+    ? priorityTasks
         .map(
           (t) => `
-      <li>
-        <span>${escHtml(t.title || 'Sans titre')}</span>
-        <span class="proto-chip">${escHtml(t.status || 'À faire')}</span>
+      <li class="dash-list-item">
+        <span>
+          <strong>${escHtml(t.title || 'Sans titre')}</strong>
+          <small>${escHtml(t.status || 'À faire')}</small>
+        </span>
+        <a class="dash-mini-link" href="/tasks">Ouvrir</a>
       </li>
     `
         )
         .join('')
-    : '<li><span>Aucune tâche récente</span></li>';
+    : '<li class="dash-empty">Aucune tâche prioritaire</li>';
 
-  const eventsHtml = upcomingEvents.length
-    ? upcomingEvents
+  const todayEventsHtml = todayEvents.length
+    ? todayEvents
         .map((e) => {
-          const day = String(e.start_date || '').slice(0, 10);
           const hour = String(e.start_date || '').slice(11, 16);
+          const endHour = String(e.end_date || '').slice(11, 16);
           return `
-      <li>
-        <span>${escHtml(e.title || 'Événement')}</span>
-        <span class="proto-muted">${escHtml(day)}${hour ? ' · ' + escHtml(hour) : ''}</span>
+      <li class="dash-list-item">
+        <span>
+          <strong>${escHtml(e.title || 'Événement')}</strong>
+          <small>${escHtml(e.type || 'rdv')}${hour ? ' · ' + escHtml(hour) : ''}${endHour ? ' - ' + escHtml(endHour) : ''}</small>
+        </span>
+        <a class="dash-mini-link" href="/agenda">Voir</a>
       </li>
     `;
         })
         .join('')
-    : '<li><span>Aucun rendez-vous planifié</span></li>';
+    : '<li class="dash-empty">Aucun événement aujourd’hui</li>';
 
-  const ordersHtml = recentOrders.length
-    ? recentOrders
+  const openOrdersHtml = openOrders.length
+    ? openOrders
         .map((o) => {
           const safeClientFolder = safeName(o.name || 'Client');
           const orderFolderName = safeName(
@@ -1481,123 +1521,74 @@ app.get('/dashboard', requireLogin, (req, res) => {
           const day = String(o.date || '').slice(0, 10) || '—';
           const status = o.status || 'En cours';
           return `
-      <article class="order-card modern-order-card">
-        <a class="order-card-link" href="${clientFolderUrl}" aria-label="Ouvrir la commande"></a>
-
-        <header class="order-card-header modern-order-card-header">
+      <article class="dash-order-card">
+        <a class="dash-order-link" href="${clientFolderUrl}" aria-label="Ouvrir la commande"></a>
+        <header>
           <div>
-            <div class="order-card-title">
-              <span class="order-card-client">${escHtml(o.name || 'Client')}</span>
-              <span class="order-card-id">#${o.id}</span>
-            </div>
-            <div class="order-card-meta modern-order-card-meta">
-              <span class="order-card-date">📅 ${escHtml(day)}</span>
-              <span class="order-card-status badge">${escHtml(status)}</span>
-            </div>
+            <strong>${escHtml(o.name || 'Client')}</strong>
+            <p>${escHtml(o.description || 'Commande')}</p>
           </div>
+          <span>#${o.id}</span>
         </header>
-
-        <div class="order-card-body modern-order-card-body">
-          <p class="order-card-description">${escHtml(o.description || '—')}</p>
+        <div class="dash-order-meta">
+          <span>${escHtml(day)}</span>
+          <span>${escHtml(status)}</span>
         </div>
+        <span class="dash-card-button">Ouvrir</span>
       </article>
     `;
         })
         .join('')
-    : '<p class="empty">Aucune commande récente</p>';
-
-  const supplierOrdersHtml = recentSupplierOrders.length
-    ? recentSupplierOrders
-        .map((o) => {
-          const day = String(o.date || '').slice(0, 10) || '—';
-          const status = o.status || 'En cours';
-          return `
-      <article class="order-card supplier-proto-card">
-        <header class="order-card-header supplier-proto-card-header">
-          <div>
-            <div class="order-card-title">
-              <span class="supplier-proto-label">Fournisseur</span>
-              <span class="order-card-client">${escHtml(o.name || 'Fournisseur')}</span>
-              <span class="order-card-id">#${o.id}</span>
-            </div>
-            <div class="order-card-meta supplier-proto-card-meta">
-              <span class="order-card-date">📅 ${escHtml(day)}</span>
-              <span class="order-card-status badge">${escHtml(status)}</span>
-            </div>
-          </div>
-        </header>
-
-        <div class="order-card-body supplier-proto-card-body">
-          <p class="order-card-description">${escHtml(o.description || '—')}</p>
-        </div>
-      </article>
-    `;
-        })
-        .join('')
-    : '<p class="empty">Aucune commande fournisseur récente</p>';
+    : '<p class="dash-empty">Aucune commande client en cours</p>';
 
   res.send(
     dashboardTemplate(
       req,
       `
-      <div class="proto-shell">
-        <section class="proto-hero">
+      <div class="dash-shell">
+        <section class="dash-today">
           <div>
-            <p class="proto-eyebrow">Pilotage quotidien</p>
-            <h1>Tableau de bord</h1>
-            <p class="proto-sub">Vue synthétique rapide pour suivre les priorités, les rendez-vous et les commandes.</p>
+            <p class="dash-eyebrow">Aujourd’hui</p>
+            <h1>${escHtml(todayLabel)}</h1>
+            <p>Bonjour <strong>${escHtml(req.session.user.username)}</strong>, voici les priorités du jour.</p>
           </div>
-          <div class="proto-hero-actions">
-            <a class="btn btn-primary" href="/tasks">Tâches</a>
-            <a class="btn btn-secondary" href="/outils/prises-cotes">Prises de cotes</a>
+          <div class="dash-today-grid">
+            ${todayStats}
           </div>
         </section>
 
-        <section class="proto-kpis">
-          <article class="proto-kpi">
-            <p class="proto-kpi-label">Tâches ouvertes</p>
-            <p class="proto-kpi-value">${openTasks}</p>
-          </article>
-          <article class="proto-kpi">
-            <p class="proto-kpi-label">RDV 7 jours</p>
-            <p class="proto-kpi-value">${eventsThisWeek}</p>
-          </article>
-          <article class="proto-kpi">
-            <p class="proto-kpi-label">Cmd clients</p>
-            <p class="proto-kpi-value">${openClientOrders}</p>
-          </article>
-          <article class="proto-kpi">
-            <p class="proto-kpi-label">Cmd fournisseurs</p>
-            <p class="proto-kpi-value">${openSupplierOrders}</p>
-          </article>
+        <section class="dash-quick-grid" aria-label="Accès rapides">
+          ${quickCards}
         </section>
 
-        <section class="proto-grid">
-          <article class="proto-panel">
-            <h2>Activité tâches</h2>
-            <ul class="proto-list">
-              ${tasksHtml}
-            </ul>
-          </article>
-
-          <article class="proto-panel">
-            <h2>Prochains rendez-vous</h2>
-            <ul class="proto-list">
-              ${eventsHtml}
-            </ul>
-          </article>
-
-          <article class="proto-panel proto-panel-wide">
-            <h2>Dernières commandes clients</h2>
-            <div class="orders-cards-grid modern-orders-grid">
-              ${ordersHtml}
+        <section class="dash-main-grid">
+          <article class="dash-panel">
+            <div class="dash-panel-head">
+              <h2>À faire en priorité</h2>
+              <a href="/tasks">Voir</a>
             </div>
+            <ul class="dash-list">
+              ${priorityTasksHtml}
+            </ul>
           </article>
 
-          <article class="proto-panel proto-panel-wide">
-            <h2>Dernières commandes fournisseurs</h2>
-            <div class="orders-cards-grid modern-orders-grid">
-              ${supplierOrdersHtml}
+          <article class="dash-panel">
+            <div class="dash-panel-head">
+              <h2>Planning du jour</h2>
+              <a href="/agenda">Ouvrir</a>
+            </div>
+            <ul class="dash-list">
+              ${todayEventsHtml}
+            </ul>
+          </article>
+
+          <article class="dash-panel dash-panel-wide">
+            <div class="dash-panel-head">
+              <h2>Commandes en cours</h2>
+              <a href="/orders/clients">Voir tout</a>
+            </div>
+            <div class="dash-orders-grid">
+              ${openOrdersHtml}
             </div>
           </article>
         </section>
