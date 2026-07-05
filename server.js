@@ -5253,26 +5253,28 @@ app.post('/materials/delete', requireLogin, (req, res) => {
 app.get('/outils/logibarre', requireLogin, (req, res) => {
   res.send(
     pageTemplate(req, 'Logibarre', `
-     <section class="panel">
+     <section class="panel workshop-calc-panel logibarre-page">
   <div class="panel-header">
     <h2>Calculateur de barres</h2>
   </div>
 
   <div class="bar-calc">
 
-    <div class="bar-row">
-      <label>Longueur barre standard (mm)</label>
+    <div class="workshop-param-grid">
+    <div class="bar-row workshop-field">
+      <label>Longueur barre standard</label>
       <input id="bar-length" type="number" value="6000">
     </div>
 
-    <div class="bar-row">
-      <label>Perte par coupe (mm)</label>
+    <div class="bar-row workshop-field">
+      <label>Perte par coupe</label>
       <input id="bar-loss" type="number" value="3">
     </div>
+    </div>
 
-    <h4>Pièces à couper</h4>
+    <h4 class="workshop-section-title">Pièces à couper</h4>
 
-    <table>
+    <table class="workshop-pieces-table logibarre-pieces-table">
       <thead>
         <tr>
           <th>Longueur (mm)</th>
@@ -5282,20 +5284,20 @@ app.get('/outils/logibarre', requireLogin, (req, res) => {
       </thead>
       <tbody id="cuts-body">
         <tr>
-          <td><input type="number" value="1200"></td>
-          <td><input type="number" value="1"></td>
-          <td><button type="button" onclick="removeRow(this)">✖</button></td>
+          <td data-label="Longueur"><input type="number" value="1200"></td>
+          <td data-label="Qté"><input type="number" value="1"></td>
+          <td data-label=""><button type="button" class="workshop-delete-btn" aria-label="Supprimer la coupe" onclick="removeRow(this)">×</button></td>
         </tr>
       </tbody>
     </table>
 
-    <div style="margin-top:10px">
-      <button type="button" onclick="addRow()">➕ Ajouter une coupe</button>
-      <button type="button" class="btn primary" onclick="calculateBars()">Calculer</button>
-      <button type="button" class="btn secondary" onclick="printBars()">🖨️ Imprimer</button>
+    <div class="workshop-actions">
+      <button type="button" class="btn workshop-add-btn" onclick="addRow()">+ Ajouter une coupe</button>
+      <button type="button" class="btn primary workshop-calc-btn" onclick="calculateBars()">Calculer</button>
+      <button type="button" class="btn secondary workshop-print-btn" onclick="printBars()">Imprimer</button>
     </div>
 
-    <div id="bar-result" style="margin-top:12px"></div>
+    <div id="bar-result" class="workshop-result bar-result"></div>
 
   </div>
 </section>
@@ -5307,9 +5309,9 @@ app.get('/outils/logibarre', requireLogin, (req, res) => {
 function addRow() {
   var tr = document.createElement('tr');
   tr.innerHTML =
-    '<td><input type="number" value="1000"></td>' +
-    '<td><input type="number" value="1"></td>' +
-    '<td><button type="button" onclick="removeRow(this)">✖</button></td>';
+    '<td data-label="Longueur"><input type="number" value="1000"></td>' +
+    '<td data-label="Qté"><input type="number" value="1"></td>' +
+    '<td data-label=""><button type="button" class="workshop-delete-btn" aria-label="Supprimer la coupe" onclick="removeRow(this)">×</button></td>';
   document.getElementById('cuts-body').appendChild(tr);
 }
 
@@ -5411,31 +5413,33 @@ function printBars() {
 app.get('/outils/logitole', requireLogin, (req, res) => {
   res.send(
     pageTemplate(req, 'Logitôle', `
-      <section class="panel">
+      <section class="panel workshop-calc-panel logitole-page">
   <div class="panel-header">
     <h2>Calculateur de tôles</h2>
   </div>
 
   <div class="sheet-calc">
 
-    <div class="sheet-row">
-      <label>Largeur tôle (mm)</label>
+    <div class="workshop-param-grid sheet-param-grid">
+    <div class="sheet-row workshop-field">
+      <label>Largeur tôle</label>
       <input id="sheet-width" type="number" value="3000">
     </div>
 
-    <div class="sheet-row">
-      <label>Hauteur tôle (mm)</label>
+    <div class="sheet-row workshop-field">
+      <label>Hauteur tôle</label>
       <input id="sheet-height" type="number" value="1500">
     </div>
 
-    <div class="sheet-row">
-      <label>Jeu / perte (mm)</label>
+    <div class="sheet-row workshop-field">
+      <label>Jeu / perte</label>
       <input id="sheet-gap" type="number" value="3">
     </div>
+    </div>
 
-    <h4>Pièces à découper</h4>
+    <h4 class="workshop-section-title">Pièces à découper</h4>
 
-    <table>
+    <table class="workshop-pieces-table logitole-pieces-table">
       <thead>
         <tr>
           <th>Largeur</th>
@@ -5446,23 +5450,23 @@ app.get('/outils/logitole', requireLogin, (req, res) => {
       </thead>
       <tbody id="sheet-cuts-body">
         <tr>
-          <td><input type="number" value="500"></td>
-          <td><input type="number" value="300"></td>
-          <td><input type="number" value="1"></td>
-          <td><button type="button" onclick="removeSheetRow(this)">✖</button></td>
+          <td data-label="Largeur"><input type="number" value="500"></td>
+          <td data-label="Hauteur"><input type="number" value="300"></td>
+          <td data-label="Qté"><input type="number" value="1"></td>
+          <td data-label=""><button type="button" class="workshop-delete-btn" aria-label="Supprimer la pièce" onclick="removeSheetRow(this)">×</button></td>
         </tr>
       </tbody>
     </table>
 
-    <div style="margin-top:10px">
-      <button type="button" onclick="addSheetRow()">➕ Ajouter une pièce</button>
-      <button type="button" class="btn primary" onclick="calculateSheets()">Calculer</button>
-      <button type="button" class="btn secondary" onclick="printSheets()">🖨️ Imprimer</button>
+    <div class="workshop-actions">
+      <button type="button" class="btn workshop-add-btn" onclick="addSheetRow()">+ Ajouter une pièce</button>
+      <button type="button" class="btn primary workshop-calc-btn" onclick="calculateSheets()">Calculer</button>
+      <button type="button" class="btn secondary workshop-print-btn" onclick="printSheets()">Imprimer</button>
     </div>
 
-    <div id="sheet-result" style="margin-top:12px"></div>
+    <div id="sheet-result" class="workshop-result sheet-result"></div>
 
-    <canvas id="sheet-canvas" width="900" height="500"
+    <canvas id="sheet-canvas" class="workshop-sheet-canvas" width="900" height="500"
       style="border:1px solid #ccc; margin-top:12px;"></canvas>
 
   </div>
@@ -5475,10 +5479,10 @@ app.get('/outils/logitole', requireLogin, (req, res) => {
 function addSheetRow() {
   var tr = document.createElement('tr');
   tr.innerHTML =
-    '<td><input type="number" value="100"></td>' +
-    '<td><input type="number" value="100"></td>' +
-    '<td><input type="number" value="1"></td>' +
-    '<td><button type="button" onclick="removeSheetRow(this)">✖</button></td>';
+    '<td data-label="Largeur"><input type="number" value="100"></td>' +
+    '<td data-label="Hauteur"><input type="number" value="100"></td>' +
+    '<td data-label="Qté"><input type="number" value="1"></td>' +
+    '<td data-label=""><button type="button" class="workshop-delete-btn" aria-label="Supprimer la pièce" onclick="removeSheetRow(this)">×</button></td>';
   document.getElementById('sheet-cuts-body').appendChild(tr);
 }
 
