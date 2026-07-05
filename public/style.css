@@ -1525,10 +1525,6 @@ button:hover {
   margin: 1px 0;
   line-height: 1.2;
 }
-body {
-  overflow: hidden;
-}
-
 /* Le wrapper prend toute la hauteur de l’écran */
 .agenda-wrapper {
   height: calc(100vh - 140px); /* ajuste si besoin */
@@ -3178,5 +3174,54 @@ body {
     margin-top:8px !important;
     border-radius:10px;
     background:#fff;
+  }
+}
+
+/* =========================
+   Mobile iPhone - correction scroll principal
+   ========================= */
+
+@media (max-width: 768px){
+  html{
+    height:auto;
+    min-height:100%;
+    overflow-x:hidden;
+    overflow-y:auto;
+  }
+
+  body{
+    height:auto;
+    min-height:100%;
+    overflow-x:hidden;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .layout{
+    height:auto !important;
+    min-height:100dvh;
+    overflow:visible;
+  }
+
+  .content{
+    height:auto !important;
+    min-height:100dvh;
+    overflow-x:hidden;
+    overflow-y:visible;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .container{
+    min-height:auto;
+  }
+
+  body.menu-open{
+    overflow:hidden !important;
+    touch-action:none;
+  }
+
+  body:not(.menu-open) .layout::before{
+    content:none;
+    pointer-events:none;
   }
 }
