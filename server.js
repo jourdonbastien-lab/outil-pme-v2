@@ -962,7 +962,7 @@ ${isAtelier ? `
 
 </nav>
     </aside>
-<button id="mobileMenuBtn" class="mobile-menu-btn">
+<button id="mobileMenuBtn" class="mobile-menu-btn" type="button" aria-label="Ouvrir le menu" aria-expanded="false">
 ☰
 </button>
     <main class="content">
@@ -976,9 +976,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const btn = document.getElementById('mobileMenuBtn');
   const sidebar = document.querySelector('.sidebar');
+  if (!btn || !sidebar) return;
 
-  btn.addEventListener('click', function () {
-    sidebar.classList.toggle('open');
+  function setMenuOpen(open) {
+    sidebar.classList.toggle('open', open);
+    document.body.classList.toggle('menu-open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.setAttribute('aria-label', open ? 'Fermer le menu' : 'Ouvrir le menu');
+  }
+
+  btn.addEventListener('click', function (event) {
+    event.stopPropagation();
+    setMenuOpen(!sidebar.classList.contains('open'));
+  });
+
+  sidebar.querySelectorAll('a').forEach(function (link) {
+    link.addEventListener('click', function () {
+      setMenuOpen(false);
+    });
+  });
+
+  document.addEventListener('click', function (event) {
+    if (!sidebar.classList.contains('open')) return;
+    if (sidebar.contains(event.target) || btn.contains(event.target)) return;
+    setMenuOpen(false);
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') setMenuOpen(false);
   });
 
 });
@@ -2503,12 +2528,12 @@ for (const folder of pcFolders) {
       <script>
         (function(){
           const input = document.getElementById('clientSearch');
-          const cards = document.querySelectorAll('.client-card');
+          const cards = document.querySelectorAll('.client-card-modern');
           if (!input) return;
           input.addEventListener('input', function(){
             const q = (this.value||'').toLowerCase();
             cards.forEach(card => {
-              const name = card.dataset.name || '';
+              const name = card.textContent.toLowerCase();
               card.style.display = name.includes(q) ? '' : 'none';
             });
           });

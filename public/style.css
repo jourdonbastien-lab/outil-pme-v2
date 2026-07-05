@@ -2502,3 +2502,427 @@ body {
 .file-card .btn{
   width:100%;
 }
+
+/* =========================
+   Mobile iPhone - navigation et lisibilite
+   ========================= */
+
+.mobile-menu-btn{
+  display:none;
+}
+
+@media (min-width: 769px){
+  .sidebar{
+    position:static !important;
+    left:auto !important;
+    width:250px !important;
+    height:100vh !important;
+    flex:0 0 250px;
+    box-shadow:none;
+  }
+
+  .content{
+    width:auto;
+  }
+}
+
+@media (max-width: 768px){
+  html,
+  body{
+    width:100%;
+    min-height:100%;
+    overflow-x:hidden;
+    -webkit-text-size-adjust:100%;
+  }
+
+  .layout{
+    display:block;
+    width:100%;
+    min-height:100vh;
+    height:auto;
+  }
+
+  .content{
+    width:100%;
+    min-height:100vh;
+    height:auto;
+    overflow:visible;
+  }
+
+  .container{
+    width:100%;
+    padding:16px 14px 96px;
+  }
+
+  .sidebar{
+    position:fixed !important;
+    top:0;
+    left:-86vw !important;
+    width:min(82vw, 320px) !important;
+    height:100dvh !important;
+    max-height:100dvh;
+    z-index:10000;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+    padding-bottom:24px;
+    box-shadow:16px 0 40px rgba(0,0,0,.28);
+    transition:left .24s ease;
+  }
+
+  .sidebar.open{
+    left:0 !important;
+  }
+
+  .sidebar .logo{
+    position:sticky;
+    top:0;
+    z-index:1;
+    background:#111827;
+    padding:18px 16px;
+  }
+
+  .sidebar nav{
+    gap:4px;
+    padding:12px;
+  }
+
+  .sidebar nav a{
+    min-height:48px;
+    padding:13px 14px;
+    font-size:16px;
+    line-height:1.25;
+  }
+
+  .mobile-menu-btn{
+    position:fixed;
+    right:16px;
+    bottom:calc(16px + env(safe-area-inset-bottom));
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:58px;
+    height:58px;
+    min-width:58px;
+    min-height:58px;
+    margin:0;
+    border:0;
+    border-radius:50%;
+    background:#ff7a00;
+    color:#111827;
+    font-size:28px;
+    font-weight:800;
+    line-height:1;
+    box-shadow:0 8px 24px rgba(0,0,0,.28);
+    z-index:10001;
+  }
+
+  body.menu-open{
+    overflow:hidden;
+  }
+
+  body.menu-open .layout::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    background:rgba(17,24,39,.42);
+    z-index:9999;
+  }
+
+  h1{
+    font-size:26px;
+    line-height:1.15;
+  }
+
+  h2{
+    font-size:20px;
+    line-height:1.2;
+  }
+
+  .page-head{
+    margin-bottom:16px;
+  }
+
+  .page-head h1,
+  .dashboard-title h1{
+    overflow-wrap:anywhere;
+  }
+
+  .muted{
+    line-height:1.4;
+  }
+
+  input,
+  select,
+  textarea,
+  button,
+  .btn{
+    min-height:44px;
+    font-size:16px;
+  }
+
+  input,
+  select,
+  textarea{
+    width:100%;
+    max-width:100%;
+    margin-right:0;
+  }
+
+  button,
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    width:100%;
+    margin-right:0;
+    white-space:normal;
+    text-align:center;
+  }
+
+  form{
+    width:100%;
+  }
+
+  .info-bar{
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px;
+  }
+
+  .info-left,
+  .info-right{
+    width:100%;
+  }
+
+  .search{
+    width:100%;
+  }
+
+  table,
+  .table-pro,
+  .tasks-table,
+  .pc-folder-table,
+  .bar-table{
+    display:block;
+    width:100%;
+    overflow-x:auto;
+    white-space:nowrap;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  table th,
+  table td{
+    padding:12px;
+  }
+
+  .panel,
+  .proto-panel,
+  .agenda-card,
+  .tool-box{
+    border-radius:10px;
+    padding:14px;
+  }
+
+  .dashboard-main,
+  .proto-grid,
+  .proto-kpis,
+  .orders-cards-grid,
+  .cards-grid,
+  .files-grid,
+  .photo-grid{
+    grid-template-columns:1fr !important;
+    gap:12px;
+  }
+}
+
+/* =========================
+   Mobile iPhone - agenda
+   ========================= */
+
+@media (max-width: 768px){
+  .planning-week{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+    overflow:visible;
+  }
+
+  .planning-day{
+    min-width:0;
+    width:100%;
+    padding:14px;
+    border-radius:12px;
+  }
+
+  .planning-day-header{
+    text-align:left;
+    font-size:18px;
+    margin-bottom:10px;
+  }
+
+  .planning-event{
+    min-height:54px;
+    padding:12px;
+    border-radius:10px;
+  }
+
+  .planning-event-title{
+    overflow-wrap:anywhere;
+  }
+
+  .event-editor{
+    top:auto;
+    left:12px;
+    right:12px;
+    bottom:calc(12px + env(safe-area-inset-bottom));
+    width:auto;
+    max-height:82dvh;
+    overflow-y:auto;
+    padding:16px;
+  }
+
+  .event-editor input,
+  .event-editor select{
+    min-height:44px;
+    font-size:16px;
+  }
+
+  .editor-actions{
+    flex-direction:column;
+  }
+
+  .fc-toolbar{
+    align-items:stretch !important;
+  }
+
+  .fc-toolbar-chunk,
+  .fc-button-group{
+    display:flex;
+    width:100%;
+  }
+
+  .fc .fc-button{
+    flex:1;
+    min-height:44px;
+    font-size:14px;
+  }
+}
+
+/* =========================
+   Mobile iPhone - clients et cartes
+   ========================= */
+
+@media (max-width: 768px){
+  .client-card-modern,
+  .order-card,
+  .task-card,
+  .supplier-card,
+  .pc-folder-card,
+  .pc-file-card,
+  .file-card,
+  .card{
+    width:100%;
+    min-width:0;
+    border-radius:12px;
+  }
+
+  .client-header,
+  .order-card-header,
+  .order-card-meta,
+  .order-card-footer,
+  .pc-folder-toolbar,
+  .pc-folder-actions{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:10px;
+  }
+
+  .client-name,
+  .order-card-client,
+  .order-card-description,
+  .card-title,
+  .file-name{
+    white-space:normal;
+    overflow-wrap:anywhere;
+    word-break:normal;
+  }
+
+  .client-name{
+    max-width:calc(100% - 46px);
+    font-size:19px;
+    line-height:1.2;
+  }
+
+  .client-source{
+    align-self:flex-start;
+  }
+
+  .client-infos{
+    overflow-wrap:anywhere;
+  }
+
+  .client-delete-btn{
+    width:44px;
+    height:44px;
+    min-height:44px;
+    top:10px;
+    right:10px;
+  }
+
+  .orders-form,
+  .tasks-form,
+  .hours-form,
+  .upload-form{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+
+  .orders-form-row,
+  .hours-form .hours-grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+
+  .orders-form-field,
+  .orders-form-actions,
+  .upload-form input[type="file"]{
+    width:100%;
+    max-width:100%;
+  }
+
+  .task-card-actions,
+  .supplier-actions,
+  .order-card-actions,
+  .order-card-actions-left,
+  .order-card-actions-right{
+    flex-direction:column;
+    align-items:stretch;
+    width:100%;
+    gap:8px;
+  }
+
+  .task-card-actions form,
+  .supplier-actions form,
+  .order-card-actions form{
+    width:100%;
+    margin:0;
+  }
+
+  .btn.small,
+  .icon-btn{
+    width:100%;
+    min-height:44px;
+  }
+
+  .mobile-menu-btn{
+    width:58px;
+    height:58px;
+    min-width:58px;
+    min-height:58px;
+    border-radius:50%;
+    margin:0;
+  }
+}
