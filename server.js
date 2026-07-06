@@ -131,6 +131,13 @@ function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+function parseDecimalInput(value, fallback = 0) {
+  const normalized = String(value ?? '').trim().replace(/\s+/g, '').replace(',', '.');
+  if (!normalized) return fallback;
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function isoDate(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
@@ -5780,20 +5787,28 @@ app.get('/materials', requireLogin, (req, res) => {
   const materials = db.prepare('SELECT * FROM materials ORDER BY type, name').all();
   const isAdmin = req.session?.user?.role !== 'atelier';
   const seeded = req.query.seeded === '1';
+  const saved = req.query.saved === '1';
   const added = Number(req.query.added || 0);
 
   const rows = materials.length
     ? materials
         .map((m) => {
+          const priceValue = Number(m.price || 0).toFixed(2);
+          const kgValue = m.kg_per_m !== null && m.kg_per_m !== undefined ? escHtml(String(m.kg_per_m)) : '';
+          const densityValue = m.density !== null && m.density !== undefined ? escHtml(String(m.density)) : '';
           return (
             '<tr>' +
               '<td>' + escHtml(String(m.type || '').toUpperCase()) + '</td>' +
               '<td>' + escHtml(String(m.name || '')) + '</td>' +
-              '<td>' + escHtml(String(m.unit || '')) + '</td>' +
-              '<td style="text-align:right">' + Number(m.price || 0).toFixed(2) + ' €</td>' +
-              '<td style="text-align:right">' + (m.kg_per_m !== null && m.kg_per_m !== undefined ? escHtml(String(m.kg_per_m)) : '—') + '</td>' +
-              '<td style="text-align:right">' + (m.density !== null && m.density !== undefined ? escHtml(String(m.density)) : '—') + '</td>' +
+              '<td><input form="material-update-' + m.id + '" class="material-unit-input" name="unit" value="' + escHtml(String(m.unit || '')) + '"></td>' +
+              '<td><input form="material-update-' + m.id + '" class="material-price-input" name="price" value="' + priceValue + '" inputmode="decimal"></td>' +
+              '<td><input form="material-update-' + m.id + '" class="material-small-input" name="kg_per_m" value="' + kgValue + '" inputmode="decimal"></td>' +
+              '<td><input form="material-update-' + m.id + '" class="material-small-input" name="density" value="' + densityValue + '" inputmode="decimal"></td>' +
               '<td style="text-align:center">' +
+                '<form id="material-update-' + m.id + '" method="POST" action="/materials/update" class="material-inline-form">' +
+                  '<input type="hidden" name="id" value="' + m.id + '">' +
+                  '<button class="btn btn-primary">Enregistrer</button>' +
+                '</form>' +
                 '<form method="POST" action="/materials/delete" onsubmit="return confirm(\'Supprimer cette matière ?\')" style="margin:0">' +
                   '<input type="hidden" name="id" value="' + m.id + '">' +
                   '<button class="btn-icon danger">🗑️</button>' +
@@ -5805,11 +5820,42 @@ app.get('/materials', requireLogin, (req, res) => {
         .join('')
     : '<tr><td colspan="7">Aucune matière enregistrée</td></tr>';
 
+  const cards = materials.length
+    ? materials.map((m) => {
+        const priceValue = Number(m.price || 0).toFixed(2);
+        const kgValue = m.kg_per_m !== null && m.kg_per_m !== undefined ? escHtml(String(m.kg_per_m)) : '';
+        const densityValue = m.density !== null && m.density !== undefined ? escHtml(String(m.density)) : '';
+        return (
+          '<article class="material-edit-card">' +
+            '<header>' +
+              '<span>' + escHtml(String(m.type || '').toUpperCase()) + '</span>' +
+              '<strong>' + escHtml(String(m.name || '')) + '</strong>' +
+            '</header>' +
+            '<form method="POST" action="/materials/update" class="material-card-form">' +
+              '<input type="hidden" name="id" value="' + m.id + '">' +
+              '<label>Unité<input name="unit" value="' + escHtml(String(m.unit || '')) + '"></label>' +
+              '<label>Prix (€)<input name="price" value="' + priceValue + '" inputmode="decimal"></label>' +
+              '<label>kg/m<input name="kg_per_m" value="' + kgValue + '" inputmode="decimal"></label>' +
+              '<label>Densité<input name="density" value="' + densityValue + '" inputmode="decimal"></label>' +
+              '<button class="btn btn-primary">Enregistrer</button>' +
+            '</form>' +
+            '<form method="POST" action="/materials/delete" onsubmit="return confirm(\'Supprimer cette matière ?\')" class="material-card-delete">' +
+              '<input type="hidden" name="id" value="' + m.id + '">' +
+              '<button class="btn btn-danger">Supprimer</button>' +
+            '</form>' +
+          '</article>'
+        );
+      }).join('')
+    : '<div class="empty-state">Aucune matière enregistrée</div>';
+
   const html =
     '<h1>Bibliothèque matière</h1>' +
 
     (seeded
       ? '<div class="success-message">Bibliothèque matière préremplie. Vous pouvez maintenant renseigner vos tarifs.</div>'
+      : '') +
+    (saved
+      ? '<div class="success-message">Tarif matière enregistré.</div>'
       : '') +
 
     (isAdmin
@@ -5872,8 +5918,10 @@ app.get('/materials', requireLogin, (req, res) => {
 
     '<h2 style="margin-top:24px">Matières enregistrées</h2>' +
 
-    '<div class="table-responsive">' +
-'<table>' +
+    '<div class="materials-edit-cards">' + cards + '</div>' +
+
+    '<div class="table-responsive materials-edit-table">' +
+      '<table>' +
       '<thead>' +
         '<tr>' +
           '<th>Type</th>' +
@@ -5887,7 +5935,7 @@ app.get('/materials', requireLogin, (req, res) => {
       '</thead>' +
       '<tbody>' + rows + '</tbody>' +
     '</table>' +
-'</div>';
+    '</div>';
 
   res.send(pageTemplate(req, 'Bibliothèque matière', html));
 });
@@ -5896,9 +5944,9 @@ app.post('/materials', requireLogin, (req, res) => {
   const type = req.body.type;
   const name = req.body.name;
   const unit = req.body.unit;
-  const price = Number(req.body.price || 0);
-  const kg_per_m = req.body.kg_per_m !== '' ? req.body.kg_per_m : null;
-  const density = req.body.density !== '' ? req.body.density : null;
+  const price = parseDecimalInput(req.body.price, 0);
+  const kg_per_m = String(req.body.kg_per_m || '').trim() !== '' ? parseDecimalInput(req.body.kg_per_m, null) : null;
+  const density = String(req.body.density || '').trim() !== '' ? parseDecimalInput(req.body.density, null) : null;
 
   db.prepare(
     'INSERT INTO materials (type, name, unit, price, kg_per_m, density, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
@@ -5913,6 +5961,22 @@ app.post('/materials', requireLogin, (req, res) => {
   );
 
   res.redirect('/materials');
+});
+
+app.post('/materials/update', requireLogin, (req, res) => {
+  const id = Number(req.body.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).send('ID matière invalide');
+
+  const unit = String(req.body.unit || '').trim();
+  const price = parseDecimalInput(req.body.price, 0);
+  const kgPerM = String(req.body.kg_per_m || '').trim() !== '' ? parseDecimalInput(req.body.kg_per_m, null) : null;
+  const density = String(req.body.density || '').trim() !== '' ? parseDecimalInput(req.body.density, null) : null;
+
+  db.prepare(
+    'UPDATE materials SET unit = ?, price = ?, kg_per_m = ?, density = ? WHERE id = ?'
+  ).run(unit, price, kgPerM, density, id);
+
+  res.redirect('/materials?saved=1');
 });
 
 app.post('/materials/seed', requireAdmin, (req, res) => {

@@ -3191,6 +3191,94 @@ button:hover {
   font-weight:700;
 }
 
+.materials-edit-cards{
+  display:none;
+}
+
+.materials-edit-table input,
+.material-card-form input{
+  width:100%;
+  min-height:38px;
+  border:1px solid #d1d5db;
+  border-radius:8px;
+  padding:8px 10px;
+  background:#fff;
+  color:#111827;
+  font-size:16px;
+  box-sizing:border-box;
+}
+
+.material-price-input{
+  max-width:120px;
+  text-align:right;
+}
+
+.material-small-input{
+  max-width:96px;
+  text-align:right;
+}
+
+.material-unit-input{
+  max-width:90px;
+}
+
+.material-inline-form{
+  display:inline-flex;
+  margin:0 8px 0 0;
+  vertical-align:middle;
+}
+
+.material-inline-form .btn{
+  min-height:36px;
+  padding:8px 10px;
+  border:0;
+}
+
+.material-edit-card{
+  display:grid;
+  gap:12px;
+  padding:14px;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 5px 14px rgba(15,23,42,.06);
+}
+
+.material-edit-card header{
+  display:grid;
+  gap:4px;
+}
+
+.material-edit-card header span{
+  color:#f97316;
+  font-size:12px;
+  font-weight:900;
+}
+
+.material-edit-card header strong{
+  color:#111827;
+  font-size:17px;
+  overflow-wrap:anywhere;
+}
+
+.material-card-form{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:10px;
+}
+
+.material-card-form label{
+  display:grid;
+  gap:5px;
+  color:#6b7280;
+  font-size:12px;
+  font-weight:800;
+}
+
+.material-card-form button{
+  grid-column:1 / -1;
+}
+
 @media (max-width:1100px){
   .quote-list-grid{
     grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -3258,6 +3346,16 @@ button:hover {
   .materials-seed-form,
   .materials-seed-form .btn{
     width:100%;
+  }
+
+  .materials-edit-table{
+    display:none;
+  }
+
+  .materials-edit-cards{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
   }
 }
 
