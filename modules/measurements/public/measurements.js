@@ -7,6 +7,9 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   const loadBtn = document.getElementById('loadBtn');
   const resetBtn = document.getElementById('resetBtn');
   const printBtn = document.getElementById('printBtn');
+  const proposalBtn = document.getElementById('proposalBtn');
+  const applyProposalBtn = document.getElementById('applyProposalBtn');
+  const proposalResult = document.getElementById('proposalResult');
   const saveStatus = document.getElementById('saveStatus');
   const recordNameField = document.getElementById('recordName');
   const photoTemplate = document.getElementById('photoItemTemplate');
@@ -19,6 +22,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   let currentServerId = null;
   let activeMeasure = '';
   let svgMarkerPrefix = 'plan';
+  let currentProposal = null;
 
   function setDefaultValues() {
     const dateField = form.elements.date;
@@ -129,6 +133,154 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       planWidth,
       tremie
     };
+  }
+
+  function roundTo(value, precision = 1) {
+    const factor = 10 ** precision;
+    return Math.round(value * factor) / factor;
+  }
+
+  function scoreStairSolution(solution) {
+    const heightPenalty = Math.abs(solution.riser - 180) * 1.1;
+    const goingPenalty = Math.abs(solution.going - 260);
+    const blondelPenalty = Math.abs(solution.blondel - 620) * 0.8;
+    const slopePenalty = solution.slope < 30
+      ? (30 - solution.slope) * 6
+      : solution.slope > 40
+        ? (solution.slope - 40) * 6
+        : 0;
+    const fitPenalty = solution.fitsStraight ? 0 : solution.fitsQuarter ? 45 : solution.fitsDoubleQuarter ? 90 : 150;
+    return heightPenalty + goingPenalty + blondelPenalty + slopePenalty + fitPenalty;
+  }
+
+  function calculateStairProposal() {
+    const values = getPlanValues();
+    const height = values.hauteur.value;
+    if (!height) {
+      return { error: 'Renseignez au minimum la hauteur sol à sol pour calculer une proposition.' };
+    }
+
+    const tremie = getTremieSize(values);
+    const availableLength = values.longueur.value || values.reculement.value || tremie.length || values.longueur.geom;
+    const availableWidth = values.largeur.value || tremie.width || values.largeur.geom;
+    const candidates = [];
+
+    for (let steps = 8; steps <= 20; steps += 1) {
+      const riser = height / steps;
+      if (riser < 145 || riser > 220) continue;
+      const going = clamp(620 - 2 * riser, 220, 300);
+      const run = going * steps;
+      const slope = Math.atan(height / Math.max(run, 1)) * 180 / Math.PI;
+      const blondel = 2 * riser + going;
+      const fitsStraight = run <= availableLength;
+      const quarterRun = Math.ceil(run * 0.62);
+      const quarterReturn = Math.ceil(run * 0.48);
+      const fitsQuarter = quarterRun <= availableLength && quarterReturn <= Math.max(tremie.width, availableWidth);
+      const doubleRun = Math.ceil(run * 0.52);
+      const doubleReturn = Math.ceil(run * 0.58);
+      const fitsDoubleQuarter = doubleRun <= availableLength && doubleReturn <= Math.max(tremie.width, availableWidth) * 1.35;
+      const type = fitsStraight ? 'straight' : fitsQuarter ? 'quarter' : 'double-quarter';
+      const footprintLength = type === 'straight' ? run : type === 'quarter' ? quarterRun : doubleRun;
+      const footprintReculement = type === 'straight' ? run : type === 'quarter' ? quarterReturn : doubleReturn;
+      const solution = {
+        steps,
+        riser,
+        going,
+        run,
+        footprintLength,
+        footprintReculement,
+        slope,
+        blondel,
+        fitsStraight,
+        fitsQuarter,
+        fitsDoubleQuarter,
+        type
+      };
+      solution.score = scoreStairSolution(solution);
+      candidates.push(solution);
+    }
+
+    if (!candidates.length) {
+      return { error: 'Aucune proposition cohérente trouvée avec les dimensions saisies. Vérifiez la hauteur ou les dimensions disponibles.' };
+    }
+
+    const best = candidates.sort((a, b) => a.score - b.score)[0];
+    const comfort = best.riser >= 170 && best.riser <= 190 && best.going >= 240 && best.going <= 280 && best.blondel >= 600 && best.blondel <= 640 && best.slope >= 30 && best.slope <= 40
+      ? 'Bon'
+      : best.riser >= 160 && best.riser <= 200 && best.going >= 225 && best.going <= 295 && best.blondel >= 580 && best.blondel <= 660
+        ? 'Moyen'
+        : 'À vérifier';
+    const typeLabel = best.type === 'straight' ? 'Droit' : best.type === 'quarter' ? 'Quart tournant' : 'Deux quarts tournants';
+    const explanation = best.type === 'straight'
+      ? `L'escalier droit passe dans la longueur disponible estimée (${Math.round(availableLength)} mm).`
+      : best.type === 'quarter'
+        ? `Le droit dépasse la longueur disponible ; un quart tournant répartit le reculement sur deux volées.`
+        : `Le droit et le quart tournant sont contraints ; deux quarts tournants permettent de compacter l'implantation.`;
+
+    return {
+      type: best.type,
+      typeLabel,
+      steps: best.steps,
+      riser: roundTo(best.riser, 1),
+      going: roundTo(best.going, 1),
+      run: Math.round(best.run),
+      footprintLength: Math.round(best.footprintLength),
+      footprintReculement: Math.round(best.footprintReculement),
+      slope: roundTo(best.slope, 1),
+      blondel: roundTo(best.blondel, 1),
+      comfort,
+      explanation,
+      direction: values.direction
+    };
+  }
+
+  function renderProposal(proposal) {
+    if (!proposalResult || !applyProposalBtn) return;
+    if (proposal.error) {
+      proposalResult.textContent = proposal.error;
+      applyProposalBtn.hidden = true;
+      currentProposal = null;
+      return;
+    }
+    const comfortClass = proposal.comfort === 'Bon' ? 'good' : proposal.comfort === 'Moyen' ? 'medium' : 'check';
+    proposalResult.innerHTML = `
+      <div class="proposal-summary">
+        <div class="proposal-metric"><span>Type proposé</span><strong>${escSvgText(proposal.typeLabel)}</strong></div>
+        <div class="proposal-metric"><span>Marches</span><strong>${proposal.steps}</strong></div>
+        <div class="proposal-metric"><span>Hauteur marche</span><strong>${proposal.riser} mm</strong></div>
+        <div class="proposal-metric"><span>Giron</span><strong>${proposal.going} mm</strong></div>
+        <div class="proposal-metric"><span>Longueur estimée</span><strong>${proposal.footprintLength} mm</strong></div>
+        <div class="proposal-metric"><span>Reculement estimé</span><strong>${proposal.footprintReculement} mm</strong></div>
+        <div class="proposal-metric"><span>Pente</span><strong>${proposal.slope}°</strong></div>
+        <div class="proposal-metric"><span>Blondel</span><strong>${proposal.blondel} mm</strong></div>
+        <div class="proposal-metric"><span>Sens conservé</span><strong>${escSvgText(proposal.direction)}</strong></div>
+      </div>
+      <span class="comfort-badge ${comfortClass}">${proposal.comfort}</span>
+      <p class="proposal-explanation">${escSvgText(proposal.explanation)}</p>
+    `;
+    applyProposalBtn.hidden = false;
+    currentProposal = proposal;
+  }
+
+  function setStairTypeFromProposal(type) {
+    const labelsByType = {
+      straight: 'Droit',
+      quarter: 'Quart tournant',
+      'double-quarter': 'Deux quarts tournants'
+    };
+    const selectedLabel = labelsByType[type] || 'Droit';
+    form.querySelectorAll('input[name="typeEscalier"]').forEach((input) => {
+      input.checked = input.value === selectedLabel;
+    });
+  }
+
+  function applyStairProposal() {
+    if (!currentProposal) return;
+    setStairTypeFromProposal(currentProposal.type);
+    if (form.elements.marchesNombre) form.elements.marchesNombre.value = currentProposal.steps;
+    if (form.elements.reculement) form.elements.reculement.value = currentProposal.footprintReculement;
+    if (form.elements.longueur) form.elements.longueur.value = currentProposal.footprintLength;
+    renderPlans();
   }
 
   function getPlanValues() {
@@ -808,6 +960,13 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     renderPhotos();
     syncTremieGroups();
     renderPlans();
+    currentProposal = null;
+    if (proposalResult) {
+      proposalResult.textContent = 'Renseignez au minimum la hauteur sol à sol et les dimensions disponibles, puis lancez une proposition.';
+    }
+    if (applyProposalBtn) {
+      applyProposalBtn.hidden = true;
+    }
     currentRecordName = '';
     currentServerId = null;
     saveStatus.textContent = 'Nouvelle fiche prête';
@@ -832,6 +991,14 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   loadBtn.addEventListener('click', loadRecord);
   resetBtn.addEventListener('click', resetForm);
   printBtn.addEventListener('click', () => window.print());
+  if (proposalBtn) {
+    proposalBtn.addEventListener('click', () => {
+      renderProposal(calculateStairProposal());
+    });
+  }
+  if (applyProposalBtn) {
+    applyProposalBtn.addEventListener('click', applyStairProposal);
+  }
 
   const planFieldNames = [
     'typeEscalier',

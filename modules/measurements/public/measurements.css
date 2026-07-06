@@ -413,6 +413,107 @@ textarea:focus {
   margin-top: 14px;
 }
 
+.proposal-panel {
+  grid-column: 1 / -1;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: #ffffff;
+}
+
+.proposal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+}
+
+.proposal-head h4 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.proposal-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.proposal-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: end;
+}
+
+.proposal-result {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.proposal-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.proposal-metric {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fafafa;
+}
+
+.proposal-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.proposal-metric strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 18px;
+}
+
+.comfort-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 12px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: #111111;
+  font-weight: 800;
+}
+
+.comfort-badge.good {
+  border-color: #6bbf7a;
+  background: #eaf8ed;
+}
+
+.comfort-badge.medium {
+  border-color: #f0b45a;
+  background: #fff3df;
+}
+
+.comfort-badge.check {
+  border-color: #d66a5f;
+  background: #fff0ee;
+}
+
+.proposal-explanation {
+  margin: 12px 0 0;
+  color: var(--text);
+}
+
 .plan-panel {
   padding: 18px;
   border: 1px solid var(--line);
@@ -815,6 +916,19 @@ textarea:focus {
   .plan-panel {
     padding: 14px;
     border-radius: 18px;
+  }
+
+  .proposal-head {
+    flex-direction: column;
+  }
+
+  .proposal-actions,
+  .proposal-actions button {
+    width: 100%;
+  }
+
+  .proposal-summary {
+    grid-template-columns: 1fr;
   }
 
   .plan-svg-grid {
