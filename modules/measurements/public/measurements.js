@@ -559,6 +559,9 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
         <marker id="${svgMarkerPrefix}Arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
           <path d="M 0 0 L 8 4 L 0 8 z" fill="#4a5560"/>
         </marker>
+        <marker id="${svgMarkerPrefix}DimArrow" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto-start-reverse" markerUnits="strokeWidth">
+          <path d="M 0 0 L 7 3.5 L 0 7" fill="none" stroke="#c65f00" stroke-width="1.1"/>
+        </marker>
       </defs>
       <rect class="sheet-bg" x="0" y="0" width="${width}" height="${height}"/>
       ${body}
@@ -583,17 +586,18 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
 
   function cadDim(x1, y1, x2, y2, label, orientation = 'h') {
     if (orientation === 'v') {
+      const side = x1 <= x2 ? -1 : 1;
       return `<g class="cad-dimension">
-        <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>
-        <line class="dim-line" x1="${x1 - 7}" y1="${y1 - 5}" x2="${x1 + 7}" y2="${y1 + 5}"/>
-        <line class="dim-line" x1="${x2 - 7}" y1="${y2 - 5}" x2="${x2 + 7}" y2="${y2 + 5}"/>
+        <line class="dim-extension" x1="${x1}" y1="${y1}" x2="${x1 + side * 18}" y2="${y1}"/>
+        <line class="dim-extension" x1="${x2}" y1="${y2}" x2="${x2 + side * 18}" y2="${y2}"/>
+        <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-start="url(#${svgMarkerPrefix}DimArrow)" marker-end="url(#${svgMarkerPrefix}DimArrow)"/>
         <text class="dim-label" x="${x1 - 13}" y="${(y1 + y2) / 2 + 4}" text-anchor="end">${escSvgText(label)}</text>
       </g>`;
     }
     return `<g class="cad-dimension">
-      <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>
-      <line class="dim-line" x1="${x1 - 5}" y1="${y1 + 7}" x2="${x1 + 5}" y2="${y1 - 7}"/>
-      <line class="dim-line" x1="${x2 - 5}" y1="${y2 + 7}" x2="${x2 + 5}" y2="${y2 - 7}"/>
+      <line class="dim-extension" x1="${x1}" y1="${y1}" x2="${x1}" y2="${y1 + 18}"/>
+      <line class="dim-extension" x1="${x2}" y1="${y2}" x2="${x2}" y2="${y2 + 18}"/>
+      <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-start="url(#${svgMarkerPrefix}DimArrow)" marker-end="url(#${svgMarkerPrefix}DimArrow)"/>
       <text class="dim-label" x="${(x1 + x2) / 2}" y="${y1 - 10}" text-anchor="middle">${escSvgText(label)}</text>
     </g>`;
   }
@@ -1087,6 +1091,14 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     }).join('');
   }
 
+  function renderStepNosingLines(model, origin, scale) {
+    return model.steps.map((step) => {
+      const pointA = mapModelPoint(step.topView[1], origin, scale);
+      const pointB = mapModelPoint(step.topView[2], origin, scale);
+      return `<line class="nosing-line" x1="${pointA.x}" y1="${pointA.y}" x2="${pointB.x}" y2="${pointB.y}"/>`;
+    }).join('');
+  }
+
   function buildFabricationDataFromModel(model) {
     const steps = model.steps.map((step) => {
       const bounds = polygonBounds(step.topView);
@@ -1252,9 +1264,13 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       height: Math.max(34, model.tremie.width * scale)
     };
     const stepPolygons = model.steps.map((step) => `<polygon class="stair-step-fill" points="${polygonPoints(step.topView, origin, scale)}"/>`).join('');
+    const nosingLines = renderStepNosingLines(model, origin, scale);
     const stepNumbers = model.steps.map((step) => {
       const center = polygonCenter(step.topView, origin, scale);
-      return `<text class="step-number" x="${center.x}" y="${center.y + 4}" text-anchor="middle">${step.index}</text>`;
+      return `<g>
+        <circle class="step-number-dot" cx="${center.x}" cy="${center.y}" r="9"/>
+        <text class="step-number" x="${center.x}" y="${center.y + 4}" text-anchor="middle">${step.index}</text>
+      </g>`;
     }).join('');
     const outline = model.outline && model.outline.length
       ? `<polygon class="stringer-shadow" points="${polygonPoints(model.outline, origin, scale)}"/>`
@@ -1274,7 +1290,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       <rect class="view-frame" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}"/>
       <text class="view-title" x="${box.x + 14}" y="${box.y + 26}">VUE EN PLAN - MODÈLE PARAMÉTRIQUE</text>
       <rect class="tremie-fill" x="${tremie.x}" y="${tremie.y}" width="${tremie.width}" height="${tremie.height}"/>
-      ${stepPolygons}${outline}${stringers}${stepNumbers}${travel}
+      ${stepPolygons}${nosingLines}${outline}${stringers}${stepNumbers}${travel}
       ${cadDim(extentX1, extentY2 + 42, extentX2, extentY2 + 42, `Emprise X ${Math.round(model.dimensions.footprintX)} mm`)}
       ${cadDim(extentX1 - 42, extentY1, extentX1 - 42, extentY2, `Emprise Y ${Math.round(model.dimensions.footprintY)} mm`, 'v')}
       ${cadDim(extentX2 + 34, extentY1, extentX2 + 34, extentY1 + model.width * scale, `Largeur ${Math.round(model.width)} mm`, 'v')}
@@ -1305,9 +1321,10 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       <rect class="view-frame" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}"/>
       <text class="view-title" x="${box.x + 14}" y="${box.y + 26}">ÉLÉVATION - PROJECTION DU MODÈLE</text>
       <line class="cut-line" x1="${box.x + 36}" y1="${origin.y}" x2="${box.x + box.width - 34}" y2="${origin.y}"/>
+      <rect class="slab-plate" x="${origin.x + runPx - 36}" y="${origin.y - risePx - 10}" width="128" height="12"/>
       <line class="cut-line" x1="${origin.x + runPx - 30}" y1="${origin.y - risePx}" x2="${origin.x + runPx + 92}" y2="${origin.y - risePx}"/>
       <path class="outline-line" d="${stairPath}"/>
-      <line class="thin-line" x1="${origin.x}" y1="${origin.y}" x2="${origin.x + runPx}" y2="${origin.y - risePx}"/>
+      <line class="slope-line" x1="${origin.x}" y1="${origin.y}" x2="${origin.x + runPx}" y2="${origin.y - risePx}"/>
       <line class="walking-line" x1="${origin.x + 34}" y1="${origin.y - 24}" x2="${origin.x + runPx - 30}" y2="${origin.y - risePx + 24}" marker-end="url(#${svgMarkerPrefix}Arrow)"/>
       ${cadDim(box.x + 44, origin.y - risePx, box.x + 44, origin.y, `Hauteur ${Math.round(model.totalHeight)} mm`, 'v')}
       ${cadDim(origin.x, origin.y + 28, origin.x + runPx, origin.y + 28, `Développé ${Math.round(model.developedLength)} mm`)}

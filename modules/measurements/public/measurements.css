@@ -640,7 +640,7 @@ textarea:focus {
 .technical-svg .outline-line {
   fill: none;
   stroke: #1f2933;
-  stroke-width: 1.35;
+  stroke-width: 1.15;
   vector-effect: non-scaling-stroke;
 }
 
@@ -671,10 +671,25 @@ textarea:focus {
   vector-effect: non-scaling-stroke;
 }
 
+.technical-svg .slope-line {
+  fill: none;
+  stroke: #4b5563;
+  stroke-width: 0.95;
+  stroke-dasharray: 9 5;
+  vector-effect: non-scaling-stroke;
+}
+
 .technical-svg .step-line {
   fill: none;
   stroke: #8a99a8;
   stroke-width: 0.85;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .nosing-line {
+  fill: none;
+  stroke: #111827;
+  stroke-width: 0.95;
   vector-effect: non-scaling-stroke;
 }
 
@@ -687,16 +702,16 @@ textarea:focus {
 
 .technical-svg .walking-line {
   fill: none;
-  stroke: #4a5560;
-  stroke-width: 1;
-  stroke-dasharray: 7 5;
+  stroke: #111827;
+  stroke-width: 1.15;
+  stroke-dasharray: 10 5;
   vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .central-stringer-line {
   fill: none;
   stroke: #0f172a;
-  stroke-width: 4.2;
+  stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 0.88;
@@ -706,7 +721,7 @@ textarea:focus {
 .technical-svg .side-stringer-line {
   fill: none;
   stroke: #334155;
-  stroke-width: 2.6;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 0.9;
@@ -735,6 +750,13 @@ textarea:focus {
   vector-effect: non-scaling-stroke;
 }
 
+.technical-svg .slab-plate {
+  fill: #eef1f4;
+  stroke: #1f2933;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
 .technical-svg .stair-fill {
   fill: rgba(229, 234, 239, 0.34);
   stroke: #1f2933;
@@ -743,18 +765,18 @@ textarea:focus {
 }
 
 .technical-svg .stair-step-fill {
-  fill: rgba(229, 234, 239, 0.42);
+  fill: rgba(248, 250, 252, 0.96);
   stroke: #1f2933;
-  stroke-width: 0.75;
+  stroke-width: 0.62;
   vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .stringer-shadow {
   fill: none;
   stroke: #1f2933;
-  stroke-width: 3.1;
+  stroke-width: 2.25;
   stroke-linejoin: miter;
-  opacity: 0.8;
+  opacity: 0.92;
   vector-effect: non-scaling-stroke;
 }
 
@@ -766,17 +788,26 @@ textarea:focus {
 }
 
 .technical-svg .tremie-fill {
-  fill: rgba(255, 122, 0, 0.045);
-  stroke: #c65f00;
-  stroke-width: 1;
-  stroke-dasharray: 8 5;
+  fill: transparent;
+  stroke: #64727d;
+  stroke-width: 0.95;
+  stroke-dasharray: 10 6;
   vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .dim-line {
   fill: none;
   stroke: #c65f00;
-  stroke-width: 0.9;
+  stroke-width: 0.85;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .dim-extension {
+  fill: none;
+  stroke: #c65f00;
+  stroke-width: 0.65;
+  stroke-dasharray: 3 3;
   vector-effect: non-scaling-stroke;
 }
 
@@ -847,6 +878,13 @@ textarea:focus {
   font-family: "Segoe UI", Arial, sans-serif;
   font-size: 11px;
   fill: #66717b;
+}
+
+.technical-svg .step-number-dot {
+  fill: #ffffff;
+  stroke: #9aa4b2;
+  stroke-width: 0.7;
+  vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .empty-plan-message {
