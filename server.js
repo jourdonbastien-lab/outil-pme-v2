@@ -1881,6 +1881,7 @@ app.get('/dashboard', requireLogin, (req, res) => {
         <section class="dash-today">
           <div>
             <h1>${escHtml(todayLabel)}</h1>
+            <a class="dash-prototype-link" href="/dashboard-prototype">Tester le dashboard prototype</a>
           </div>
           <div class="dash-today-grid">
             ${todayStats}
@@ -1928,8 +1929,264 @@ app.get('/dashboard', requireLogin, (req, res) => {
   );
 });
 
+app.get('/dashboard-prototype', requireLogin, (req, res) => {
+  const todayIso = isoDate();
+  const todayLabel = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const openTasks = db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status != 'Terminée'").get().c;
+  const eventsToday = db.prepare("SELECT COUNT(*) AS c FROM events WHERE start_date LIKE ?").get(`${todayIso}%`).c;
+  const openClientOrders = db.prepare("SELECT COUNT(*) AS c FROM client_orders WHERE status != 'Terminée'").get().c;
+  const activeOrderChantiers = db
+    .prepare(`
+      SELECT COUNT(*) AS c
+      FROM client_orders
+      WHERE status != 'Terminée'
+      AND COALESCE(chantier_status, 'À préparer') NOT IN ('Terminé', 'Facturé')
+    `)
+    .get().c;
+  const quotesToFollowCount = db
+    .prepare(`
+      SELECT COUNT(*) AS c
+      FROM quotes
+      WHERE status IS NULL
+         OR TRIM(status) = ''
+         OR status NOT IN ('Accepté', 'Refusé', 'Facturé')
+    `)
+    .get().c;
+  const clientsCount = db.prepare('SELECT COUNT(*) AS c FROM clients').get().c;
+
+  const priorityTasks = db
+    .prepare(`
+      SELECT title, status, created_at
+      FROM tasks
+      WHERE status != 'Terminée'
+      ORDER BY created_at DESC, id DESC
+      LIMIT 5
+    `)
+    .all();
+
+  const todayEvents = db
+    .prepare(`
+      SELECT title, start_date, end_date, type
+      FROM events
+      WHERE start_date LIKE ?
+      ORDER BY datetime(start_date) ASC
+      LIMIT 6
+    `)
+    .all(`${todayIso}%`);
+
+  const orderChantiers = db
+    .prepare(`
+      SELECT id, name, description, date, status, planned_hours, done_hours,
+             chantier_status, chantier_progress, chantier_start_date, chantier_end_date
+      FROM client_orders
+      WHERE status != 'Terminée'
+      ORDER BY date DESC, id DESC
+      LIMIT 6
+    `)
+    .all();
+
+  const quotesToFollow = db
+    .prepare(`
+      SELECT id, title, client_name, status, created_at
+      FROM quotes
+      WHERE status IS NULL
+         OR TRIM(status) = ''
+         OR status NOT IN ('Accepté', 'Refusé', 'Facturé')
+      ORDER BY id DESC
+      LIMIT 5
+    `)
+    .all();
+
+  const stats = [
+    { label: 'Tâches ouvertes', value: openTasks, href: '/tasks' },
+    { label: 'Planning aujourd’hui', value: eventsToday, href: '/agenda' },
+    { label: 'Clients', value: clientsCount, href: '/clients' },
+    { label: 'Commandes / chantiers', value: activeOrderChantiers, href: '/orders/clients' },
+    { label: 'Commandes clients', value: openClientOrders, href: '/orders/clients' },
+    { label: 'Devis à suivre', value: quotesToFollowCount, href: '/devis' },
+  ]
+    .map(
+      (item) => `
+      <a class="prototype-stat-card" href="${item.href}">
+        <span>${escHtml(item.label)}</span>
+        <strong>${item.value}</strong>
+      </a>
+    `
+    )
+    .join('');
+
+  const quickActions = [
+    { label: 'Nouveau devis', href: '/devis/new' },
+    { label: 'Nouvelle commande', href: '/orders/clients' },
+    { label: 'Nouveau client', href: '/clients' },
+    { label: 'Prise de cote', href: '/outils/prises-cotes' },
+  ]
+    .map((action) => `<a class="prototype-action" href="${action.href}">${escHtml(action.label)}</a>`)
+    .join('');
+
+  const priorityTasksHtml = priorityTasks.length
+    ? priorityTasks
+        .map(
+          (task) => `
+        <li class="dash-list-item">
+          <span>
+            <strong>${escHtml(task.title || 'Sans titre')}</strong>
+            <small>${escHtml(task.status || 'À faire')}</small>
+          </span>
+          <a class="dash-mini-link" href="/tasks">Ouvrir</a>
+        </li>
+      `
+        )
+        .join('')
+    : '<li class="dash-empty">Aucune priorité en attente</li>';
+
+  const todayEventsHtml = todayEvents.length
+    ? todayEvents
+        .map((event) => {
+          const hour = String(event.start_date || '').slice(11, 16);
+          const endHour = String(event.end_date || '').slice(11, 16);
+          return `
+        <li class="dash-list-item">
+          <span>
+            <strong>${escHtml(event.title || 'Événement')}</strong>
+            <small>${escHtml(event.type || 'Agenda')}${hour ? ' · ' + escHtml(hour) : ''}${endHour ? ' - ' + escHtml(endHour) : ''}</small>
+          </span>
+          <a class="dash-mini-link" href="/agenda">Voir</a>
+        </li>
+      `;
+        })
+        .join('')
+    : '<li class="dash-empty">Aucun élément prévu aujourd’hui</li>';
+
+  const orderChantiersHtml = orderChantiers.length
+    ? orderChantiers
+        .map((order) => {
+          const safeClientFolder = safeName(order.name || 'Client');
+          const orderFolderName = safeName(
+            order.description && order.description.trim() !== '' ? order.description : `Commande_${order.id}`
+          );
+          const orderUrl = `/pc-folders/${encodeURIComponent(safeClientFolder)}/${encodeURIComponent(orderFolderName)}`;
+          const planned = Number(order.planned_hours || 0);
+          const done = Number(order.done_hours || 0);
+          const progress = Number.isFinite(Number(order.chantier_progress))
+            ? Math.max(0, Math.min(100, Math.round(Number(order.chantier_progress))))
+            : chantierProgress(done, planned);
+          const gap = done - planned;
+          return `
+        <article class="prototype-work-card">
+          <header>
+            <div>
+              <strong>${escHtml(order.name || 'Client')}</strong>
+              <p>${escHtml(order.description || 'Commande')}</p>
+            </div>
+            <span>${escHtml(order.chantier_status || order.status || 'En cours')}</span>
+          </header>
+          <div class="prototype-progress" aria-label="Avancement chantier">
+            <span style="width:${progress}%"></span>
+          </div>
+          <div class="prototype-work-meta">
+            <span>Prévu ${escHtml(formatHours(planned))}</span>
+            <span>Réalisé ${escHtml(formatHours(done))}</span>
+            <span>Écart ${escHtml(formatHours(gap))}</span>
+          </div>
+          <a class="dash-card-button" href="${orderUrl}">Ouvrir</a>
+        </article>
+      `;
+        })
+        .join('')
+    : '<p class="dash-empty">Aucune commande / chantier en cours</p>';
+
+  const quotesHtml = quotesToFollow.length
+    ? quotesToFollow
+        .map(
+          (quote) => `
+        <li class="dash-list-item">
+          <span>
+            <strong>#${quote.id} · ${escHtml(quote.title || 'Devis')}</strong>
+            <small>${escHtml(quote.client_name || 'Client non renseigné')} · ${escHtml(quote.status || 'Brouillon')}</small>
+          </span>
+          <a class="dash-mini-link" href="/devis/${quote.id}">Ouvrir</a>
+        </li>
+      `
+        )
+        .join('')
+    : '<li class="dash-empty">Aucun devis à suivre</li>';
+
+  res.send(
+    dashboardTemplate(
+      req,
+      `
+      <div class="dash-shell dashboard-prototype">
+        <section class="prototype-hero">
+          <div>
+            <span class="prototype-kicker">Aujourd’hui</span>
+            <h1>${escHtml(todayLabel)}</h1>
+            <p>Vue prototype pour piloter les priorités, les commandes et les chantiers sans remplacer le dashboard actuel.</p>
+          </div>
+          <div class="prototype-actions">
+            ${quickActions}
+          </div>
+        </section>
+
+        <section class="prototype-stats" aria-label="Indicateurs">
+          ${stats}
+        </section>
+
+        <section class="prototype-layout">
+          <article class="dash-panel">
+            <div class="dash-panel-head">
+              <h2>Priorités</h2>
+              <a href="/tasks">Voir tout</a>
+            </div>
+            <ul class="dash-list">
+              ${priorityTasksHtml}
+            </ul>
+          </article>
+
+          <article class="dash-panel">
+            <div class="dash-panel-head">
+              <h2>Planning du jour</h2>
+              <a href="/agenda">Ouvrir</a>
+            </div>
+            <ul class="dash-list">
+              ${todayEventsHtml}
+            </ul>
+          </article>
+
+          <article class="dash-panel prototype-panel-wide">
+            <div class="dash-panel-head">
+              <h2>Commandes / chantiers en cours</h2>
+              <a href="/orders/clients">Voir tout</a>
+            </div>
+            <div class="prototype-work-grid">
+              ${orderChantiersHtml}
+            </div>
+          </article>
+
+          <article class="dash-panel">
+            <div class="dash-panel-head">
+              <h2>Devis à suivre</h2>
+              <a href="/devis">Voir tout</a>
+            </div>
+            <ul class="dash-list">
+              ${quotesHtml}
+            </ul>
+          </article>
+        </section>
+      </div>
+      `
+    )
+  );
+});
+
 app.get('/dashboard/prototype', requireLogin, (req, res) => {
-  res.redirect('/dashboard');
+  res.redirect('/dashboard-prototype');
 });
 
 
