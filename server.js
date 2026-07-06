@@ -5892,7 +5892,17 @@ app.post('/devis/:id/delete', requireLogin, (req, res) => {
 
 /* ===================== MATIÈRES ===================== */
 app.get('/materials', requireLogin, (req, res) => {
-  const materials = db.prepare('SELECT * FROM materials ORDER BY type, name').all();
+  const q = String(req.query.q || '').trim();
+  const materials = q
+    ? db.prepare(`
+        SELECT *
+        FROM materials
+        WHERE lower(COALESCE(type, '')) LIKE lower(?)
+           OR lower(COALESCE(name, '')) LIKE lower(?)
+           OR lower(COALESCE(unit, '')) LIKE lower(?)
+        ORDER BY type, name
+      `).all(`%${q}%`, `%${q}%`, `%${q}%`)
+    : db.prepare('SELECT * FROM materials ORDER BY type, name').all();
   const isAdmin = req.session?.user?.role !== 'atelier';
   const seeded = req.query.seeded === '1';
   const saved = req.query.saved === '1';
@@ -5919,7 +5929,7 @@ app.get('/materials', requireLogin, (req, res) => {
           );
         })
         .join('')
-    : '<tr><td colspan="5">Aucune matière enregistrée</td></tr>';
+    : '<tr><td colspan="5">' + (q ? 'Aucune matière trouvée.' : 'Aucune matière enregistrée') + '</td></tr>';
 
   const cards = materials.length
     ? materials.map((m) => {
@@ -5939,7 +5949,7 @@ app.get('/materials', requireLogin, (req, res) => {
           '</article>'
         );
       }).join('')
-    : '<div class="empty-state">Aucune matière enregistrée</div>';
+    : '<div class="empty-state">' + (q ? 'Aucune matière trouvée.' : 'Aucune matière enregistrée') + '</div>';
 
   const html =
     '<h1>Bibliothèque matière</h1>' +
@@ -6010,6 +6020,12 @@ app.get('/materials', requireLogin, (req, res) => {
     '</form>' +
 
     '<h2 style="margin-top:24px">Matières enregistrées</h2>' +
+
+    '<form method="GET" action="/materials" class="materials-search-form">' +
+      '<input name="q" value="' + escHtml(q) + '" placeholder="Rechercher par type, nom ou unité..." autocomplete="off" />' +
+      '<button type="submit" class="btn btn-primary">Rechercher</button>' +
+      (q ? '<a class="btn btn-secondary" href="/materials">Réinitialiser</a>' : '') +
+    '</form>' +
 
     '<div class="materials-edit-cards">' + cards + '</div>' +
 

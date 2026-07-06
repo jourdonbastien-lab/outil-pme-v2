@@ -3315,6 +3315,27 @@ button:hover {
   display:none;
 }
 
+.materials-search-form{
+  display:grid;
+  grid-template-columns:minmax(220px, 1fr) auto auto;
+  gap:10px;
+  align-items:center;
+  margin:12px 0 16px;
+  padding:12px;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  background:#fff;
+}
+
+.materials-search-form input{
+  width:100%;
+  min-height:44px;
+  border:1px solid #d1d5db;
+  border-radius:8px;
+  padding:10px 12px;
+  font-size:16px;
+}
+
 .material-list-card{
   position:relative;
   display:grid;
@@ -3491,8 +3512,13 @@ button:hover {
   }
 
   .materials-seed-form,
-  .materials-seed-form .btn{
+  .materials-seed-form .btn,
+  .materials-search-form .btn{
     width:100%;
+  }
+
+  .materials-search-form{
+    grid-template-columns:1fr;
   }
 
   .materials-edit-table{
