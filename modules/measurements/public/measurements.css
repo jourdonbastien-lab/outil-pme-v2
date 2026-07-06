@@ -609,7 +609,7 @@ textarea:focus {
 .technical-svg {
   display: block;
   width: 100%;
-  aspect-ratio: 760 / 620;
+  aspect-ratio: 760 / 520;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #ffffff;
@@ -618,7 +618,7 @@ textarea:focus {
 }
 
 .technical-svg-main {
-  aspect-ratio: 760 / 680;
+  aspect-ratio: 760 / 560;
 }
 
 .technical-svg svg {
@@ -760,10 +760,16 @@ textarea:focus {
 }
 
 .technical-svg .small-note,
-.technical-svg .step-number {
+.technical-svg .step-number,
+.technical-svg .empty-plan-message {
   font-family: "Segoe UI", Arial, sans-serif;
   font-size: 11px;
   fill: #66717b;
+}
+
+.technical-svg .empty-plan-message {
+  font-size: 17px;
+  font-weight: 700;
 }
 
 .technical-svg .section-marker {
