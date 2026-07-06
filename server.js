@@ -227,6 +227,7 @@ const MEASUREMENT_SHEETS = {
 };
 const MEASUREMENTS_ASSETS = new Set(['measurements.css', 'measurements.js', 'module-sheet.js']);
 const CHANTIER_STATUSES = ['À préparer', 'En fabrication', 'En pose', 'En attente', 'Terminé', 'Facturé'];
+const QUOTE_STATUSES = ['Brouillon', 'Envoyé', 'Accepté', 'Refusé', 'Facturé'];
 
 function safeResolveInside(baseDir, ...parts) {
   const base = path.resolve(baseDir);
@@ -852,6 +853,30 @@ function parsePositiveNumber(value) {
 function parseOptionalClientId(value) {
   const id = Number(value || 0);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function normalizeQuoteStatus(value) {
+  const status = String(value || '').trim();
+  return QUOTE_STATUSES.includes(status) ? status : 'Brouillon';
+}
+
+function quoteStatusOptions(selected) {
+  const current = normalizeQuoteStatus(selected);
+  return QUOTE_STATUSES
+    .map((status) => `<option value="${escHtml(status)}"${status === current ? ' selected' : ''}>${escHtml(status)}</option>`)
+    .join('');
+}
+
+function quoteStatusClass(status) {
+  return `quote-status-${Math.max(0, QUOTE_STATUSES.indexOf(normalizeQuoteStatus(status)))}`;
+}
+
+function formatDateLabel(value) {
+  const raw = String(value || '').slice(0, 10);
+  if (!raw) return '—';
+  const date = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleDateString('fr-FR');
 }
 
 // Statistiques sidebar
@@ -3984,22 +4009,47 @@ app.post('/chantier-hours/planned-hours', requireLogin, (req, res) => {
 // LISTE DEVIS
 app.get('/devis', requireLogin, (req, res) => {
   const quotes = db.prepare('SELECT * FROM quotes ORDER BY id DESC').all();
+  const quoteTotals = db
+    .prepare(`
+      SELECT quote_id, COALESCE(SUM(total), 0) AS total_ht
+      FROM quote_lines
+      GROUP BY quote_id
+    `)
+    .all()
+    .reduce((map, row) => {
+      map.set(Number(row.quote_id), Number(row.total_ht || 0));
+      return map;
+    }, new Map());
 
   const cards = quotes.length
     ? quotes
         .map(
-          (q) => `
-        <a class="card" href="/devis/${q.id}">
-          <div class="card-icon">🧾</div>
-          <div class="card-main">
-            <div class="card-title">${escHtml(q.title || '')}</div>
-            <div class="card-sub">
-              ${escHtml(q.client_name || '—')} · ${escHtml(q.status || 'Brouillon')}
-            </div>
+          (q) => {
+            const totalHt = quoteTotals.get(Number(q.id)) || 0;
+            const tva = round2(totalHt * 0.2);
+            const totalTtc = round2(totalHt + tva);
+            const status = normalizeQuoteStatus(q.status);
+            return `
+        <article class="quote-list-card">
+          <a class="quote-list-link" href="/devis/${q.id}" aria-label="Ouvrir le devis ${q.id}"></a>
+          <div class="quote-list-head">
+            <span class="quote-number">#${q.id}</span>
+            <span class="quote-status-badge ${quoteStatusClass(status)}">${escHtml(status)}</span>
           </div>
-          <div class="card-cta">Ouvrir</div>
-        </a>
-      `
+          <h2>${escHtml(q.title || 'Sans titre')}</h2>
+          <div class="quote-list-client">${escHtml(q.client_name || 'Client non renseigné')}</div>
+          <div class="quote-list-meta">
+            <span>Date : ${escHtml(formatDateLabel(q.created_at))}</span>
+            <span>HT : ${totalHt.toFixed(2)} €</span>
+            <span>TTC : ${totalTtc.toFixed(2)} €</span>
+          </div>
+          <div class="quote-list-footer">
+            <strong>${totalTtc.toFixed(2)} € TTC</strong>
+            <span class="dash-card-button">Ouvrir</span>
+          </div>
+        </article>
+      `;
+          }
         )
         .join('')
     : `<div class="empty-state">Aucun devis</div>`;
@@ -4009,19 +4059,17 @@ app.get('/devis', requireLogin, (req, res) => {
       req,
       'Devis',
       `
-      <div class="page-head">
+      <div class="page-head quote-page-head">
         <h1>Devis</h1>
+        <a class="btn btn-primary" href="/devis/new">+ Nouveau devis</a>
       </div>
 
       ${infoBar(
         `<div class="kpi"><div class="kpi-label">Devis</div><div class="kpi-value">${quotes.length}</div></div>`,
-        `
-          <a class="btn" href="/devis/new">➕ Nouveau devis</a>
-        
-        `
+        ''
       )}
 
-      <section class="cards-grid">${cards}</section>
+      <section class="quote-list-grid">${cards}</section>
       `
     )
   );
@@ -4065,7 +4113,10 @@ app.get('/devis/new', requireLogin, (req, res) => {
     })
     .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
 
-  const datalistOptions = merged.map((c) => `<option value="${escHtml(c)}"></option>`).join('');
+  const clientSelectOptions = [
+    '<option value="">Nouveau prospect</option>',
+    ...merged.map((c) => `<option value="${escHtml(c)}">${escHtml(c)}</option>`)
+  ].join('');
 
   res.send(
     pageTemplate(
@@ -4076,39 +4127,50 @@ app.get('/devis/new', requireLogin, (req, res) => {
         <h1>Nouveau devis</h1>
       </div>
 
-      <form method="POST" action="/devis" class="orders-form" id="quoteForm">
+      <form method="POST" action="/devis" class="orders-form quote-create-form" id="quoteForm">
 
-        <h2>Client existant</h2>
+        <h2>Informations du devis</h2>
 
         <div class="orders-form-row">
           <div class="orders-form-field">
-            <label>Rechercher un client</label>
-            <input
+            <label>Client</label>
+            <select
               id="existing_client"
               name="existing_client"
-              list="clientsList"
               class="search"
-              placeholder="Tape le nom du client…"
-              autocomplete="off"
-            />
-            <datalist id="clientsList">
-              ${datalistOptions}
-            </datalist>
+            >
+              ${clientSelectOptions}
+            </select>
+          </div>
+          <div class="orders-form-field">
+            <label>Objet du devis *</label>
+            <input name="title" required placeholder="Ex : Escalier quart tournant" />
           </div>
         </div>
 
-        <hr style="margin:24px 0">
+        <div class="orders-form-row">
+          <div class="orders-form-field">
+            <label>Date du devis</label>
+            <input name="quote_date" type="date" value="${isoDate()}" />
+          </div>
+          <div class="orders-form-field">
+            <label>Statut</label>
+            <select name="status" disabled>
+              <option>Brouillon</option>
+            </select>
+          </div>
+        </div>
 
-        <h2>Prospect</h2>
+        <h2>Nouveau prospect</h2>
 
         <div class="orders-form-row">
           <div class="orders-form-field">
-            <label>Nom *</label>
+            <label>Nom du prospect *</label>
             <input name="prospect_name" id="prospect_name" placeholder="Nom du prospect" />
           </div>
           <div class="orders-form-field">
             <label>Email</label>
-            <input name="prospect_email" id="prospect_email" />
+            <input name="prospect_email" id="prospect_email" type="email" />
           </div>
         </div>
 
@@ -4123,19 +4185,8 @@ app.get('/devis/new', requireLogin, (req, res) => {
           </div>
         </div>
 
-        <hr style="margin:24px 0">
-
-        <h2>Devis</h2>
-
-        <div class="orders-form-row">
-          <div class="orders-form-field">
-            <label>Titre du devis *</label>
-            <input name="title" required placeholder="Ex : Escalier quart tournant" />
-          </div>
-        </div>
-
         <div class="orders-form-actions">
-          <button type="submit">Créer le devis</button>
+          <button type="submit" class="btn btn-primary">Créer le devis</button>
           <a class="btn btn-secondary" href="/devis">Annuler</a>
         </div>
 
@@ -4178,6 +4229,7 @@ app.get('/devis/new', requireLogin, (req, res) => {
 app.post('/devis', requireLogin, (req, res) => {
   const existing_client = String(req.body.existing_client || '').trim();
   const title = String(req.body.title || '').trim();
+  const quoteDate = String(req.body.quote_date || '').trim() || isoDate();
   if (!title) return res.status(400).send('❌ Titre du devis requis');
 
   let clientName = existing_client;
@@ -4202,7 +4254,7 @@ app.post('/devis', requireLogin, (req, res) => {
       String(req.body.prospect_email || '').trim() || null,
       String(req.body.prospect_phone || '').trim() || null,
       String(req.body.prospect_address || '').trim() || null,
-      new Date().toISOString()
+      `${quoteDate}T00:00:00.000Z`
     );
 
   res.redirect('/devis/' + info.lastInsertRowid);
@@ -4222,6 +4274,17 @@ app.post('/devis/:id/notes', requireLogin, (req, res) => {
   res.redirect('/devis/' + req.params.id);
 
 });
+
+app.post('/devis/:id/status', requireLogin, (req, res) => {
+  const quoteId = Number(req.params.id);
+  if (!Number.isFinite(quoteId) || quoteId <= 0) return res.status(400).send('ID devis invalide');
+
+  const status = normalizeQuoteStatus(req.body.status);
+  db.prepare('UPDATE quotes SET status = ? WHERE id = ?').run(status, quoteId);
+
+  res.redirect('/devis/' + quoteId);
+});
+
 app.post(
   '/devis/:id/photo',
   requireLogin,
@@ -4309,15 +4372,64 @@ const photosHtml = photos.map(photo => `
   const acceptDisabled = String(quote.status || '') === 'Accepté';
   const marginPct = Number(quote.margin_pct ?? 0);
   const totalWithMargin = round2(total * (1 + marginPct / 100));
+  const tva = round2(total * 0.2);
+  const totalTtc = round2(total + tva);
+  const quoteStatus = normalizeQuoteStatus(quote.status);
 
   res.send(
     pageTemplate(
       req,
       `Devis #${id}`,
       `
-      <div class="page-head">
+      <div class="page-head quote-page-head">
         <h1>${escHtml(quote.title || '')}</h1>
+        <a class="btn btn-secondary" href="/devis">Retour aux devis</a>
       </div>
+
+<section class="quote-hero">
+  <div class="quote-hero-main">
+    <span class="quote-number">Devis #${id}</span>
+    <h2>${escHtml(quote.client_name || 'Client non renseigné')}</h2>
+    <div class="quote-hero-meta">
+      <span class="quote-status-badge ${quoteStatusClass(quoteStatus)}">${escHtml(quoteStatus)}</span>
+      <span>Date : ${escHtml(formatDateLabel(quote.created_at))}</span>
+    </div>
+  </div>
+
+  <div class="quote-hero-totals">
+    <div><span>Total HT</span><strong>${total.toFixed(2)} €</strong></div>
+    <div><span>TVA 20%</span><strong>${tva.toFixed(2)} €</strong></div>
+    <div><span>Total TTC</span><strong>${totalTtc.toFixed(2)} €</strong></div>
+  </div>
+</section>
+
+<section class="quote-action-bar">
+  <form method="POST" action="/devis/${id}/status" class="quote-status-form">
+    <label>Modifier le statut</label>
+    <select name="status">${quoteStatusOptions(quote.status)}</select>
+    <button class="btn btn-primary" type="submit">Enregistrer</button>
+  </form>
+
+  <div class="quote-action-buttons">
+    <form
+      method="POST"
+      action="/devis/${id}/accept"
+      onsubmit="return confirm('Accepter ce devis et créer la commande client ?');"
+    >
+      <button class="btn btn-primary" ${acceptDisabled ? 'disabled' : ''}>
+        ${acceptDisabled ? 'Devis accepté' : 'Accepter'}
+      </button>
+    </form>
+
+    <form
+      method="POST"
+      action="/devis/${id}/delete"
+      onsubmit="return confirm('⚠️ Supprimer définitivement ce devis ? Cette action est irréversible.');"
+    >
+      <button class="btn btn-danger">Supprimer</button>
+    </form>
+  </div>
+</section>
 <div class="quote-top-grid">
 
   <div class="panel-soft">
@@ -4966,26 +5078,6 @@ function printPlan() {
   </script>
 </div>
 
-<div class="quote-summary">
-
-  <div class="summary-card">
-    <span>HT</span>
-    <strong>${total.toFixed(2)} €</strong>
-  </div>
-
-  <div class="summary-card">
-    <span>TVA</span>
-    <strong>${(total * 0.20).toFixed(2)} €</strong>
-  </div>
-
-  <div class="summary-card">
-    <span>TTC</span>
-    <strong>${(total * 1.20).toFixed(2)} €</strong>
-  </div>
-
-</div>
-
-
 <div class="quote-lines">
 
 ${lines.length ? lines.map(l => `
@@ -4998,6 +5090,7 @@ ${lines.length ? lines.map(l => `
       ${escHtml(l.category || '')}
     </span>
 
+    <div class="quote-line-actions">
     <form method="POST"
           action="/devis/line/delete"
           onsubmit="return confirm('Supprimer ?')">
@@ -5005,36 +5098,40 @@ ${lines.length ? lines.map(l => `
       <input type="hidden" name="quote_id" value="${id}">
       <input type="hidden" name="id" value="${l.id}">
 
-      <button class="delete-btn">🗑️</button>
+      <button class="delete-btn" aria-label="Supprimer">×</button>
 
     </form>
 <form
   method="GET"
   action="/devis/line/${l.id}/edit"
-  style="display:inline-block">
+>
 
   <button
     type="submit"
-    class="edit-btn">
-    ✏️
+    class="edit-btn"
+    aria-label="Modifier">
+    Modifier
   </button>
 
 </form>
+    </div>
   </div>
 
   <h3>${escHtml(l.label || '')}</h3>
 
-  <div class="quote-meta">
-    ${Number(l.qty || 0).toFixed(2)}
-    ${escHtml(l.unit || '')}
-  </div>
-
-  <div class="quote-price">
-    ${Number(l.unit_price || 0).toFixed(2)} €
-  </div>
-
-  <div class="quote-total">
-    ${Number(l.total || 0).toFixed(2)} €
+  <div class="quote-line-grid">
+    <div>
+      <span>Quantité</span>
+      <strong>${Number(l.qty || 0).toFixed(2)} ${escHtml(l.unit || '')}</strong>
+    </div>
+    <div>
+      <span>PU HT</span>
+      <strong>${Number(l.unit_price || 0).toFixed(2)} €</strong>
+    </div>
+    <div>
+      <span>Total HT</span>
+      <strong>${Number(l.total || 0).toFixed(2)} €</strong>
+    </div>
   </div>
 
 </div>
@@ -5043,34 +5140,6 @@ ${lines.length ? lines.map(l => `
 
 </div>
    
-
-<div style="margin-top:12px">
-  <form
-    method="POST"
-    action="/devis/${id}/accept"
-    onsubmit="return confirm('Accepter ce devis et créer la commande client ?');"
-    style="display:inline-block"
-  >
-    <button class="btn btn-primary" ${acceptDisabled ? 'disabled' : ''}>
-      ✅ ${acceptDisabled ? 'Devis déjà accepté' : 'Accepter le devis'}
-    </button>
-  </form>
-
-  <form
-    method="POST"
-    action="/devis/${id}/delete"
-    onsubmit="return confirm('⚠️ Supprimer définitivement ce devis ? Cette action est irréversible.');"
-    style="display:inline-block;margin-left:10px"
-  >
-    <button class="btn btn-danger">
-      🗑️ Supprimer le devis
-    </button>
-  </form>
-
-  <a class="btn btn-secondary" href="/devis" style="margin-left:10px">
-    ← Retour devis
-  </a>
-</div>
 
       `
     )
