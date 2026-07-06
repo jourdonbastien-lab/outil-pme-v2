@@ -4895,6 +4895,9 @@ const photosHtml = photos.map(photo => `
             <div class="orders-form-field">
               <label>Unité</label>
               <select id="quickMatUnit" name="unit" required>
+                <option value="ml">ml</option>
+                <option value="m²">m²</option>
+                <option value="pièce">pièce</option>
                 <option value="m">m</option>
                 <option value="kg">kg</option>
                 <option value="u">u</option>
@@ -4920,6 +4923,9 @@ const photosHtml = photos.map(photo => `
           const MAT_INDEX = new Map(
             ${JSON.stringify(
               materials.map(m => ({
+                id: Number(m.id || 0),
+                type: String(m.type || ''),
+                name: String(m.name || ''),
                 key: String((m.name || '')).trim().toLowerCase(),
                 unit: String(m.unit || ''),
                 price: Number(m.price || 0)
@@ -4934,6 +4940,32 @@ const margin = document.getElementById('matMargin');
 
 if (!label || !unit || !pu) return;
 
+function normalizeMaterialUnit(value){
+  const raw = String(value || '').trim();
+  const key = raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\\u0300-\\u036f]/g, '')
+    .replace(/\\s+/g, '');
+
+  if (['m', 'ml', 'metre', 'meter', 'metres', 'meters'].includes(key)) return 'ml';
+  if (['m2', 'm²', 'metrecarre', 'metrescarres', 'meter2', 'sqm'].includes(key)) return 'm²';
+  if (['u', 'unite', 'unites', 'piece', 'pieces', 'pc', 'pcs'].includes(key)) return 'pièce';
+  return raw;
+}
+
+function setMaterialUnit(value){
+  const nextUnit = normalizeMaterialUnit(value);
+  if (!nextUnit) return;
+
+  const exists = Array.from(unit.options).some(option => option.value === nextUnit);
+  if (!exists){
+    unit.appendChild(new Option(nextUnit, nextUnit));
+  }
+
+  unit.value = nextUnit;
+}
+
 function sync(){
 
   const k = (label.value || '').trim().toLowerCase();
@@ -4942,7 +4974,7 @@ function sync(){
   if (!found) return;
 
   if (found.unit){
-    unit.value = found.unit;
+    setMaterialUnit(found.unit);
   }
 
   if (Number.isFinite(found.price) && found.price > 0){
