@@ -120,64 +120,76 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     return `<g class="${active.trim()}"><rect class="label-box" x="${x - width / 2}" y="${y - 12}" width="${width}" height="24" rx="6"/><text class="label" x="${x}" y="${y + 4}" text-anchor="middle">${text}</text></g>`;
   }
 
-  function dimH(x1, y, x2, label, key, offset = 10) {
+  function renderDimensionLine(options) {
+    const { x1, y1, x2, y2, label, key, orientation = 'h', textSide = 'left', offset = 10 } = options;
     const active = isActive(key) ? ' active' : '';
-    const textY = y - offset;
+    if (orientation === 'v') {
+      const textX = textSide === 'right' ? x1 + 15 : x1 - 15;
+      const anchor = textSide === 'right' ? 'start' : 'end';
+      return `<g class="dim-group${active}">
+        <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-start="url(#${svgMarkerPrefix}DimArrow)" marker-end="url(#${svgMarkerPrefix}DimArrow)"/>
+        <line class="dim-line" x1="${x1 - 9}" y1="${y1}" x2="${x1 + 9}" y2="${y1}"/>
+        <line class="dim-line" x1="${x2 - 9}" y1="${y2}" x2="${x2 + 9}" y2="${y2}"/>
+        <text class="dim-label" x="${textX}" y="${(y1 + y2) / 2 + 4}" text-anchor="${anchor}">${label}</text>
+      </g>`;
+    }
+
+    const textY = y1 - offset;
     return `<g class="dim-group${active}">
-      <line class="dim-line" x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" marker-start="url(#${svgMarkerPrefix}DimArrow)" marker-end="url(#${svgMarkerPrefix}DimArrow)"/>
-      <line class="dim-line" x1="${x1}" y1="${y - 9}" x2="${x1}" y2="${y + 9}"/>
-      <line class="dim-line" x1="${x2}" y1="${y - 9}" x2="${x2}" y2="${y + 9}"/>
+      <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-start="url(#${svgMarkerPrefix}DimArrow)" marker-end="url(#${svgMarkerPrefix}DimArrow)"/>
+      <line class="dim-line" x1="${x1}" y1="${y1 - 9}" x2="${x1}" y2="${y1 + 9}"/>
+      <line class="dim-line" x1="${x2}" y1="${y2 - 9}" x2="${x2}" y2="${y2 + 9}"/>
       <text class="dim-label" x="${(x1 + x2) / 2}" y="${textY}" text-anchor="middle">${label}</text>
     </g>`;
   }
 
+  function dimH(x1, y, x2, label, key, offset = 10) {
+    return renderDimensionLine({ x1, y1: y, x2, y2: y, label, key, orientation: 'h', offset });
+  }
+
   function dimV(x, y1, y2, label, key, textSide = 'left') {
-    const active = isActive(key) ? ' active' : '';
-    const textX = textSide === 'right' ? x + 15 : x - 15;
-    const anchor = textSide === 'right' ? 'start' : 'end';
-    return `<g class="dim-group${active}">
-      <line class="dim-line" x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" marker-start="url(#${svgMarkerPrefix}DimArrow)" marker-end="url(#${svgMarkerPrefix}DimArrow)"/>
-      <line class="dim-line" x1="${x - 9}" y1="${y1}" x2="${x + 9}" y2="${y1}"/>
-      <line class="dim-line" x1="${x - 9}" y1="${y2}" x2="${x + 9}" y2="${y2}"/>
-      <text class="dim-label" x="${textX}" y="${(y1 + y2) / 2 + 4}" text-anchor="${anchor}">${label}</text>
-    </g>`;
+    return renderDimensionLine({ x1: x, y1, x2: x, y2, label, key, orientation: 'v', textSide });
   }
 
   function arrowPolyline(points) {
     return `<polyline class="thin-line" points="${points.map((point) => point.join(',')).join(' ')}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>`;
   }
 
-  function stepLinesHorizontal(x, y, width, height, count) {
+  function renderStepLines(options) {
+    const { x, y, width, height, count, orientation = 'h' } = options;
     const lines = [];
     const risers = clamp(Math.round(count), 3, 22);
     for (let index = 1; index < risers; index += 1) {
-      const stepX = x + (width / risers) * index;
-      lines.push(`<line class="thin-line" x1="${stepX}" y1="${y + 8}" x2="${stepX}" y2="${y + height - 8}"/>`);
-    }
-    return lines.join('');
-  }
-
-  function stepLinesVertical(x, y, width, height, count) {
-    const lines = [];
-    const risers = clamp(Math.round(count), 3, 22);
-    for (let index = 1; index < risers; index += 1) {
-      const stepY = y + (height / risers) * index;
-      lines.push(`<line class="thin-line" x1="${x + 8}" y1="${stepY}" x2="${x + width - 8}" y2="${stepY}"/>`);
-    }
-    return lines.join('');
-  }
-
-  function turnLines(x, y, size, mode) {
-    const lines = [];
-    for (let index = 1; index <= 4; index += 1) {
-      const ratio = index / 5;
-      if (mode === 'left-up') {
-        lines.push(`<line class="thin-line" x1="${x + 10 + ratio * (size - 20)}" y1="${y + size - 10}" x2="${x + 10}" y2="${y + size - 10 - ratio * (size - 20)}"/>`);
+      if (orientation === 'v') {
+        const stepY = y + (height / risers) * index;
+        lines.push(`<line class="step-line" x1="${x + 9}" y1="${stepY}" x2="${x + width - 9}" y2="${stepY}"/>`);
       } else {
-        lines.push(`<line class="thin-line" x1="${x + size - 10}" y1="${y + 10 + ratio * (size - 20)}" x2="${x + size - 10 - ratio * (size - 20)}" y2="${y + size - 10}"/>`);
+        const stepX = x + (width / risers) * index;
+        lines.push(`<line class="step-line" x1="${stepX}" y1="${y + 9}" x2="${stepX}" y2="${y + height - 9}"/>`);
       }
     }
     return lines.join('');
+  }
+
+  function renderWinderLines(x, y, size, mode) {
+    const lines = [];
+    for (let index = 1; index <= 5; index += 1) {
+      const ratio = index / 6;
+      if (mode === 'left-up') {
+        lines.push(`<line class="winder-line" x1="${x + 8 + ratio * (size - 16)}" y1="${y + size - 8}" x2="${x + 8}" y2="${y + size - 8 - ratio * (size - 16)}"/>`);
+      } else {
+        lines.push(`<line class="winder-line" x1="${x + size - 8}" y1="${y + 8 + ratio * (size - 16)}" x2="${x + size - 8 - ratio * (size - 16)}" y2="${y + size - 8}"/>`);
+      }
+    }
+    return lines.join('');
+  }
+
+  function stepLinesHorizontal(x, y, width, height, count) {
+    return renderStepLines({ x, y, width, height, count, orientation: 'h' });
+  }
+
+  function stepLinesVertical(x, y, width, height, count) {
+    return renderStepLines({ x, y, width, height, count, orientation: 'v' });
   }
 
   function svgShell(width, height, body) {
@@ -254,69 +266,107 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       ${dimV(x - 24, y + notchH, y + height, `D ${formatMeasure(values.tremieLRetourLargeur)}`, 'tremieLRetourLargeur')}`;
   }
 
+  function renderCornerMarkers(points) {
+    return points.map(([x, y]) => `<rect class="corner-marker" x="${x - 4}" y="${y - 4}" width="8" height="8"/>`).join('');
+  }
+
+  function renderStairOutline(path) {
+    return `<path class="stair-fill" d="${path}"/><path class="stringer-line" d="${path}"/>`;
+  }
+
+  function renderStraightStairPlan(values) {
+    const x = 112;
+    const y = 214;
+    const width = 520;
+    const depth = 78;
+    const outline = `M ${x} ${y} H ${x + width} V ${y + depth} H ${x} Z`;
+    const tremie = { x: x + width * 0.58, y: y + 14, width: 154, height: depth - 28 };
+    return `
+      ${renderStairOutline(outline)}
+      ${renderStepLines({ x, y, width, height: depth, count: values.marchesGeom, orientation: 'h' })}
+      <line class="walking-line" x1="${x + 22}" y1="${y + depth / 2}" x2="${x + width - 34}" y2="${y + depth / 2}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>
+      <text class="caption" x="${x}" y="${y - 18}">Départ</text>
+      <text class="caption" x="${x + width - 56}" y="${y - 18}">Arrivée</text>
+      ${renderTremie(values, tremie.x, tremie.y, tremie.width, tremie.height)}
+      ${dimH(x, y + depth + 54, x + width, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
+      ${dimV(x - 38, y, y + depth, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}
+      ${labelBox(`${formatMeasure(values.marchesNombre, 'marches')}`, x + width / 2, y - 28, 120, 'marchesNombre')}
+      ${renderCornerMarkers([[x, y], [x + width, y], [x + width, y + depth], [x, y + depth]])}
+    `;
+  }
+
+  function renderQuarterTurnPlan(values) {
+    const x = 104;
+    const y = 86;
+    const flight = 92;
+    const horizontal = 380;
+    const vertical = 280;
+    const cornerX = x + horizontal - flight;
+    const cornerY = y + vertical - flight;
+    const outline = `M ${cornerX} ${y} H ${cornerX + flight} V ${y + vertical} H ${x} V ${cornerY} H ${cornerX} Z`;
+    const lowerRun = Math.max(3, Math.round(values.marchesGeom * 0.42));
+    const upperRun = Math.max(3, Math.round(values.marchesGeom * 0.36));
+    const tremie = { x: cornerX - 156, y: y + 36, width: 136, height: 142 };
+    return `
+      ${renderStairOutline(outline)}
+      ${renderStepLines({ x, y: cornerY, width: horizontal - flight, height: flight, count: lowerRun, orientation: 'h' })}
+      ${renderStepLines({ x: cornerX, y, width: flight, height: vertical - flight, count: upperRun, orientation: 'v' })}
+      ${renderWinderLines(cornerX, cornerY, flight, 'left-up')}
+      <path class="walking-line" d="M ${x + 26} ${cornerY + flight / 2} H ${cornerX + flight / 2} V ${y + 30}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>
+      <text class="caption" x="${x}" y="${cornerY - 16}">Départ</text>
+      <text class="caption" x="${cornerX + flight + 18}" y="${y + 34}">Arrivée</text>
+      ${renderTremie(values, tremie.x, tremie.y, tremie.width, tremie.height)}
+      ${dimH(x, y + vertical + 46, x + horizontal, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
+      ${dimV(x + horizontal + 42, y, y + vertical, `Reculement ${formatMeasure(values.reculement)}`, 'reculement', 'right')}
+      ${dimV(x - 38, cornerY, cornerY + flight, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}
+      ${labelBox(`${formatMeasure(values.marchesNombre, 'marches')}`, x + 168, cornerY - 32, 120, 'marchesNombre')}
+      ${renderCornerMarkers([[x, cornerY], [cornerX, cornerY], [cornerX, y], [cornerX + flight, y], [cornerX + flight, y + vertical], [x, y + vertical]])}
+    `;
+  }
+
+  function renderDoubleQuarterTurnPlan(values) {
+    const x = 112;
+    const y = 82;
+    const flight = 84;
+    const horizontal = 382;
+    const vertical = 276;
+    const cornerX = x + horizontal - flight;
+    const bottomY = y + vertical - flight;
+    const outline = `M ${x} ${y} H ${x + horizontal} V ${y + vertical} H ${x} V ${bottomY} H ${cornerX} V ${y + flight} H ${x} Z`;
+    const runSteps = Math.max(3, Math.round(values.marchesGeom * 0.28));
+    const middleSteps = Math.max(3, Math.round(values.marchesGeom * 0.30));
+    const tremie = { x: x + 28, y: y + flight + 30, width: 172, height: 86 };
+    return `
+      ${renderStairOutline(outline)}
+      ${renderStepLines({ x, y, width: horizontal - flight, height: flight, count: runSteps, orientation: 'h' })}
+      ${renderStepLines({ x: cornerX, y: y + flight, width: flight, height: vertical - flight * 2, count: middleSteps, orientation: 'v' })}
+      ${renderStepLines({ x, y: bottomY, width: horizontal - flight, height: flight, count: runSteps, orientation: 'h' })}
+      ${renderWinderLines(cornerX, y, flight, 'down-left')}
+      ${renderWinderLines(cornerX, bottomY, flight, 'left-up')}
+      <path class="walking-line" d="M ${x + 28} ${bottomY + flight / 2} H ${cornerX + flight / 2} V ${y + flight / 2} H ${x + 34}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>
+      <text class="caption" x="${x}" y="${bottomY - 16}">Départ</text>
+      <text class="caption" x="${x}" y="${y - 16}">Arrivée</text>
+      ${renderTremie(values, tremie.x, tremie.y, tremie.width, tremie.height)}
+      ${dimH(x, y + vertical + 46, x + horizontal, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
+      ${dimV(x + horizontal + 42, y, y + vertical, `Reculement ${formatMeasure(values.reculement)}`, 'reculement', 'right')}
+      ${dimV(x - 38, y, y + flight, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}
+      ${labelBox(`${formatMeasure(values.marchesNombre, 'marches')}`, x + horizontal + 94, y + vertical / 2, 120, 'marchesNombre')}
+      ${renderCornerMarkers([[x, y], [x + horizontal, y], [x + horizontal, y + vertical], [x, y + vertical], [cornerX, y + flight], [cornerX, bottomY]])}
+    `;
+  }
+
   function renderTopPlan(values) {
     svgMarkerPrefix = 'topPlan';
     const width = 760;
-    const height = 430;
-    const flight = 68;
-    const startX = 112;
-    const centerY = 208;
+    const height = 520;
     let body = '';
-    let tremie = { x: 472, y: 152, width: 142, height: 90 };
-
     if (values.stairType === 'straight') {
-      const run = 486;
-      const y = centerY - flight / 2;
-      body += `<rect class="stair-fill" x="${startX}" y="${y}" width="${run}" height="${flight}"/>
-        ${stepLinesHorizontal(startX, y, run, flight, values.marchesGeom)}
-        ${arrowPolyline([[startX + 30, centerY], [startX + run - 34, centerY]])}
-        <text class="caption" x="${startX + 8}" y="${y - 14}">Départ</text>
-        <text class="caption" x="${startX + run - 48}" y="${y - 14}">Arrivée</text>
-        ${dimH(startX, y + flight + 42, startX + run, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
-        ${dimV(startX - 34, y, y + flight, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}`;
-      tremie = { x: startX + run * 0.62, y: y + 10, width: 134, height: 48 };
+      body = renderStraightStairPlan(values);
     } else if (values.stairType === 'quarter') {
-      const horizontal = 344;
-      const vertical = 210;
-      const turnX = startX + horizontal - flight;
-      const bottomY = 292 - flight;
-      const topY = bottomY - vertical + flight;
-      body += `<rect class="stair-fill" x="${startX}" y="${bottomY}" width="${horizontal}" height="${flight}"/>
-        <rect class="stair-fill" x="${turnX}" y="${topY}" width="${flight}" height="${vertical}"/>
-        ${stepLinesHorizontal(startX, bottomY, horizontal - flight, flight, Math.ceil(values.marchesGeom * 0.58))}
-        ${stepLinesVertical(turnX, topY, flight, vertical - flight, Math.ceil(values.marchesGeom * 0.42))}
-        ${turnLines(turnX, bottomY, flight, 'left-up')}
-        ${arrowPolyline([[startX + 28, bottomY + flight / 2], [turnX + flight / 2, bottomY + flight / 2], [turnX + flight / 2, topY + 28]])}
-        <text class="caption" x="${startX + 8}" y="${bottomY - 14}">Départ</text>
-        <text class="caption" x="${turnX + 78}" y="${topY + 22}">Arrivée</text>
-        ${dimH(startX, bottomY + flight + 40, startX + horizontal, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
-        ${dimV(startX + horizontal + 36, topY, bottomY + flight, `Reculement ${formatMeasure(values.reculement)}`, 'reculement', 'right')}
-        ${dimV(startX - 34, bottomY, bottomY + flight, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}`;
-      tremie = { x: turnX - 132, y: topY + 20, width: 116, height: 122 };
+      body = renderQuarterTurnPlan(values);
     } else {
-      const horizontal = 330;
-      const vertical = 236;
-      const turnX = startX + horizontal - flight;
-      const topY = 80;
-      const bottomY = topY + vertical - flight;
-      body += `<rect class="stair-fill" x="${startX}" y="${topY}" width="${horizontal}" height="${flight}"/>
-        <rect class="stair-fill" x="${turnX}" y="${topY}" width="${flight}" height="${vertical}"/>
-        <rect class="stair-fill" x="${startX}" y="${bottomY}" width="${horizontal}" height="${flight}"/>
-        ${stepLinesHorizontal(startX, topY, horizontal - flight, flight, Math.ceil(values.marchesGeom * 0.34))}
-        ${stepLinesVertical(turnX, topY + flight, flight, vertical - flight * 2, Math.ceil(values.marchesGeom * 0.32))}
-        ${stepLinesHorizontal(startX, bottomY, horizontal - flight, flight, Math.ceil(values.marchesGeom * 0.34))}
-        ${turnLines(turnX, topY, flight, 'down-left')}
-        ${turnLines(turnX, bottomY, flight, 'left-up')}
-        ${arrowPolyline([[startX + 28, bottomY + flight / 2], [turnX + flight / 2, bottomY + flight / 2], [turnX + flight / 2, topY + flight / 2], [startX + 28, topY + flight / 2]])}
-        <text class="caption" x="${startX + 8}" y="${bottomY - 14}">Départ</text>
-        <text class="caption" x="${startX + 8}" y="${topY - 14}">Arrivée</text>
-        ${dimH(startX, bottomY + flight + 40, startX + horizontal, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
-        ${dimV(startX + horizontal + 36, topY, bottomY + flight, `Reculement ${formatMeasure(values.reculement)}`, 'reculement', 'right')}
-        ${dimV(startX - 34, topY, topY + flight, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}`;
-      tremie = { x: startX + 34, y: topY + flight + 22, width: 162, height: 80 };
+      body = renderDoubleQuarterTurnPlan(values);
     }
-
-    body += renderTremie(values, tremie.x, tremie.y, tremie.width, tremie.height);
     topViewSvg.innerHTML = svgShell(width, height, body);
   }
 
