@@ -701,17 +701,6 @@ button {
 .page-head h1 { margin: 0 0 6px; }
 .muted { color: rgba(255,255,255,.7); }
 
-.crumbs {
-  display:flex; flex-wrap:wrap; gap:8px;
-  margin: 0 0 14px;
-  font-size: 13px;
-  color: rgba(255,255,255,.8);
-}
-.crumbs a { color: rgba(255,255,255,.92); text-decoration: none; }
-.crumbs a:hover { text-decoration: underline; }
-.crumb-sep { opacity:.6; }
-.crumb-current { opacity: .95; font-weight: 600; }
-
 .info-bar{
   display:flex; align-items:center; justify-content:space-between;
   gap: 12px;
@@ -827,21 +816,6 @@ h1, h2, h3 {
 /* Texte secondaire */
 .muted {
   color: #6b7280;
-}
-
-/* Breadcrumb */
-.crumbs {
-  color: #374151;
-}
-
-.crumbs a {
-  color: #2563eb;
-  text-decoration: none;
-}
-
-.crumb-current {
-  font-weight: 600;
-  color: #111827;
 }
 
 /* Info bar */
@@ -2132,14 +2106,6 @@ button:hover {
   background:#111827;
   color:#fff;
   box-shadow:0 12px 28px rgba(15,23,42,.18);
-}
-
-.dash-eyebrow{
-  margin:0 0 8px;
-  color:#ff7a00;
-  font-size:12px;
-  font-weight:800;
-  text-transform:uppercase;
 }
 
 .dash-today h1{

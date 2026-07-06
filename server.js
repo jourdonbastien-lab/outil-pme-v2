@@ -163,17 +163,6 @@ function calcSheetKg({ th_mm, w_mm, l_mm, density }) {
   return volume_m3 * kg_per_m3;
 }
 
-function breadcrumb(items) {
-  const html = items
-    .map((it) => {
-      const label = escHtml(it.label);
-      if (it.href) return `<a href="${it.href}">${label}</a>`;
-      return `<span class="crumb-current">${label}</span>`;
-    })
-    .join('<span class="crumb-sep">›</span>');
-  return `<nav class="crumbs">${html}</nav>`;
-}
-
 function infoBar(left, right) {
   return `
     <div class="info-bar">
@@ -1626,9 +1615,7 @@ app.get('/dashboard', requireLogin, (req, res) => {
       <div class="dash-shell">
         <section class="dash-today">
           <div>
-            <p class="dash-eyebrow">Aujourd’hui</p>
             <h1>${escHtml(todayLabel)}</h1>
-            <p>Bonjour <strong>${escHtml(req.session.user.username)}</strong>, voici les priorités du jour.</p>
           </div>
           <div class="dash-today-grid">
             ${todayStats}
@@ -2158,7 +2145,6 @@ app.get('/outils/prises-cotes', requireLogin, (req, res) => {
       `
       <div class="page-head">
         <h1>Prises de cotes</h1>
-        <p class="muted">Choisir un module pour ouvrir sa fiche terrain.</p>
       </div>
 
       <section class="cards-grid">
@@ -2487,7 +2473,6 @@ app.get('/chantiers', requireAdmin, (req, res) => {
         <div class="page-head chantiers-head">
           <div>
             <h1>Chantiers</h1>
-            <p class="muted">Suivi des heures prévues, réalisées, de l’avancement et du statut.</p>
           </div>
           <a class="btn btn-primary" href="#new-chantier">+ Nouveau chantier</a>
         </div>
@@ -2617,14 +2602,11 @@ app.get('/chantiers/:id', requireAdmin, (req, res) => {
       req,
       `Chantier : ${chantier.name}`,
       `
-      ${breadcrumb([{ label: 'Chantiers', href: '/chantiers' }, { label: chantier.name }])}
-
       <div class="chantier-detail">
         <section class="chantier-detail-hero">
           <div>
             <span class="chantier-status chantier-status-${statusIndex}">${escHtml(normalizeChantierStatus(chantier.status))}</span>
             <h1>${escHtml(chantier.name)}</h1>
-            <p>${chantier.client_name ? 'Client : ' + escHtml(chantier.client_name) : 'Aucun client lié'}</p>
           </div>
           <a class="btn btn-secondary" href="/chantiers">Retour</a>
         </section>
@@ -2854,7 +2836,6 @@ for (const folder of pcFolders) {
       `
       <div class="page-head">
         <h1>Clients</h1>
-        <p class="muted">Création DB + dossier PC automatique. Les dossiers déjà présents sur le PC apparaissent aussi ici.</p>
       </div>
 
       <form method="POST" action="/clients" class="orders-form">
@@ -3003,17 +2984,8 @@ app.get('/clients/:client', requireLogin, (req, res) => {
       req,
       `Client : ${clientFolder}`,
       `
-      ${breadcrumb([{ label: 'Clients', href: '/clients' }, { label: clientFolder }])}
-
       <div class="page-head">
         <h1>${escHtml(clientFolder)}</h1>
-        <p class="muted">
-          ${clientDb?.address ? escHtml(clientDb.address) + ' · ' : ''}
-          ${clientDb?.postal_code ? escHtml(clientDb.postal_code) + ' ' : ''}
-          ${clientDb?.city ? escHtml(clientDb.city) : ''}
-          ${clientDb?.phone ? ' · ' + escHtml(clientDb.phone) : ''}
-          ${clientDb?.email ? ' · ' + escHtml(clientDb.email) : ''}
-        </p>
       </div>
 
       ${infoBar(
@@ -3152,7 +3124,6 @@ const statusDot =
       `
       <div class="page-head">
         <h1>Commandes clients</h1>
-        <p class="muted">Créer une commande = dossier client/commande + sous-dossiers standard sur ton PC</p>
       </div>
 
       <form method="POST" action="/orders/client" class="orders-form">
@@ -3420,14 +3391,11 @@ app.get('/pc-folders/:client', requireLogin, (req, res) => {
       `
         )
         .join('')
-    : `<div class="empty-state">Aucune commande trouvée dans <code>${escHtml(clientDir)}</code></div>`;
+    : `<div class="empty-state">Aucune commande trouvée.</div>`;
 
   const content = `
-    ${breadcrumb([{ label: 'Clients', href: '/clients' }, { label: client, href: '/clients/' + encodeURIComponent(client) }, { label: 'Dossiers commandes' }])}
-
     <div class="page-head">
       <h1>${escHtml(client)}</h1>
-      <p class="muted">Chemin : <code>${escHtml(clientDir)}</code></p>
     </div>
 
     ${infoBar(
@@ -3483,11 +3451,8 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
   ).join('');
 
   const content = `
-    ${breadcrumb([{ label: 'Clients', href: '/clients' }, { label: client, href: '/clients/' + encodeURIComponent(client) }, { label: order }])}
-
     <div class="page-head">
       <h1>${escHtml(order)}</h1>
-      <p class="muted">Client : <strong>${escHtml(client)}</strong> · <code>${escHtml(orderDir)}</code></p>
     </div>
 
     ${infoBar(
@@ -3564,16 +3529,8 @@ const list = files.length
     
 
   const content = `
-    ${breadcrumb([
-      { label: 'Clients', href: '/clients' },
-      { label: client, href: '/clients/' + encodeURIComponent(client) },
-      { label: order, href: '/pc-folders/' + encodeURIComponent(client) + '/' + encodeURIComponent(order) },
-      { label: type },
-    ])}
-
     <div class="page-head">
       <h1>${escHtml(type)}</h1>
-      <p class="muted"><code>${escHtml(dirPath)}</code></p>
     </div>
 
     <div class="panel-soft">
@@ -3818,16 +3775,8 @@ const isOver =
       req,
       `Heures chantier - ${order}`,
       `
-      ${breadcrumb([
-        { label: 'Clients', href: '/clients' },
-        { label: client, href: '/clients/' + encodeURIComponent(client) },
-        { label: order, href: '/pc-folders/' + encodeURIComponent(client) + '/' + encodeURIComponent(order) },
-        { label: 'Heure chantier' },
-      ])}
-
       <div class="page-head">
         <h1>Heures chantier</h1>
-        <p class="muted">Client : <strong>${escHtml(client)}</strong> · Commande : <strong>${escHtml(order)}</strong></p>
       </div>
 
   ${infoBar(
@@ -4060,11 +4009,8 @@ app.get('/devis', requireLogin, (req, res) => {
       req,
       'Devis',
       `
-      ${breadcrumb([{ label: 'Devis' }])}
-
       <div class="page-head">
         <h1>Devis</h1>
-        <p class="muted">Créer un devis, puis ajouter tes lignes (manuel ou via Calcul matière).</p>
       </div>
 
       ${infoBar(
@@ -4126,11 +4072,8 @@ app.get('/devis/new', requireLogin, (req, res) => {
       req,
       'Nouveau devis',
       `
-      ${breadcrumb([{ label: 'Devis', href: '/devis' }, { label: 'Nouveau' }])}
-
       <div class="page-head">
         <h1>Nouveau devis</h1>
-        <p class="muted">Recherche un client existant (DB + PC) ou crée un prospect.</p>
       </div>
 
       <form method="POST" action="/devis" class="orders-form" id="quoteForm">
@@ -4151,14 +4094,12 @@ app.get('/devis/new', requireLogin, (req, res) => {
             <datalist id="clientsList">
               ${datalistOptions}
             </datalist>
-            <p class="muted" style="margin-top:6px">Si tu remplis ce champ, la partie Prospect sera désactivée.</p>
           </div>
         </div>
 
         <hr style="margin:24px 0">
 
         <h2>Prospect</h2>
-        <p class="muted">À remplir uniquement si le client n’existe pas</p>
 
         <div class="orders-form-row">
           <div class="orders-form-field">
@@ -4374,11 +4315,8 @@ const photosHtml = photos.map(photo => `
       req,
       `Devis #${id}`,
       `
-  ${breadcrumb([{ label: 'Devis', href: '/devis' }, { label: '#' + id }])}
-
       <div class="page-head">
         <h1>${escHtml(quote.title || '')}</h1>
-        <p class="muted">${escHtml(quote.client_name || '—')} · ${escHtml(quote.status || 'Brouillon')}</p>
       </div>
 <div class="quote-top-grid">
 
