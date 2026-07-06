@@ -409,6 +409,10 @@ textarea:focus {
   background: linear-gradient(180deg, #fbfffe 0%, var(--accent-soft) 100%);
 }
 
+.stair-direction-grid {
+  margin-top: 14px;
+}
+
 .plan-panel {
   padding: 18px;
   border: 1px solid var(--line);
@@ -452,7 +456,7 @@ textarea:focus {
 .technical-svg {
   display: block;
   width: 100%;
-  aspect-ratio: 760 / 480;
+  aspect-ratio: 760 / 620;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: #ffffff;
@@ -460,7 +464,7 @@ textarea:focus {
 }
 
 .technical-svg-main {
-  aspect-ratio: 760 / 560;
+  aspect-ratio: 760 / 680;
 }
 
 .technical-svg svg {
