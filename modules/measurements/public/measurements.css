@@ -429,9 +429,31 @@ textarea:focus {
   line-height: 1.45;
 }
 
-#topViewCanvas {
-  width: 100%;
+.plan-canvas-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
   margin-top: 16px;
+}
+
+.plan-canvas-card {
+  min-width: 0;
+}
+
+.plan-canvas-card h5 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+#sideViewCanvas,
+#topViewCanvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 720 / 430;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: linear-gradient(180deg, #ffffff 0%, #f7fafb 100%);
@@ -569,5 +591,24 @@ textarea:focus {
   .hero-actions button,
   .signature-actions button {
     flex: 1 1 100%;
+  }
+
+  .plan-panel {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .plan-canvas-grid {
+    gap: 12px;
+  }
+
+  .plan-canvas-card {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  #sideViewCanvas,
+  #topViewCanvas {
+    border-radius: 14px;
   }
 }
