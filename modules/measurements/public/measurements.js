@@ -1,17 +1,4 @@
 const STORAGE_KEY = 'outil-pme.escalier.measurements';
-const PLAN_THEME = {
-  dim: '#ff7a00',
-  line: '#222222',
-  fill: '#f4f4f4',
-  fillAlt: '#ececec',
-  step: 'rgba(34, 34, 34, 0.35)',
-  grid: 'rgba(0, 0, 0, 0.08)',
-  text: '#666666',
-  floor: '#111111',
-  slab: '#d7dce0',
-  active: '#ff7a00',
-};
-
 (function () {
   const form = document.getElementById('measurementForm');
   const photoInput = document.getElementById('photoInput');
@@ -23,16 +10,15 @@ const PLAN_THEME = {
   const saveStatus = document.getElementById('saveStatus');
   const recordNameField = document.getElementById('recordName');
   const photoTemplate = document.getElementById('photoItemTemplate');
-  const sideViewCanvas = document.getElementById('sideViewCanvas');
-  const sideViewContext = sideViewCanvas ? sideViewCanvas.getContext('2d') : null;
-  const topViewCanvas = document.getElementById('topViewCanvas');
-  const topViewContext = topViewCanvas ? topViewCanvas.getContext('2d') : null;
+  const sideViewSvg = document.getElementById('sideViewSvg');
+  const topViewSvg = document.getElementById('topViewSvg');
   const tremieGroups = Array.from(document.querySelectorAll('[data-tremie-group]'));
 
   let photos = [];
   let currentRecordName = '';
   let currentServerId = null;
   let activeMeasure = '';
+  let svgMarkerPrefix = 'plan';
 
   function setDefaultValues() {
     const dateField = form.elements.date;
@@ -48,12 +34,6 @@ const PLAN_THEME = {
     return 'straight';
   }
 
-  function getNumericField(name, fallback) {
-    const field = form.elements[name];
-    const value = Number(field && field.value);
-    return Number.isFinite(value) && value > 0 ? value : fallback;
-  }
-
   function getTremieType() {
     const tremieTypeField = form.elements.tremieType;
     return tremieTypeField ? tremieTypeField.value : 'rectangle';
@@ -66,349 +46,46 @@ const PLAN_THEME = {
     });
   }
 
-  function drawDimensionLine(ctx, x1, y1, x2, y2, label) {
-    ctx.save();
-    ctx.strokeStyle = PLAN_THEME.dim;
-    ctx.fillStyle = PLAN_THEME.dim;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([7, 6]);
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.beginPath();
-    ctx.moveTo(x1, y1 - 5);
-    ctx.lineTo(x1, y1 + 5);
-    ctx.moveTo(x2, y2 - 5);
-    ctx.lineTo(x2, y2 + 5);
-    ctx.stroke();
-
-    ctx.font = '12px Segoe UI';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(label, (x1 + x2) / 2, Math.min(y1, y2) - 8);
-    ctx.restore();
-  }
-
-  function drawMarker(ctx, x, y, letter) {
-    ctx.save();
-    ctx.fillStyle = PLAN_THEME.dim;
-    ctx.beginPath();
-    ctx.arc(x, y, 11, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 11px Segoe UI';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(letter, x, y + 0.5);
-    ctx.restore();
-  }
-
-  function drawTechnicalGrid(ctx, width, height) {
-    ctx.save();
-    ctx.strokeStyle = PLAN_THEME.grid;
-    ctx.lineWidth = 1;
-    for (let x = 18; x < width; x += 24) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-    }
-    for (let y = 18; y < height; y += 24) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawVerticalDimensionLine(ctx, x, y1, y2, label) {
-    ctx.save();
-    ctx.strokeStyle = PLAN_THEME.dim;
-    ctx.fillStyle = PLAN_THEME.dim;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([7, 6]);
-    ctx.beginPath();
-    ctx.moveTo(x, y1);
-    ctx.lineTo(x, y2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.beginPath();
-    ctx.moveTo(x - 5, y1);
-    ctx.lineTo(x + 5, y1);
-    ctx.moveTo(x - 5, y2);
-    ctx.lineTo(x + 5, y2);
-    ctx.stroke();
-
-    ctx.save();
-    ctx.translate(x - 10, (y1 + y2) / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.font = '12px Segoe UI';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(label, 0, 0);
-    ctx.restore();
-    ctx.restore();
-  }
-
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
-  }
-
-  function drawFlightRect(ctx, x, y, width, height) {
-    ctx.save();
-    ctx.fillStyle = PLAN_THEME.fill;
-    ctx.strokeStyle = PLAN_THEME.line;
-    ctx.lineWidth = 3;
-    ctx.fillRect(x, y, width, height);
-    ctx.strokeRect(x, y, width, height);
-    ctx.restore();
-  }
-
-  function drawRisers(ctx, x, y, width, height, count, axis) {
-    const risers = Math.max(3, count);
-    ctx.save();
-    ctx.strokeStyle = PLAN_THEME.step;
-    ctx.lineWidth = 1;
-    if (axis === 'x') {
-      for (let index = 1; index < risers; index += 1) {
-        const stepX = x + (width / risers) * index;
-        ctx.beginPath();
-        ctx.moveTo(stepX, y + 11);
-        ctx.lineTo(stepX, y + height - 11);
-        ctx.stroke();
-      }
-    } else {
-      for (let index = 1; index < risers; index += 1) {
-        const stepY = y + (height / risers) * index;
-        ctx.beginPath();
-        ctx.moveTo(x + 11, stepY);
-        ctx.lineTo(x + width - 11, stepY);
-        ctx.stroke();
-      }
-    }
-    ctx.restore();
-  }
-
-  function drawTravelArrow(ctx, points) {
-    if (!points.length) return;
-
-    ctx.save();
-    ctx.strokeStyle = PLAN_THEME.line;
-    ctx.fillStyle = PLAN_THEME.line;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    points.forEach((point, index) => {
-      if (index === 0) ctx.moveTo(point[0], point[1]);
-      else ctx.lineTo(point[0], point[1]);
-    });
-    ctx.stroke();
-
-    const end = points[points.length - 1];
-    const prev = points[points.length - 2] || points[0];
-    const angle = Math.atan2(end[1] - prev[1], end[0] - prev[0]);
-    const size = 9;
-    ctx.beginPath();
-    ctx.moveTo(end[0], end[1]);
-    ctx.lineTo(end[0] - size * Math.cos(angle - Math.PI / 6), end[1] - size * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(end[0] - size * Math.cos(angle + Math.PI / 6), end[1] - size * Math.sin(angle + Math.PI / 6));
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawTurnWinders(ctx, x, y, size, mode) {
-    const inset = 12;
-    const lines = 4;
-
-    ctx.save();
-    ctx.strokeStyle = PLAN_THEME.step;
-    ctx.lineWidth = 1;
-
-    for (let index = 1; index <= lines; index += 1) {
-      const ratio = index / (lines + 1);
-      let start = null;
-      let end = null;
-
-      if (mode === 'left-up') {
-        start = [x + ratio * (size - inset * 2) + inset, y + size - inset];
-        end = [x + inset, y + size - ratio * (size - inset * 2) - inset];
-      } else if (mode === 'down-left') {
-        start = [x + size - inset, y + ratio * (size - inset * 2) + inset];
-        end = [x + size - ratio * (size - inset * 2) - inset, y + size - inset];
-      }
-
-      if (!start || !end) continue;
-      ctx.beginPath();
-      ctx.moveTo(start[0], start[1]);
-      ctx.lineTo(end[0], end[1]);
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
-  function drawTremie(ctx, options) {
-    const { x, y, width, height, type, returnLength, returnWidth } = options;
-
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255, 122, 0, 0.92)';
-    ctx.fillStyle = 'rgba(255, 122, 0, 0.12)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8, 6]);
-
-    if (type === 'l') {
-      const notchLength = Math.max(24, Math.min(width - 18, returnLength));
-      const notchWidth = Math.max(24, Math.min(height - 18, returnWidth));
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + width, y);
-      ctx.lineTo(x + width, y + notchWidth);
-      ctx.lineTo(x + notchLength, y + notchWidth);
-      ctx.lineTo(x + notchLength, y + height);
-      ctx.lineTo(x, y + height);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    } else {
-      ctx.fillRect(x, y, width, height);
-      ctx.strokeRect(x, y, width, height);
-    }
-
-    ctx.setLineDash([]);
-    ctx.fillStyle = PLAN_THEME.dim;
-    ctx.font = '12px Segoe UI';
-    ctx.textAlign = 'center';
-    ctx.fillText(type === 'l' ? 'TRÉMIE EN L' : 'TRÉMIE RECTANGLE', x + width / 2, y + height + 18);
-    ctx.restore();
-  }
-
-  function prepareCanvas(canvas, ctx) {
-    if (!ctx || !canvas) return null;
-
-    const ratio = window.devicePixelRatio || 1;
-    const bounds = canvas.getBoundingClientRect();
-    const width = Math.max(1, Math.floor(bounds.width * ratio));
-    const height = Math.max(1, Math.floor(bounds.height * ratio));
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
-    }
-
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(ratio, ratio);
-    ctx.clearRect(0, 0, bounds.width, bounds.height);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, bounds.width, bounds.height);
-    drawTechnicalGrid(ctx, bounds.width, bounds.height);
-    return { width: bounds.width, height: bounds.height };
   }
 
   function isActive(keys) {
     return [].concat(keys || []).includes(activeMeasure);
   }
 
-  function drawRoundRect(ctx, x, y, width, height, radius) {
-    const safeRadius = Math.min(radius, width / 2, height / 2);
-    ctx.moveTo(x + safeRadius, y);
-    ctx.lineTo(x + width - safeRadius, y);
-    ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
-    ctx.lineTo(x + width, y + height - safeRadius);
-    ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
-    ctx.lineTo(x + safeRadius, y + height);
-    ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
-    ctx.lineTo(x, y + safeRadius);
-    ctx.quadraticCurveTo(x, y, x + safeRadius, y);
+  function readMeasure(name, fallback) {
+    const field = form.elements[name];
+    const rawValue = field ? String(field.value || '').replace(',', '.').trim() : '';
+    const numeric = Number(rawValue);
+    const hasValue = rawValue !== '' && Number.isFinite(numeric) && numeric > 0;
+    return {
+      value: hasValue ? numeric : null,
+      geom: hasValue ? numeric : fallback
+    };
   }
 
-  function drawTextBox(ctx, text, x, y, options = {}) {
-    const font = options.font || '12px Segoe UI';
-    ctx.save();
-    ctx.font = font;
-    const paddingX = 7;
-    const paddingY = 4;
-    const width = ctx.measureText(text).width + paddingX * 2;
-    const height = 20;
-    const left = clamp(x - width / 2, 8, options.maxWidth ? options.maxWidth - width - 8 : x - width / 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = options.active ? PLAN_THEME.active : 'rgba(17, 24, 39, 0.25)';
-    ctx.lineWidth = options.active ? 1.8 : 1;
-    ctx.beginPath();
-    drawRoundRect(ctx, left, y - height / 2, width, height, 6);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = options.active ? PLAN_THEME.active : PLAN_THEME.text;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(text, left + width / 2, y + paddingY - 3);
-    ctx.restore();
-  }
-
-  function drawDimH(ctx, x1, y, x2, label, key, maxWidth) {
-    const active = isActive(key);
-    ctx.save();
-    ctx.strokeStyle = active ? PLAN_THEME.active : PLAN_THEME.dim;
-    ctx.fillStyle = active ? PLAN_THEME.active : PLAN_THEME.dim;
-    ctx.lineWidth = active ? 2.4 : 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x1, y);
-    ctx.lineTo(x2, y);
-    ctx.moveTo(x1, y - 6);
-    ctx.lineTo(x1, y + 6);
-    ctx.moveTo(x2, y - 6);
-    ctx.lineTo(x2, y + 6);
-    ctx.stroke();
-    const arrow = 6;
-    ctx.beginPath();
-    ctx.moveTo(x1, y);
-    ctx.lineTo(x1 + arrow, y - arrow);
-    ctx.moveTo(x1, y);
-    ctx.lineTo(x1 + arrow, y + arrow);
-    ctx.moveTo(x2, y);
-    ctx.lineTo(x2 - arrow, y - arrow);
-    ctx.moveTo(x2, y);
-    ctx.lineTo(x2 - arrow, y + arrow);
-    ctx.stroke();
-    drawTextBox(ctx, label, (x1 + x2) / 2, y - 16, { active, maxWidth });
-    ctx.restore();
-  }
-
-  function drawDimV(ctx, x, y1, y2, label, key, maxWidth) {
-    const active = isActive(key);
-    ctx.save();
-    ctx.strokeStyle = active ? PLAN_THEME.active : PLAN_THEME.dim;
-    ctx.fillStyle = active ? PLAN_THEME.active : PLAN_THEME.dim;
-    ctx.lineWidth = active ? 2.4 : 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x, y1);
-    ctx.lineTo(x, y2);
-    ctx.moveTo(x - 6, y1);
-    ctx.lineTo(x + 6, y1);
-    ctx.moveTo(x - 6, y2);
-    ctx.lineTo(x + 6, y2);
-    ctx.stroke();
-    ctx.save();
-    ctx.translate(x - 20, (y1 + y2) / 2);
-    ctx.rotate(-Math.PI / 2);
-    drawTextBox(ctx, label, 0, 0, { active, maxWidth });
-    ctx.restore();
-    ctx.restore();
+  function formatMeasure(measure, suffix = 'mm') {
+    if (!measure || measure.value === null) return '—';
+    const rounded = Math.round(measure.value * 10) / 10;
+    return `${Number.isInteger(rounded) ? rounded.toFixed(0) : String(rounded).replace('.', ',')} ${suffix}`;
   }
 
   function getPlanValues() {
-    const hauteur = getNumericField('hauteur', 2800);
-    const longueur = getNumericField('longueur', 3200);
-    const largeur = getNumericField('largeur', 900);
-    const tremie = getNumericField('tremie', 1200);
-    const reculement = getNumericField('reculement', longueur);
-    const echappee = getNumericField('echappee', 2000);
-    const marchesNombre = getNumericField('marchesNombre', Math.max(10, Math.round(hauteur / 175)));
-    const giron = Math.round(longueur / Math.max(1, marchesNombre));
-    const hauteurMarche = Math.round(hauteur / Math.max(1, marchesNombre));
+    const hauteur = readMeasure('hauteur', 2800);
+    const longueur = readMeasure('longueur', 3200);
+    const largeur = readMeasure('largeur', 900);
+    const tremie = readMeasure('tremie', 1200);
+    const reculement = readMeasure('reculement', longueur.geom);
+    const echappee = readMeasure('echappee', 2000);
+    const marchesNombre = readMeasure('marchesNombre', Math.max(10, Math.round(hauteur.geom / 175)));
+    const marchesGeom = clamp(Math.round(marchesNombre.geom), 3, 22);
+    const giron = longueur.value !== null && marchesNombre.value !== null
+      ? { value: longueur.value / Math.max(1, marchesNombre.value), geom: longueur.value / Math.max(1, marchesNombre.value) }
+      : { value: null, geom: longueur.geom / Math.max(1, marchesGeom) };
+    const hauteurMarche = hauteur.value !== null && marchesNombre.value !== null
+      ? { value: hauteur.value / Math.max(1, marchesNombre.value), geom: hauteur.value / Math.max(1, marchesNombre.value) }
+      : { value: null, geom: hauteur.geom / Math.max(1, marchesGeom) };
     return {
       stairType: getSelectedStairType(),
       tremieType: getTremieType(),
@@ -418,191 +95,235 @@ const PLAN_THEME = {
       tremie,
       reculement,
       echappee,
-      marchesNombre: clamp(Math.round(marchesNombre), 3, 22),
+      marchesNombre,
+      marchesGeom,
       giron,
       hauteurMarche,
-      tremieLongueur: getNumericField('tremieLongueur', tremie),
-      tremieLargeur: getNumericField('tremieLargeur', Math.max(900, Math.round(tremie * 0.72))),
-      tremieLGrandeLongueur: getNumericField('tremieLGrandeLongueur', tremie),
-      tremieLGrandeLargeur: getNumericField('tremieLGrandeLargeur', Math.max(950, Math.round(tremie * 0.78))),
-      tremieLRetourLongueur: getNumericField('tremieLRetourLongueur', Math.max(700, Math.round(tremie * 0.46))),
-      tremieLRetourLargeur: getNumericField('tremieLRetourLargeur', Math.max(700, Math.round(tremie * 0.46)))
+      tremieLongueur: readMeasure('tremieLongueur', tremie.geom),
+      tremieLargeur: readMeasure('tremieLargeur', Math.max(900, Math.round(tremie.geom * 0.72))),
+      tremieLGrandeLongueur: readMeasure('tremieLGrandeLongueur', tremie.geom),
+      tremieLGrandeLargeur: readMeasure('tremieLGrandeLargeur', Math.max(950, Math.round(tremie.geom * 0.78))),
+      tremieLRetourLongueur: readMeasure('tremieLRetourLongueur', Math.max(700, Math.round(tremie.geom * 0.46))),
+      tremieLRetourLargeur: readMeasure('tremieLRetourLargeur', Math.max(700, Math.round(tremie.geom * 0.46)))
     };
   }
 
-  function drawSideView(values) {
-    const prepared = prepareCanvas(sideViewCanvas, sideViewContext);
-    if (!prepared) return;
-    const ctx = sideViewContext;
-    const { width, height } = prepared;
-    const left = 72;
-    const right = width - 52;
-    const top = 76;
-    const bottom = height - 72;
-    const run = Math.max(160, right - left - 20);
-
-    ctx.save();
-    ctx.font = '12px Segoe UI';
-    ctx.strokeStyle = PLAN_THEME.floor;
-    ctx.fillStyle = PLAN_THEME.floor;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(left - 34, bottom);
-    ctx.lineTo(right + 20, bottom);
-    ctx.stroke();
-    ctx.fillText('Sol bas / départ', left - 26, bottom + 22);
-
-    ctx.fillStyle = PLAN_THEME.slab;
-    ctx.fillRect(right - 92, top - 10, 120, 18);
-    ctx.strokeStyle = PLAN_THEME.floor;
-    ctx.strokeRect(right - 92, top - 10, 120, 18);
-    ctx.fillStyle = PLAN_THEME.text;
-    ctx.fillText('Sol haut / arrivée', right - 92, top - 18);
-
-    ctx.strokeStyle = PLAN_THEME.line;
-    ctx.lineWidth = 2.2;
-    ctx.beginPath();
-    ctx.moveTo(left, bottom);
-    const steps = values.marchesNombre;
-    for (let i = 1; i <= steps; i += 1) {
-      const x = left + (run / steps) * i;
-      const y = bottom - ((bottom - top) / steps) * i;
-      const prevY = bottom - ((bottom - top) / steps) * (i - 1);
-      ctx.lineTo(x, prevY);
-      ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-
-    ctx.strokeStyle = 'rgba(17, 24, 39, 0.55)';
-    ctx.setLineDash([9, 6]);
-    ctx.beginPath();
-    ctx.moveTo(left, bottom);
-    ctx.lineTo(left + run, top);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    drawTravelArrow(ctx, [[left + 24, bottom - 18], [left + run - 36, top + 18]]);
-    drawTextBox(ctx, 'Sens de montée', left + run * 0.58, top + 44, { maxWidth: width });
-
-    drawDimV(ctx, left - 26, top, bottom, `Hauteur ${values.hauteur} mm`, 'hauteur', width);
-    drawDimH(ctx, left, bottom + 34, left + run, `Reculement ${values.reculement} mm`, 'reculement', width);
-    drawDimH(ctx, left, bottom + 58, left + run, `Longueur ${values.longueur} mm`, 'longueur', width);
-    drawDimV(ctx, right - 126, top, top + (bottom - top) * 0.38, `Échappée ${values.echappee} mm`, 'echappee', width);
-
-    drawTextBox(ctx, `${values.marchesNombre} marches`, left + run * 0.32, bottom - 96, { active: isActive('marchesNombre'), maxWidth: width });
-    drawTextBox(ctx, `H marche ${values.hauteurMarche} mm`, left + run * 0.32, bottom - 70, { active: isActive(['hauteur', 'marchesNombre']), maxWidth: width });
-    drawTextBox(ctx, `Giron env. ${values.giron} mm`, left + run * 0.66, bottom - 52, { active: isActive(['longueur', 'marchesNombre']), maxWidth: width });
-    ctx.restore();
+  function svgGrid(width, height) {
+    const lines = [];
+    for (let x = 20; x < width; x += 20) lines.push(`<line class="grid-line" x1="${x}" y1="0" x2="${x}" y2="${height}"/>`);
+    for (let y = 20; y < height; y += 20) lines.push(`<line class="grid-line" x1="0" y1="${y}" x2="${width}" y2="${y}"/>`);
+    return lines.join('');
   }
 
-  function drawTopPlan(values) {
-    const prepared = prepareCanvas(topViewCanvas, topViewContext);
-    if (!prepared) return;
-    const ctx = topViewContext;
-    const { width, height } = prepared;
-    const flightWidth = clamp(height * 0.17, 58, 82);
-    const title = values.stairType === 'double-quarter'
-      ? 'Vue dessus - deux quarts tournants'
-      : values.stairType === 'quarter'
-        ? 'Vue dessus - quart tournant'
-        : 'Vue dessus - droit';
+  function labelBox(text, x, y, width, key = '') {
+    const active = key && isActive(key) ? ' active' : '';
+    return `<g class="${active.trim()}"><rect class="label-box" x="${x - width / 2}" y="${y - 12}" width="${width}" height="24" rx="6"/><text class="label" x="${x}" y="${y + 4}" text-anchor="middle">${text}</text></g>`;
+  }
 
-    ctx.save();
-    ctx.fillStyle = PLAN_THEME.text;
-    ctx.font = '600 13px Segoe UI';
-    ctx.fillText(title, 18, 26);
+  function dimH(x1, y, x2, label, key, offset = 10) {
+    const active = isActive(key) ? ' active' : '';
+    const textY = y - offset;
+    return `<g class="dim-group${active}">
+      <line class="dim-line" x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" marker-start="url(#${svgMarkerPrefix}DimArrow)" marker-end="url(#${svgMarkerPrefix}DimArrow)"/>
+      <line class="dim-line" x1="${x1}" y1="${y - 9}" x2="${x1}" y2="${y + 9}"/>
+      <line class="dim-line" x1="${x2}" y1="${y - 9}" x2="${x2}" y2="${y + 9}"/>
+      <text class="dim-label" x="${(x1 + x2) / 2}" y="${textY}" text-anchor="middle">${label}</text>
+    </g>`;
+  }
 
-    const x = 76;
-    const y = height * 0.5 - flightWidth / 2;
-    const runLength = width - 152;
-    let tremieArea = null;
+  function dimV(x, y1, y2, label, key, textSide = 'left') {
+    const active = isActive(key) ? ' active' : '';
+    const textX = textSide === 'right' ? x + 15 : x - 15;
+    const anchor = textSide === 'right' ? 'start' : 'end';
+    return `<g class="dim-group${active}">
+      <line class="dim-line" x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" marker-start="url(#${svgMarkerPrefix}DimArrow)" marker-end="url(#${svgMarkerPrefix}DimArrow)"/>
+      <line class="dim-line" x1="${x - 9}" y1="${y1}" x2="${x + 9}" y2="${y1}"/>
+      <line class="dim-line" x1="${x - 9}" y1="${y2}" x2="${x + 9}" y2="${y2}"/>
+      <text class="dim-label" x="${textX}" y="${(y1 + y2) / 2 + 4}" text-anchor="${anchor}">${label}</text>
+    </g>`;
+  }
+
+  function arrowPolyline(points) {
+    return `<polyline class="thin-line" points="${points.map((point) => point.join(',')).join(' ')}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>`;
+  }
+
+  function stepLinesHorizontal(x, y, width, height, count) {
+    const lines = [];
+    const risers = clamp(Math.round(count), 3, 22);
+    for (let index = 1; index < risers; index += 1) {
+      const stepX = x + (width / risers) * index;
+      lines.push(`<line class="thin-line" x1="${stepX}" y1="${y + 8}" x2="${stepX}" y2="${y + height - 8}"/>`);
+    }
+    return lines.join('');
+  }
+
+  function stepLinesVertical(x, y, width, height, count) {
+    const lines = [];
+    const risers = clamp(Math.round(count), 3, 22);
+    for (let index = 1; index < risers; index += 1) {
+      const stepY = y + (height / risers) * index;
+      lines.push(`<line class="thin-line" x1="${x + 8}" y1="${stepY}" x2="${x + width - 8}" y2="${stepY}"/>`);
+    }
+    return lines.join('');
+  }
+
+  function turnLines(x, y, size, mode) {
+    const lines = [];
+    for (let index = 1; index <= 4; index += 1) {
+      const ratio = index / 5;
+      if (mode === 'left-up') {
+        lines.push(`<line class="thin-line" x1="${x + 10 + ratio * (size - 20)}" y1="${y + size - 10}" x2="${x + 10}" y2="${y + size - 10 - ratio * (size - 20)}"/>`);
+      } else {
+        lines.push(`<line class="thin-line" x1="${x + size - 10}" y1="${y + 10 + ratio * (size - 20)}" x2="${x + size - 10 - ratio * (size - 20)}" y2="${y + size - 10}"/>`);
+      }
+    }
+    return lines.join('');
+  }
+
+  function svgShell(width, height, body) {
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <marker id="${svgMarkerPrefix}DimArrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M 0 0 L 8 4 L 0 8 z" fill="#ff7a00"/>
+        </marker>
+        <marker id="${svgMarkerPrefix}TravelArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="strokeWidth">
+          <path d="M 0 0 L 9 4.5 L 0 9 z" fill="#1f2933"/>
+        </marker>
+      </defs>
+      <rect class="sheet-bg" x="0" y="0" width="${width}" height="${height}"/>
+      ${svgGrid(width, height)}
+      ${body}
+    </svg>`;
+  }
+
+  function renderSidePlan(values) {
+    svgMarkerPrefix = 'sidePlan';
+    const width = 760;
+    const height = 430;
+    const left = 116;
+    const right = 650;
+    const top = 78;
+    const bottom = 304;
+    const run = right - left;
+    const steps = values.marchesGeom;
+    let stairPath = `M ${left} ${bottom}`;
+    for (let index = 1; index <= steps; index += 1) {
+      const x = left + (run / steps) * index;
+      const y = bottom - ((bottom - top) / steps) * index;
+      const prevY = bottom - ((bottom - top) / steps) * (index - 1);
+      stairPath += ` L ${x} ${prevY} L ${x} ${y}`;
+    }
+
+    const body = `
+      <line class="cut-line" x1="72" y1="${bottom}" x2="696" y2="${bottom}"/>
+      <text class="caption" x="74" y="${bottom + 23}">Sol bas / départ</text>
+      <rect class="slab-fill" x="${right - 8}" y="${top - 13}" width="86" height="22"/>
+      <line class="cut-line" x1="${right - 22}" y1="${top}" x2="${right + 96}" y2="${top}"/>
+      <text class="caption" x="${right - 8}" y="${top - 24}">Sol haut / dalle</text>
+      <path class="outline-line" d="${stairPath}"/>
+      <line class="thin-line" x1="${left}" y1="${bottom}" x2="${right}" y2="${top}"/>
+      ${arrowPolyline([[left + 38, bottom - 22], [right - 72, top + 26]])}
+      <text class="caption" x="${left + 314}" y="${top + 52}" text-anchor="middle">Sens de montée</text>
+      ${dimV(76, top, bottom, `Hauteur ${formatMeasure(values.hauteur)}`, 'hauteur')}
+      ${dimH(left, 342, right, `Reculement ${formatMeasure(values.reculement)}`, 'reculement')}
+      ${dimH(left, 380, right, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
+      ${dimV(right + 58, top + 12, top + 112, `Échappée ${formatMeasure(values.echappee)}`, 'echappee', 'right')}
+      ${labelBox(`${formatMeasure(values.marchesNombre, 'marches')}`, left + 174, bottom - 108, 112, 'marchesNombre')}
+      ${labelBox(`H marche ${formatMeasure(values.hauteurMarche)}`, left + 202, bottom - 74, 150, 'hauteur')}
+      ${labelBox(`Giron ${formatMeasure(values.giron)}`, left + 410, bottom - 54, 126, 'longueur')}
+    `;
+    sideViewSvg.innerHTML = svgShell(width, height, body);
+  }
+
+  function renderTremie(values, x, y, width, height) {
+    if (values.tremieType !== 'l') {
+      return `<rect class="tremie-fill" x="${x}" y="${y}" width="${width}" height="${height}"/>
+        <text class="caption" x="${x + width / 2}" y="${y + height / 2 + 4}" text-anchor="middle">TRÉMIE</text>
+        ${dimH(x, y - 20, x + width, `Trémie L ${formatMeasure(values.tremieLongueur)}`, 'tremieLongueur')}
+        ${dimV(x + width + 24, y, y + height, `l ${formatMeasure(values.tremieLargeur)}`, 'tremieLargeur', 'right')}`;
+    }
+
+    const notchW = clamp(width * (values.tremieLRetourLongueur.geom / Math.max(values.tremieLGrandeLongueur.geom, 1)), 42, width - 28);
+    const notchH = clamp(height * (values.tremieLRetourLargeur.geom / Math.max(values.tremieLGrandeLargeur.geom, 1)), 36, height - 28);
+    const path = `M ${x} ${y} H ${x + width} V ${y + notchH} H ${x + notchW} V ${y + height} H ${x} Z`;
+    return `<path class="tremie-fill" d="${path}"/>
+      <text class="caption" x="${x + width / 2}" y="${y + 18}" text-anchor="middle">TRÉMIE EN L</text>
+      ${dimH(x, y - 20, x + width, `A ${formatMeasure(values.tremieLGrandeLongueur)}`, 'tremieLGrandeLongueur')}
+      ${dimV(x + width + 24, y, y + height, `B ${formatMeasure(values.tremieLGrandeLargeur)}`, 'tremieLGrandeLargeur', 'right')}
+      ${dimH(x, y + height + 28, x + notchW, `C ${formatMeasure(values.tremieLRetourLongueur)}`, 'tremieLRetourLongueur', 8)}
+      ${dimV(x - 24, y + notchH, y + height, `D ${formatMeasure(values.tremieLRetourLargeur)}`, 'tremieLRetourLargeur')}`;
+  }
+
+  function renderTopPlan(values) {
+    svgMarkerPrefix = 'topPlan';
+    const width = 760;
+    const height = 430;
+    const flight = 68;
+    const startX = 112;
+    const centerY = 208;
+    let body = '';
+    let tremie = { x: 472, y: 152, width: 142, height: 90 };
 
     if (values.stairType === 'straight') {
-      drawFlightRect(ctx, x, y, runLength, flightWidth);
-      drawRisers(ctx, x, y, runLength, flightWidth, values.marchesNombre, 'x');
-      drawTravelArrow(ctx, [[x + 22, y + flightWidth / 2], [x + runLength - 24, y + flightWidth / 2]]);
-      drawTextBox(ctx, 'Départ', x + 28, y - 18, { maxWidth: width });
-      drawTextBox(ctx, 'Arrivée', x + runLength - 28, y - 18, { maxWidth: width });
-      drawDimH(ctx, x, y + flightWidth + 34, x + runLength, `Longueur ${values.longueur} mm`, 'longueur', width);
-      drawDimV(ctx, x - 28, y, y + flightWidth, `Largeur ${values.largeur} mm`, 'largeur', width);
-      tremieArea = { x: x + runLength * 0.58, y: y + 10, width: runLength * 0.25, height: flightWidth - 20 };
+      const run = 486;
+      const y = centerY - flight / 2;
+      body += `<rect class="stair-fill" x="${startX}" y="${y}" width="${run}" height="${flight}"/>
+        ${stepLinesHorizontal(startX, y, run, flight, values.marchesGeom)}
+        ${arrowPolyline([[startX + 30, centerY], [startX + run - 34, centerY]])}
+        <text class="caption" x="${startX + 8}" y="${y - 14}">Départ</text>
+        <text class="caption" x="${startX + run - 48}" y="${y - 14}">Arrivée</text>
+        ${dimH(startX, y + flight + 42, startX + run, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
+        ${dimV(startX - 34, y, y + flight, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}`;
+      tremie = { x: startX + run * 0.62, y: y + 10, width: 134, height: 48 };
     } else if (values.stairType === 'quarter') {
-      const horizontal = clamp(width * 0.52, 230, 360);
-      const vertical = clamp(height * 0.55, 180, 250);
-      const turnX = x + horizontal - flightWidth;
-      const turnY = height - 88 - flightWidth;
-      const startY = turnY;
-      const topY = turnY - vertical + flightWidth;
-      drawFlightRect(ctx, x, startY, horizontal, flightWidth);
-      drawFlightRect(ctx, turnX, topY, flightWidth, vertical);
-      drawTurnWinders(ctx, turnX, startY, flightWidth, 'left-up');
-      drawRisers(ctx, x, startY, horizontal - flightWidth, flightWidth, Math.ceil(values.marchesNombre * 0.58), 'x');
-      drawRisers(ctx, turnX, topY, flightWidth, vertical - flightWidth, Math.ceil(values.marchesNombre * 0.42), 'y');
-      drawTravelArrow(ctx, [[x + 22, startY + flightWidth / 2], [turnX + flightWidth / 2, startY + flightWidth / 2], [turnX + flightWidth / 2, topY + 24]]);
-      drawTextBox(ctx, 'Départ', x + 30, startY - 18, { maxWidth: width });
-      drawTextBox(ctx, 'Arrivée', turnX + flightWidth + 36, topY + 20, { maxWidth: width });
-      drawDimH(ctx, x, startY + flightWidth + 32, x + horizontal, `Longueur ${values.longueur} mm`, 'longueur', width);
-      drawDimV(ctx, x + horizontal + 30, topY, startY + flightWidth, `Reculement ${values.reculement} mm`, 'reculement', width);
-      drawDimV(ctx, x - 28, startY, startY + flightWidth, `Largeur ${values.largeur} mm`, 'largeur', width);
-      tremieArea = { x: turnX - 118, y: topY + 18, width: 112, height: Math.max(74, vertical - flightWidth - 40) };
+      const horizontal = 344;
+      const vertical = 210;
+      const turnX = startX + horizontal - flight;
+      const bottomY = 292 - flight;
+      const topY = bottomY - vertical + flight;
+      body += `<rect class="stair-fill" x="${startX}" y="${bottomY}" width="${horizontal}" height="${flight}"/>
+        <rect class="stair-fill" x="${turnX}" y="${topY}" width="${flight}" height="${vertical}"/>
+        ${stepLinesHorizontal(startX, bottomY, horizontal - flight, flight, Math.ceil(values.marchesGeom * 0.58))}
+        ${stepLinesVertical(turnX, topY, flight, vertical - flight, Math.ceil(values.marchesGeom * 0.42))}
+        ${turnLines(turnX, bottomY, flight, 'left-up')}
+        ${arrowPolyline([[startX + 28, bottomY + flight / 2], [turnX + flight / 2, bottomY + flight / 2], [turnX + flight / 2, topY + 28]])}
+        <text class="caption" x="${startX + 8}" y="${bottomY - 14}">Départ</text>
+        <text class="caption" x="${turnX + 78}" y="${topY + 22}">Arrivée</text>
+        ${dimH(startX, bottomY + flight + 40, startX + horizontal, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
+        ${dimV(startX + horizontal + 36, topY, bottomY + flight, `Reculement ${formatMeasure(values.reculement)}`, 'reculement', 'right')}
+        ${dimV(startX - 34, bottomY, bottomY + flight, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}`;
+      tremie = { x: turnX - 132, y: topY + 20, width: 116, height: 122 };
     } else {
-      const horizontal = clamp(width * 0.48, 220, 330);
-      const vertical = clamp(height * 0.58, 190, 260);
-      const turnX = x + horizontal - flightWidth;
-      const topY = 74;
-      const bottomY = topY + vertical - flightWidth;
-      drawFlightRect(ctx, x, topY, horizontal, flightWidth);
-      drawFlightRect(ctx, turnX, topY, flightWidth, vertical);
-      drawFlightRect(ctx, x, bottomY, horizontal, flightWidth);
-      drawTurnWinders(ctx, turnX, topY, flightWidth, 'down-left');
-      drawTurnWinders(ctx, turnX, bottomY, flightWidth, 'left-up');
-      drawRisers(ctx, x, topY, horizontal - flightWidth, flightWidth, Math.ceil(values.marchesNombre * 0.34), 'x');
-      drawRisers(ctx, turnX, topY + flightWidth, flightWidth, vertical - flightWidth * 2, Math.ceil(values.marchesNombre * 0.32), 'y');
-      drawRisers(ctx, x, bottomY, horizontal - flightWidth, flightWidth, Math.ceil(values.marchesNombre * 0.34), 'x');
-      drawTravelArrow(ctx, [[x + 22, bottomY + flightWidth / 2], [turnX + flightWidth / 2, bottomY + flightWidth / 2], [turnX + flightWidth / 2, topY + flightWidth / 2], [x + 24, topY + flightWidth / 2]]);
-      drawTextBox(ctx, 'Départ', x + 30, bottomY - 18, { maxWidth: width });
-      drawTextBox(ctx, 'Arrivée', x + 30, topY - 18, { maxWidth: width });
-      drawDimH(ctx, x, bottomY + flightWidth + 32, x + horizontal, `Longueur ${values.longueur} mm`, 'longueur', width);
-      drawDimV(ctx, x + horizontal + 30, topY, bottomY + flightWidth, `Reculement ${values.reculement} mm`, 'reculement', width);
-      drawDimV(ctx, x - 28, topY, topY + flightWidth, `Largeur ${values.largeur} mm`, 'largeur', width);
-      tremieArea = { x: x + 28, y: topY + flightWidth + 18, width: horizontal - flightWidth - 56, height: vertical - flightWidth * 2 - 36 };
+      const horizontal = 330;
+      const vertical = 236;
+      const turnX = startX + horizontal - flight;
+      const topY = 80;
+      const bottomY = topY + vertical - flight;
+      body += `<rect class="stair-fill" x="${startX}" y="${topY}" width="${horizontal}" height="${flight}"/>
+        <rect class="stair-fill" x="${turnX}" y="${topY}" width="${flight}" height="${vertical}"/>
+        <rect class="stair-fill" x="${startX}" y="${bottomY}" width="${horizontal}" height="${flight}"/>
+        ${stepLinesHorizontal(startX, topY, horizontal - flight, flight, Math.ceil(values.marchesGeom * 0.34))}
+        ${stepLinesVertical(turnX, topY + flight, flight, vertical - flight * 2, Math.ceil(values.marchesGeom * 0.32))}
+        ${stepLinesHorizontal(startX, bottomY, horizontal - flight, flight, Math.ceil(values.marchesGeom * 0.34))}
+        ${turnLines(turnX, topY, flight, 'down-left')}
+        ${turnLines(turnX, bottomY, flight, 'left-up')}
+        ${arrowPolyline([[startX + 28, bottomY + flight / 2], [turnX + flight / 2, bottomY + flight / 2], [turnX + flight / 2, topY + flight / 2], [startX + 28, topY + flight / 2]])}
+        <text class="caption" x="${startX + 8}" y="${bottomY - 14}">Départ</text>
+        <text class="caption" x="${startX + 8}" y="${topY - 14}">Arrivée</text>
+        ${dimH(startX, bottomY + flight + 40, startX + horizontal, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
+        ${dimV(startX + horizontal + 36, topY, bottomY + flight, `Reculement ${formatMeasure(values.reculement)}`, 'reculement', 'right')}
+        ${dimV(startX - 34, topY, topY + flight, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}`;
+      tremie = { x: startX + 34, y: topY + flight + 22, width: 162, height: 80 };
     }
 
-    const tremieDrawWidth = values.tremieType === 'l' ? Math.min(160, tremieArea.width + 38) : Math.min(160, tremieArea.width + 30);
-    const tremieDrawHeight = values.tremieType === 'l' ? Math.min(132, tremieArea.height + 22) : Math.min(100, tremieArea.height);
-    const returnLength = values.tremieType === 'l' ? Math.max(36, Math.min(tremieDrawWidth - 24, tremieDrawWidth * (values.tremieLRetourLongueur / Math.max(values.tremieLGrandeLongueur, 1)))) : 0;
-    const returnWidth = values.tremieType === 'l' ? Math.max(34, Math.min(tremieDrawHeight - 24, tremieDrawHeight * (values.tremieLRetourLargeur / Math.max(values.tremieLGrandeLargeur, 1)))) : 0;
-
-    drawTremie(ctx, {
-      x: tremieArea.x,
-      y: tremieArea.y,
-      width: tremieDrawWidth,
-      height: tremieDrawHeight,
-      type: values.tremieType,
-      returnLength,
-      returnWidth
-    });
-
-    if (values.tremieType === 'l') {
-      drawDimH(ctx, tremieArea.x, tremieArea.y - 18, tremieArea.x + tremieDrawWidth, `A ${values.tremieLGrandeLongueur} mm`, 'tremieLGrandeLongueur', width);
-      drawDimV(ctx, tremieArea.x + tremieDrawWidth + 20, tremieArea.y, tremieArea.y + tremieDrawHeight, `B ${values.tremieLGrandeLargeur} mm`, 'tremieLGrandeLargeur', width);
-      drawDimH(ctx, tremieArea.x, tremieArea.y + tremieDrawHeight + 24, tremieArea.x + returnLength, `C ${values.tremieLRetourLongueur} mm`, 'tremieLRetourLongueur', width);
-      drawDimV(ctx, tremieArea.x - 20, tremieArea.y + returnWidth, tremieArea.y + tremieDrawHeight, `D ${values.tremieLRetourLargeur} mm`, 'tremieLRetourLargeur', width);
-    } else {
-      drawDimH(ctx, tremieArea.x, tremieArea.y - 18, tremieArea.x + tremieDrawWidth, `A ${values.tremieLongueur} mm`, 'tremieLongueur', width);
-      drawDimV(ctx, tremieArea.x + tremieDrawWidth + 20, tremieArea.y, tremieArea.y + tremieDrawHeight, `B ${values.tremieLargeur} mm`, 'tremieLargeur', width);
-    }
-    ctx.restore();
+    body += renderTremie(values, tremie.x, tremie.y, tremie.width, tremie.height);
+    topViewSvg.innerHTML = svgShell(width, height, body);
   }
 
-  function drawPlans() {
+  function renderPlans() {
     const values = getPlanValues();
-    drawSideView(values);
-    drawTopPlan(values);
-  }
-
-  function drawTopView() {
-    drawPlans();
+    if (sideViewSvg) renderSidePlan(values);
+    if (topViewSvg) renderTopPlan(values);
   }
 
   function renderPhotos() {
@@ -679,7 +400,7 @@ const PLAN_THEME = {
     photos = Array.isArray(record.photos) ? record.photos.slice() : [];
     renderPhotos();
     syncTremieGroups();
-    drawTopView();
+    renderPlans();
     currentRecordName = record.recordName || '';
     saveStatus.textContent = record.updatedAt
       ? `Fiche chargée - dernière sauvegarde le ${new Date(record.updatedAt).toLocaleString('fr-FR')}`
@@ -809,7 +530,7 @@ const PLAN_THEME = {
     photos = [];
     renderPhotos();
     syncTremieGroups();
-    drawTopView();
+    renderPlans();
     currentRecordName = '';
     currentServerId = null;
     saveStatus.textContent = 'Nouvelle fiche prête';
@@ -857,7 +578,7 @@ const PLAN_THEME = {
   form.querySelectorAll(planSelector).forEach((input) => {
     const updateActivePlan = () => {
       activeMeasure = input.name;
-      drawTopView();
+      renderPlans();
     };
     input.addEventListener('focus', updateActivePlan);
     input.addEventListener('input', updateActivePlan);
@@ -866,7 +587,7 @@ const PLAN_THEME = {
       window.setTimeout(() => {
         if (!form.contains(document.activeElement) || !planFieldNames.includes(document.activeElement.name)) {
           activeMeasure = '';
-          drawTopView();
+          renderPlans();
         }
       }, 80);
     });
@@ -876,18 +597,18 @@ const PLAN_THEME = {
   if (tremieTypeControl) {
     tremieTypeControl.addEventListener('change', () => {
       syncTremieGroups();
-      drawTopView();
+      renderPlans();
     });
   }
 
   window.addEventListener('resize', () => {
-    drawTopView();
+    renderPlans();
   });
 
   setDefaultValues();
   initServerLinks();
   syncTremieGroups();
-  drawTopView();
+  renderPlans();
   saveStatus.textContent = getStoredRecords().length
     ? 'Des fiches locales sont disponibles'
     : 'Aucune sauvegarde chargée';
