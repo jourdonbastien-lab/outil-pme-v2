@@ -2607,24 +2607,95 @@ button:hover {
   }
 
 }
-.planning-week{
+.agenda-page-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+}
+
+.agenda-view-switch{
+  display:inline-flex;
+  gap:6px;
+  padding:5px;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
+
+.agenda-view-switch a{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:38px;
+  padding:8px 14px;
+  border-radius:9px;
+  color:#374151;
+  text-decoration:none;
+  font-weight:800;
+}
+
+.agenda-view-switch a.active{
+  background:#ff7a00;
+  color:#111827;
+}
+
+.agenda-toolbar{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-bottom:15px;
+}
+
+.planning-week,
+.planning-month{
   display:grid;
-  grid-template-columns:repeat(5,1fr);
   gap:15px;
 }
 
-.planning-day{
+.planning-week{
+  grid-template-columns:repeat(7,minmax(0,1fr));
+}
+
+.planning-month{
+  grid-template-columns:repeat(7,minmax(0,1fr));
+}
+
+.planning-single-day{
+  display:grid;
+  grid-template-columns:minmax(0, 520px);
+}
+
+.planning-day,
+.planning-month-day{
+  min-width:0;
   background:#fff;
   border-radius:14px;
   padding:12px;
   box-shadow:0 2px 10px rgba(0,0,0,.08);
 }
 
-.planning-day-header{
+.planning-month-day.today{
+  border:2px solid #ff7a00;
+}
+
+.planning-day-header,
+.planning-month-header{
   font-size:18px;
   font-weight:700;
   margin-bottom:12px;
   text-align:center;
+}
+
+.planning-day-header span,
+.planning-month-header span{
+  display:block;
+  margin-top:3px;
+  color:#6b7280;
+  font-size:12px;
+  font-weight:800;
+  text-transform:capitalize;
 }
 
 .planning-events{
@@ -2634,10 +2705,15 @@ button:hover {
 }
 
 .planning-event{
+  width:100%;
+  min-height:0;
+  border:0;
   border-radius:10px;
   padding:10px;
   color:#fff;
   cursor:pointer;
+  text-align:left;
+  line-height:1.25;
 }
 
 .planning-event.pose{
@@ -2653,10 +2729,14 @@ button:hover {
 }
 
 .planning-event-title{
+  display:block;
   font-weight:600;
+  overflow-wrap:anywhere;
 }
 
 .planning-event-time{
+  display:block;
+  margin-top:4px;
   font-size:12px;
   opacity:.9;
 }
@@ -2668,16 +2748,56 @@ button:hover {
 
 @media(max-width:768px){
 
-  .planning-week{
-    display:flex;
-    overflow-x:auto;
+  .agenda-page-head{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .agenda-view-switch{
+    width:100%;
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+
+  .agenda-view-switch a{
+    min-height:46px;
+    padding:10px 8px;
+    font-size:16px;
+  }
+
+  .agenda-toolbar{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+
+  .agenda-toolbar .btn,
+  .agenda-toolbar button{
+    width:100%;
+  }
+
+  .planning-week,
+  .planning-month,
+  .planning-single-day{
+    display:grid;
+    grid-template-columns:1fr;
     gap:12px;
+    overflow:visible;
   }
 
-  .planning-day{
-    min-width:260px;
+  .planning-day,
+  .planning-month-day{
+    min-width:0;
+    width:100%;
+    padding:14px;
+    border-radius:12px;
   }
 
+  .planning-day-header,
+  .planning-month-header{
+    text-align:left;
+    font-size:18px;
+    margin-bottom:10px;
+  }
 }
 .tool-box{
   background:#fff;

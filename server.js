@@ -2067,6 +2067,8 @@ app.post('/tasks/to-invoice', requireLogin, (req, res) => {
 });
 /* ===================== AGENDA ===================== */
 app.get('/agenda', requireLogin, (req, res) => {
+  const requestedView = String(req.query.view || 'week').trim().toLowerCase();
+  const agendaView = ['day', 'week', 'month'].includes(requestedView) ? requestedView : 'week';
 
   const events = db.prepare(`
     SELECT *
@@ -2074,143 +2076,173 @@ app.get('/agenda', requireLogin, (req, res) => {
     ORDER BY start_date ASC
   `).all();
 
-const now = new Date();
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
 
-const monday = new Date(now);
-monday.setDate(
-  now.getDate() -
-  ((now.getDay() + 6) % 7)
-);
-monday.setHours(0,0,0,0);
+  const tomorrow = new Date(todayStart);
+  tomorrow.setDate(todayStart.getDate() + 1);
 
-const sunday = new Date(monday);
-sunday.setDate(monday.getDate() + 7);
+  const monday = new Date(todayStart);
+  monday.setDate(todayStart.getDate() - ((todayStart.getDay() + 6) % 7));
 
-const weekEvents = events.filter(e => {
+  const nextMonday = new Date(monday);
+  nextMonday.setDate(monday.getDate() + 7);
 
-  const d = new Date(e.start_date);
+  const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
+  const nextMonth = new Date(todayStart.getFullYear(), todayStart.getMonth() + 1, 1);
 
-  return d >= monday && d < sunday;
-
-});
-
-const days = {
-  1: [],
-  2: [],
-  3: [],
-  4: [],
-  5: []
-};
-
-weekEvents.forEach(e => {
-
-  const date = new Date(e.start_date);
-  const day = date.getDay();
-
-  if(day >= 1 && day <= 5){
-    days[day].push(e);
+  function eventDate(event) {
+    const date = new Date(event.start_date);
+    return Number.isNaN(date.getTime()) ? null : date;
   }
 
-});
-Object.values(days).forEach(list => {
+  function inRange(event, start, end) {
+    const date = eventDate(event);
+    return date && date >= start && date < end;
+  }
 
-  list.sort((a,b) =>
-    new Date(a.start_date) -
-    new Date(b.start_date)
-  );
+  function formatAgendaDate(date) {
+    return date.toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long'
+    });
+  }
 
-});
-  const dayNames = {
-    1: 'Lundi',
-    2: 'Mardi',
-    3: 'Mercredi',
-    4: 'Jeudi',
-    5: 'Vendredi'
+  function formatAgendaTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function renderAgendaEvent(event) {
+    const start = formatAgendaTime(event.start_date);
+    const end = formatAgendaTime(event.end_date);
+    return `
+      <button
+        type="button"
+        class="planning-event ${escHtml(event.type || 'rdv')}"
+        data-event-id="${event.id}"
+        data-event-title="${escHtml(event.title || '')}"
+        data-event-type="${escHtml(event.type || 'rdv')}"
+        data-event-start="${escHtml(event.start_date || '')}"
+        data-event-end="${escHtml(event.end_date || '')}"
+      >
+        <span class="planning-event-title">${escHtml(event.title || 'Événement')}</span>
+        <span class="planning-event-time">${escHtml(start)}${end ? ' - ' + escHtml(end) : ''}</span>
+      </button>
+    `;
+  }
+
+  function renderEventsList(list) {
+    const sorted = list.slice().sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+    return sorted.length
+      ? sorted.map(renderAgendaEvent).join('')
+      : '<div class="planning-empty">Aucun événement</div>';
+  }
+
+  const dayLabels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+
+  function renderDayView() {
+    const dayEvents = events.filter((event) => inRange(event, todayStart, tomorrow));
+    return `
+      <div class="planning-single-day">
+        <div class="planning-day">
+          <div class="planning-day-header">${escHtml(formatAgendaDate(todayStart))}</div>
+          <div class="planning-events">${renderEventsList(dayEvents)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderWeekView() {
+    const columns = dayLabels.map((label, index) => {
+      const dayStart = new Date(monday);
+      dayStart.setDate(monday.getDate() + index);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayStart.getDate() + 1);
+      const dayEvents = events.filter((event) => inRange(event, dayStart, dayEnd));
+
+      return `
+        <div class="planning-day">
+          <div class="planning-day-header">${escHtml(label)} <span>${dayStart.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span></div>
+          <div class="planning-events">${renderEventsList(dayEvents)}</div>
+        </div>
+      `;
+    }).join('');
+
+    return `<div class="planning-week">${columns}</div>`;
+  }
+
+  function renderMonthView() {
+    const days = [];
+    for (let date = new Date(monthStart); date < nextMonth; date.setDate(date.getDate() + 1)) {
+      const dayStart = new Date(date);
+      const dayEnd = new Date(date);
+      dayEnd.setDate(date.getDate() + 1);
+      const dayEvents = events.filter((event) => inRange(event, dayStart, dayEnd));
+
+      days.push(`
+        <div class="planning-month-day${dayStart.toDateString() === todayStart.toDateString() ? ' today' : ''}">
+          <div class="planning-month-header">
+            <strong>${dayStart.toLocaleDateString('fr-FR', { day: '2-digit' })}</strong>
+            <span>${dayStart.toLocaleDateString('fr-FR', { weekday: 'short' })}</span>
+          </div>
+          <div class="planning-events">${renderEventsList(dayEvents)}</div>
+        </div>
+      `);
+    }
+
+    return `<div class="planning-month">${days.join('')}</div>`;
+  }
+
+  const agendaLabels = {
+    day: 'Planning jour',
+    week: 'Planning semaine',
+    month: 'Planning mois'
   };
 
-  const columns = Object.keys(days).map(day => `
+  const agendaBody = agendaView === 'day'
+    ? renderDayView()
+    : agendaView === 'month'
+      ? renderMonthView()
+      : renderWeekView();
 
-    <div class="planning-day">
+  const viewSelector = `
+    <nav class="agenda-view-switch" aria-label="Vue agenda">
+      <a class="${agendaView === 'day' ? 'active' : ''}" href="/agenda?view=day">Jour</a>
+      <a class="${agendaView === 'week' ? 'active' : ''}" href="/agenda?view=week">Semaine</a>
+      <a class="${agendaView === 'month' ? 'active' : ''}" href="/agenda?view=month">Mois</a>
+    </nav>
+  `;
 
-      <div class="planning-day-header">
-        ${dayNames[day]}
+  const googleSyncButton = `
+    <a class="btn btn-secondary" href="/google/sync">
+      Synchroniser Google Agenda
+    </a>
+  `;
+
+  const newEventButton = `
+    <button class="btn btn-primary" type="button" onclick="newEvent()">
+      + Nouvel événement
+    </button>
+  `;
+
+  const pageTitle = agendaLabels[agendaView];
+
+  const content = `
+      <div class="page-head agenda-page-head">
+        <h1>${escHtml(pageTitle)}</h1>
+        ${viewSelector}
       </div>
 
-      <div class="planning-events">
-
-        ${
-          days[day].length
-          ? days[day].map(e => `
-
-            <div
-              class="planning-event ${e.type || 'rdv'}"
-              onclick="editEvent(
-                '${e.id}',
-                '${(e.title || '').replace(/'/g,"\\'")}',
-                '${e.type || 'rdv'}',
-                '${e.start_date}',
-                '${e.end_date}'
-              )"
-            >
-
-              <div class="planning-event-title">
-                ${escHtml(e.title)}
-              </div>
-
-              <div class="planning-event-time">
-                ${new Date(e.start_date).toLocaleTimeString(
-                  'fr-FR',
-                  {
-                    hour:'2-digit',
-                    minute:'2-digit'
-                  }
-                )}
-              </div>
-
-            </div>
-
-          `).join('')
-
-          : `<div class="planning-empty">
-               Aucun événement
-             </div>`
-        }
-
+      <div class="agenda-toolbar">
+        ${googleSyncButton}
+        ${newEventButton}
       </div>
 
-    </div>
-
-  `).join('');
-
-  res.send(
-    pageTemplate(
-      req,
-      'Agenda',
-      `
-
-      <div class="page-head">
-        <h1>Planning semaine</h1>
-      </div>
-
-      <div style="margin-bottom:15px">
-
-        <a href="/google/sync">
-          <button>
-            Synchroniser Google Agenda
-          </button>
-        </a>
-
-      </div>
-<div style="margin-bottom:15px;">
-  <button onclick="newEvent()">
-    ➕ Nouvel événement
-  </button>
-</div>
-      <div class="planning-week">
-
-        ${columns}
-
-      </div>
+      ${agendaBody}
 
       <div id="event-editor" class="event-editor hidden">
 
@@ -2243,93 +2275,78 @@ Object.values(days).forEach(list => {
       </div>
 
       <script>
+      function toLocalDateTimeValue(date) {
+        const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+        return offsetDate.toISOString().slice(0, 16);
+      }
+
       function newEvent(){
+        document.getElementById('event-editor').classList.remove('hidden');
+        document.getElementById('edit-id').value = '';
+        document.getElementById('edit-title').value = '';
+        document.getElementById('edit-type').value = 'rdv';
 
-  document
-    .getElementById('event-editor')
-    .classList
-    .remove('hidden');
+        const now = new Date();
+        const endDate = new Date(now.getTime() + 60 * 60 * 1000);
 
-  document.getElementById('edit-id').value = '';
-  document.getElementById('edit-title').value = '';
-  document.getElementById('edit-type').value = 'rdv';
-
-  const now = new Date();
-
-  const start =
-    now.toISOString().slice(0,16);
-
-  const endDate = new Date(
-    now.getTime() + 60 * 60 * 1000
-  );
-
-  const end =
-    endDate.toISOString().slice(0,16);
-
-  document.getElementById('edit-start').value = start;
-  document.getElementById('edit-end').value = end;
-document.getElementById('delete-event').style.display = 'none';
-}
+        document.getElementById('edit-start').value = toLocalDateTimeValue(now);
+        document.getElementById('edit-end').value = toLocalDateTimeValue(endDate);
+        document.getElementById('delete-event').style.display = 'none';
+      }
 
       function editEvent(id,title,type,start,end){
-
-        document
-          .getElementById('event-editor')
-          .classList
-          .remove('hidden');
-
+        document.getElementById('event-editor').classList.remove('hidden');
         document.getElementById('edit-id').value=id;
         document.getElementById('edit-title').value=title;
         document.getElementById('edit-type').value=type;
-
-        document.getElementById('edit-start').value =
-          start.substring(0,16);
-
-        document.getElementById('edit-end').value =
-          end.substring(0,16);
-// Affiche le bouton supprimer
-  document.getElementById('delete-event').style.display = 'inline-block';
+        document.getElementById('edit-start').value = String(start || '').substring(0,16);
+        document.getElementById('edit-end').value = String(end || '').substring(0,16);
+        document.getElementById('delete-event').style.display = 'inline-block';
       }
 
+      document.querySelectorAll('.planning-event').forEach(function (button) {
+        button.addEventListener('click', function () {
+          editEvent(
+            button.dataset.eventId,
+            button.dataset.eventTitle,
+            button.dataset.eventType,
+            button.dataset.eventStart,
+            button.dataset.eventEnd
+          );
+        });
+      });
+
       document.getElementById('cancel-edit').onclick = () => {
-
-        document
-          .getElementById('event-editor')
-          .classList
-          .add('hidden');
-
+        document.getElementById('event-editor').classList.add('hidden');
       };
-document.getElementById('save-event').onclick = () => {
 
-  const payload = {
-    title: document.getElementById('edit-title').value,
-    type: document.getElementById('edit-type').value,
-    start_date: document.getElementById('edit-start').value,
-    end_date: document.getElementById('edit-end').value
-  };
+      document.getElementById('save-event').onclick = () => {
+        const payload = {
+          title: document.getElementById('edit-title').value,
+          type: document.getElementById('edit-type').value,
+          start_date: document.getElementById('edit-start').value,
+          end_date: document.getElementById('edit-end').value
+        };
 
-  const id =
-    document.getElementById('edit-id').value;
+        const id = document.getElementById('edit-id').value;
 
-  fetch(
-    id ? '/agenda/update' : '/agenda/add',
-    {
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json'
-      },
-      body: JSON.stringify(
-        id
-          ? { id, ...payload }
-          : payload
-      )
-    }
-  ).then(()=>location.reload());
-
-};
+        fetch(
+          id ? '/agenda/update' : '/agenda/add',
+          {
+            method:'POST',
+            headers:{
+              'Content-Type':'application/json'
+            },
+            body: JSON.stringify(
+              id
+                ? { id, ...payload }
+                : payload
+            )
+          }
+        ).then(()=>location.reload());
+      };
 
       document.getElementById('delete-event').onclick = () => {
-
         if(!confirm('Supprimer cet événement ?')) return;
 
         fetch('/agenda/delete',{
@@ -2341,15 +2358,17 @@ document.getElementById('save-event').onclick = () => {
             id:document.getElementById('edit-id').value
           })
         }).then(()=>location.reload());
-
       };
-
       </script>
+  `;
 
-      `
+  res.send(
+    pageTemplate(
+      req,
+      'Agenda',
+      content
     )
   );
-
 });
 
 /* ===================== PRISES DE COTES ===================== */
