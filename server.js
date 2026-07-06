@@ -1062,6 +1062,63 @@ function pageTemplate(req, title, content) {
 
   const isAtelier =
     req.session?.user?.role === 'atelier';
+  const isActivePath = (exactOrPrefix) => {
+    if (exactOrPrefix.endsWith('*')) return req.path.startsWith(exactOrPrefix.slice(0, -1));
+    return req.path === exactOrPrefix;
+  };
+  const bottomPrimaryLinks = isAtelier
+    ? [
+        { href: '/dashboard', icon: '🏠', label: 'Accueil', active: isActivePath('/dashboard') },
+        { href: '/orders/clients', icon: '📦', label: 'Commandes', active: isActivePath('/orders/clients*') },
+        { action: 'new', icon: '+', label: 'Nouveau', primary: true },
+        { href: '/outils/prises-cotes', icon: '📋', label: 'Cotes', active: isActivePath('/outils/prises-cotes*') },
+        { action: 'more', icon: '⋯', label: 'Plus' }
+      ]
+    : [
+        { href: '/dashboard', icon: '🏠', label: 'Accueil', active: isActivePath('/dashboard') },
+        { href: '/clients', icon: '👥', label: 'Clients', active: isActivePath('/clients*') },
+        { action: 'new', icon: '+', label: 'Nouveau', primary: true },
+        { href: '/agenda', icon: '📅', label: 'Agenda', active: isActivePath('/agenda') },
+        { action: 'more', icon: '⋯', label: 'Plus' }
+      ];
+  const mobileNewLinks = isAtelier
+    ? [
+        { href: '/outils/prises-cotes', label: 'Nouvelle prise de cote' }
+      ]
+    : [
+        { href: '/clients', label: 'Nouveau client' },
+        { href: '/devis/new', label: 'Nouveau devis' },
+        { href: '/orders/clients', label: 'Nouvelle commande client' },
+        { href: '/chantiers', label: 'Nouveau chantier' },
+        { href: '/outils/prises-cotes', label: 'Nouvelle prise de cote' }
+      ];
+  const mobileMoreLinks = isAtelier
+    ? [
+        { href: '/orders/clients', label: 'Commandes clients' },
+        { href: '/orders/suppliers', label: 'Commandes fournisseurs' },
+        { href: '/outils/prises-cotes', label: 'Prises de cotes' },
+        { href: '/outils/logibarre', label: 'LogiBarre' },
+        { href: '/outils/logitole', label: 'LogiTôle' },
+        { href: '/logout', label: 'Déconnexion' }
+      ]
+    : [
+        { href: '/devis', label: 'Devis' },
+        { href: '/orders/clients', label: 'Commandes clients' },
+        { href: '/orders/suppliers', label: 'Commandes fournisseurs' },
+        { href: '/chantiers', label: 'Chantiers' },
+        { href: '/outils/prises-cotes', label: 'Prises de cotes' },
+        { href: '/materials', label: 'Bibliothèque matière' },
+        { href: '/outils/logibarre', label: 'LogiBarre' },
+        { href: '/outils/logitole', label: 'LogiTôle' },
+        { href: '/logout', label: 'Déconnexion' }
+      ];
+  const renderBottomItem = (item) => {
+    if (item.href) {
+      return `<a class="mobile-bottom-item${item.active ? ' active' : ''}" href="${item.href}"><span>${item.icon}</span><small>${escHtml(item.label)}</small></a>`;
+    }
+    return `<button class="mobile-bottom-item${item.primary ? ' mobile-bottom-primary' : ''}" type="button" data-mobile-sheet="${item.action}" aria-expanded="false"><span>${item.icon}</span><small>${escHtml(item.label)}</small></button>`;
+  };
+  const renderSheetLinks = (links) => links.map((link) => `<a href="${link.href}">${escHtml(link.label)}</a>`).join('');
 
   return `
 <!DOCTYPE html>
@@ -1190,50 +1247,82 @@ ${isAtelier ? `
 
 </nav>
     </aside>
-<button id="mobileMenuBtn" class="mobile-menu-btn" type="button" aria-label="Ouvrir le menu" aria-expanded="false">
-☰
-</button>
     <main class="content">
       <div class="container">
         ${content}
       </div>
     </main>
   </div>
+  <div class="mobile-sheet-overlay" data-mobile-close hidden></div>
+  <nav class="mobile-bottom-nav" aria-label="Navigation mobile">
+    ${bottomPrimaryLinks.map(renderBottomItem).join('')}
+  </nav>
+  <section id="mobileNewSheet" class="mobile-bottom-sheet" aria-hidden="true">
+    <div class="mobile-sheet-handle"></div>
+    <h2>Nouveau</h2>
+    <div class="mobile-sheet-links">
+      ${renderSheetLinks(mobileNewLinks)}
+    </div>
+    <button type="button" class="mobile-sheet-cancel" data-mobile-close>Annuler</button>
+  </section>
+  <section id="mobileMoreSheet" class="mobile-bottom-sheet" aria-hidden="true">
+    <div class="mobile-sheet-handle"></div>
+    <h2>Plus</h2>
+    <div class="mobile-sheet-links">
+      ${renderSheetLinks(mobileMoreLinks)}
+    </div>
+    <button type="button" class="mobile-sheet-cancel" data-mobile-close>Annuler</button>
+  </section>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  const overlay = document.querySelector('.mobile-sheet-overlay');
+  const sheets = {
+    new: document.getElementById('mobileNewSheet'),
+    more: document.getElementById('mobileMoreSheet')
+  };
+  const triggers = document.querySelectorAll('[data-mobile-sheet]');
 
-  const btn = document.getElementById('mobileMenuBtn');
-  const sidebar = document.querySelector('.sidebar');
-  if (!btn || !sidebar) return;
-
-  function setMenuOpen(open) {
-    sidebar.classList.toggle('open', open);
-    document.body.classList.toggle('menu-open', open);
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    btn.setAttribute('aria-label', open ? 'Fermer le menu' : 'Ouvrir le menu');
+  function closeSheets() {
+    Object.keys(sheets).forEach(function (key) {
+      if (!sheets[key]) return;
+      sheets[key].classList.remove('open');
+      sheets[key].setAttribute('aria-hidden', 'true');
+    });
+    triggers.forEach(function (trigger) {
+      trigger.setAttribute('aria-expanded', 'false');
+    });
+    if (overlay) overlay.hidden = true;
+    document.body.classList.remove('mobile-sheet-open');
   }
 
-  btn.addEventListener('click', function (event) {
-    event.stopPropagation();
-    setMenuOpen(!sidebar.classList.contains('open'));
-  });
+  function openSheet(name, trigger) {
+    const sheet = sheets[name];
+    if (!sheet || !overlay) return;
+    closeSheets();
+    overlay.hidden = false;
+    sheet.classList.add('open');
+    sheet.setAttribute('aria-hidden', 'false');
+    if (trigger) trigger.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('mobile-sheet-open');
+  }
 
-  sidebar.querySelectorAll('a').forEach(function (link) {
-    link.addEventListener('click', function () {
-      setMenuOpen(false);
+  triggers.forEach(function (trigger) {
+    trigger.addEventListener('click', function () {
+      openSheet(trigger.getAttribute('data-mobile-sheet'), trigger);
     });
   });
 
-  document.addEventListener('click', function (event) {
-    if (!sidebar.classList.contains('open')) return;
-    if (sidebar.contains(event.target) || btn.contains(event.target)) return;
-    setMenuOpen(false);
+  document.querySelectorAll('[data-mobile-close]').forEach(function (control) {
+    control.addEventListener('click', closeSheets);
+  });
+
+  document.querySelectorAll('.mobile-bottom-sheet a').forEach(function (link) {
+    link.addEventListener('click', closeSheets);
   });
 
   document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape') setMenuOpen(false);
+    if (event.key === 'Escape') closeSheets();
   });
-
 });
 </script>
 </body>
