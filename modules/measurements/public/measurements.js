@@ -555,7 +555,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     return `<svg viewBox="0 0 ${width} ${height}" role="img" preserveAspectRatio="xMidYMid meet">
       <defs>
         <marker id="${svgMarkerPrefix}Arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-          <path d="M 0 0 L 8 4 L 0 8 z" fill="#4a5560"/>
+          <path d="M 0 0 L 8 4 L 0 8 z" fill="#1f2933"/>
         </marker>
         <marker id="${svgMarkerPrefix}DimArrow" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto-start-reverse" markerUnits="strokeWidth">
           <path d="M 0 0 L 7 3.5 L 0 7" fill="none" stroke="#c65f00" stroke-width="1.1"/>
@@ -596,27 +596,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       <line class="dim-extension" x1="${x2}" y1="${y2}" x2="${x2}" y2="${y2 + 18}"/>
       <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-start="url(#${svgMarkerPrefix}DimArrow)" marker-end="url(#${svgMarkerPrefix}DimArrow)"/>
       <text class="dim-label" x="${(x1 + x2) / 2}" y="${y1 - 10}" text-anchor="middle">${escSvgText(label)}</text>
-    </g>`;
-  }
-
-  function renderCadParameterPanel(values, x, y, width, height) {
-    const rows = [
-      ['Projet', values.chantier || '—'],
-      ['Client', values.client || '—'],
-      ['Date', values.date || '—'],
-      ['Unité', 'mm'],
-      ['Révision', '0'],
-      ['Page', 'Escalier']
-    ];
-    const rowH = height / rows.length;
-    return `<g>
-      <rect class="cad-panel" x="${x}" y="${y}" width="${width}" height="${height}"/>
-      ${rows.map(([label, value], index) => {
-        const rowY = y + index * rowH;
-        return `<line class="schedule-line" x1="${x}" y1="${rowY}" x2="${x + width}" y2="${rowY}"/>
-          <text class="schedule-label" x="${x + 12}" y="${rowY + rowH * 0.65}">${escSvgText(label)}</text>
-          <text class="schedule-value" x="${x + width - 12}" y="${rowY + rowH * 0.65}" text-anchor="end">${escSvgText(value)}</text>`;
-      }).join('')}
     </g>`;
   }
 
@@ -1084,26 +1063,30 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     const bounds = modelBounds(model);
     const modelWidth = Math.max(bounds.maxX - bounds.minX, model.tremie.length, 1);
     const modelDepth = Math.max(bounds.maxY - bounds.minY, model.tremie.width, 1);
-    const scale = cadScale(modelWidth, modelDepth, box.width - 120, box.height - 112);
+    const scale = cadScale(modelWidth, modelDepth, box.width - 150, box.height - 132);
     const drawingWidth = modelWidth * scale;
     const drawingDepth = modelDepth * scale;
     const origin = {
       x: box.x + (box.width - drawingWidth) / 2 - bounds.minX * scale,
-      y: box.y + 78 + (box.height - 128 - drawingDepth) / 2 - bounds.minY * scale
+      y: box.y + 74 + (box.height - 132 - drawingDepth) / 2 - bounds.minY * scale
+    };
+    const modelCenter = {
+      x: bounds.minX + (bounds.maxX - bounds.minX) / 2,
+      y: bounds.minY + (bounds.maxY - bounds.minY) / 2
     };
     const tremie = {
-      x: box.x + (box.width - Math.max(44, model.tremie.length * scale)) / 2,
-      y: box.y + 78 + (box.height - 128 - Math.max(34, model.tremie.width * scale)) / 2,
-      width: Math.max(44, model.tremie.length * scale),
-      height: Math.max(34, model.tremie.width * scale)
+      x: origin.x + (modelCenter.x - model.tremie.length / 2) * scale,
+      y: origin.y + (modelCenter.y - model.tremie.width / 2) * scale,
+      width: Math.max(1, model.tremie.length * scale),
+      height: Math.max(1, model.tremie.width * scale)
     };
     const stepPolygons = model.steps.map((step) => `<polygon class="stair-step-fill" points="${polygonPoints(step.topView, origin, scale)}"/>`).join('');
     const nosingLines = renderStepNosingLines(model, origin, scale);
     const stepNumbers = model.steps.map((step) => {
       const center = polygonCenter(step.topView, origin, scale);
       return `<g>
-        <circle class="step-number-dot" cx="${center.x}" cy="${center.y}" r="9"/>
-        <text class="step-number" x="${center.x}" y="${center.y + 4}" text-anchor="middle">${step.index}</text>
+        <circle class="step-number-dot" cx="${center.x}" cy="${center.y}" r="7"/>
+        <text class="step-number" x="${center.x}" y="${center.y + 3.5}" text-anchor="middle">${step.index}</text>
       </g>`;
     }).join('');
     const outline = model.outline && model.outline.length
@@ -1113,6 +1096,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     const stepCenters = model.steps.map((step) => polygonCenter(step.topView, origin, scale));
     const firstCenter = stepCenters[0];
     const lastCenter = stepCenters[stepCenters.length - 1];
+    const midCenter = stepCenters[Math.max(0, Math.floor(stepCenters.length * 0.55) - 1)];
     const travel = `<polyline class="walking-line" points="${stepCenters.map((point) => `${point.x},${point.y}`).join(' ')}" marker-end="url(#${svgMarkerPrefix}Arrow)"/>`;
     const extentX1 = origin.x + bounds.minX * scale;
     const extentX2 = origin.x + bounds.maxX * scale;
@@ -1122,26 +1106,27 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
 
     return `<g>
       <rect class="view-frame" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}"/>
-      <text class="view-title" x="${box.x + 14}" y="${box.y + 26}">VUE EN PLAN - MODÈLE PARAMÉTRIQUE</text>
+      <text class="view-title" x="${box.x + 14}" y="${box.y + 24}">VUE EN PLAN</text>
       <rect class="tremie-fill" x="${tremie.x}" y="${tremie.y}" width="${tremie.width}" height="${tremie.height}"/>
       ${stepPolygons}${nosingLines}${outline}${stringers}${stepNumbers}${travel}
       ${cadDim(extentX1, extentY2 + 42, extentX2, extentY2 + 42, `Emprise X ${Math.round(model.dimensions.footprintX)} mm`)}
       ${cadDim(extentX1 - 42, extentY1, extentX1 - 42, extentY2, `Emprise Y ${Math.round(model.dimensions.footprintY)} mm`, 'v')}
-      ${cadDim(extentX2 + 34, extentY1, extentX2 + 34, extentY1 + model.width * scale, `Largeur ${Math.round(model.width)} mm`, 'v')}
+      ${cadDim(extentX2 + 32, extentY1, extentX2 + 32, extentY1 + model.width * scale, `Largeur ${Math.round(model.width)} mm`, 'v')}
       ${cadDim(tremie.x, tremie.y - 18, tremie.x + tremie.width, tremie.y - 18, `Trémie L ${Math.round(model.tremie.length)} mm`)}
       ${cadDim(tremie.x + tremie.width + 24, tremie.y, tremie.x + tremie.width + 24, tremie.y + tremie.height, `Trémie l ${Math.round(model.tremie.width)} mm`, 'v')}
       ${turnDimensions}
-      <text class="caption" x="${tremie.x + tremie.width / 2}" y="${tremie.y + tremie.height / 2 + 4}" text-anchor="middle">Trémie</text>
+      <text class="caption" x="${tremie.x + tremie.width / 2}" y="${tremie.y - 8}" text-anchor="middle">Trémie</text>
+      <text class="cad-tag" x="${midCenter.x + 12}" y="${midCenter.y - 12}">Montée</text>
       <text class="cad-tag" x="${firstCenter.x - 26}" y="${firstCenter.y - 18}">Départ</text>
       <text class="cad-tag" x="${lastCenter.x - 26}" y="${lastCenter.y - 18}">Arrivée</text>
     </g>`;
   }
 
   function renderSideViewFromModel(model, box) {
-    const scale = cadScale(model.developedLength, model.totalHeight, box.width - 120, box.height - 86);
+    const scale = cadScale(model.developedLength, model.totalHeight, box.width - 98, box.height - 96);
     const origin = {
-      x: box.x + 82,
-      y: box.y + box.height - 48
+      x: box.x + 74,
+      y: box.y + box.height - 50
     };
     const stairPath = model.steps.reduce((path, step) => {
       const x = origin.x + step.index * model.going * scale;
@@ -1153,21 +1138,19 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
 
     return `<g>
       <rect class="view-frame" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}"/>
-      <text class="view-title" x="${box.x + 14}" y="${box.y + 26}">ÉLÉVATION - PROJECTION DU MODÈLE</text>
+      <text class="view-title" x="${box.x + 14}" y="${box.y + 24}">VUE DE CÔTÉ</text>
       <line class="cut-line" x1="${box.x + 36}" y1="${origin.y}" x2="${box.x + box.width - 34}" y2="${origin.y}"/>
       <rect class="slab-plate" x="${origin.x + runPx - 36}" y="${origin.y - risePx - 10}" width="128" height="12"/>
       <line class="cut-line" x1="${origin.x + runPx - 30}" y1="${origin.y - risePx}" x2="${origin.x + runPx + 92}" y2="${origin.y - risePx}"/>
       <path class="outline-line" d="${stairPath}"/>
       <line class="slope-line" x1="${origin.x}" y1="${origin.y}" x2="${origin.x + runPx}" y2="${origin.y - risePx}"/>
-      <line class="walking-line" x1="${origin.x + 34}" y1="${origin.y - 24}" x2="${origin.x + runPx - 30}" y2="${origin.y - risePx + 24}" marker-end="url(#${svgMarkerPrefix}Arrow)"/>
       ${cadDim(box.x + 44, origin.y - risePx, box.x + 44, origin.y, `Hauteur ${Math.round(model.totalHeight)} mm`, 'v')}
       ${cadDim(origin.x, origin.y + 28, origin.x + runPx, origin.y + 28, `Développé ${Math.round(model.developedLength)} mm`)}
-      ${cadDim(origin.x, origin.y + 54, origin.x + model.going * scale, origin.y + 54, `Giron ${roundTo(model.going, 1)} mm`)}
+      ${cadDim(origin.x, origin.y + 52, origin.x + model.going * scale, origin.y + 52, `Giron ${roundTo(model.going, 1)} mm`)}
+      ${cadDim(origin.x + model.going * scale + 18, origin.y - model.riser * scale, origin.x + model.going * scale + 18, origin.y, `H ${roundTo(model.riser, 1)} mm`, 'v')}
       <text class="caption" x="${box.x + 40}" y="${origin.y + 22}">Sol bas</text>
       <text class="caption" x="${origin.x + runPx - 20}" y="${origin.y - risePx - 12}">Sol haut</text>
-      <text class="cad-callout" x="${origin.x + runPx + 22}" y="${origin.y - risePx + 18}">${model.stepCount} marches</text>
-      <text class="cad-callout" x="${origin.x + runPx + 22}" y="${origin.y - risePx + 38}">H. marche ${roundTo(model.riser, 1)} mm</text>
-      <text class="cad-callout" x="${origin.x + runPx + 22}" y="${origin.y - risePx + 58}">Pente ${model.slope ? roundTo(model.slope, 1) : '—'}°</text>
+      <text class="cad-callout" x="${origin.x + runPx - 2}" y="${origin.y - risePx + 28}" text-anchor="end">Pente ${model.slope ? roundTo(model.slope, 1) : '—'}°</text>
     </g>`;
   }
 
@@ -1177,17 +1160,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       : model.type === 'double_quarter_turn'
         ? '2/4 tournants'
         : 'Droit';
-    const turnLabel = model.type === 'double_quarter_turn'
-      ? `${model.turn1Direction}/${model.turn2Direction} - ${model.turn1Steps}+${model.turn2Steps} marches`
-      : model.type === 'quarter_turn'
-        ? `${model.turnDirection} - ${model.turnSteps} marches`
-        : '—';
-    const distribution = model.type === 'double_quarter_turn'
-      ? `${model.flight1Steps}/${model.turn1Steps}/${model.flight2Steps}/${model.turn2Steps}/${model.flight3Steps}`
-      : `${model.flight1Steps}/${model.turnSteps}/${model.flight2Steps}`;
-    const turnPositions = model.turnPositions && model.turnPositions.length
-      ? model.turnPositions.map((turn) => `${turn.label}: ${Math.round(turn.x - model.dimensions.minX)}/${Math.round(turn.y - model.dimensions.minY)}`).join(' ')
-      : '—';
     const stringerLabel = model.stringerType === 'central'
       ? 'Central'
       : model.stringerType === 'side'
@@ -1195,30 +1167,29 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
         : 'Aucun';
     const rows = [
       ['TYPE', typeLabel],
-      ['SENS', model.direction],
+      ['MONTÉE', model.direction],
       ['LIMON', stringerLabel],
-      ['HAUTEUR', `${Math.round(model.totalHeight)} mm`],
-      ['LARGEUR', `${Math.round(model.width)} mm`],
-      ['EMPRISE X', `${Math.round(model.dimensions.footprintX)} mm`],
-      ['EMPRISE Y', `${Math.round(model.dimensions.footprintY)} mm`],
-      ['MARCHES', `${model.stepCount} marches`],
+      ['MARCHES', `${model.stepCount}`],
+      ['HAUTEUR TOTALE', `${Math.round(model.totalHeight)} mm`],
       ['H. MARCHE', `${roundTo(model.riser, 1)} mm`],
       ['GIRON', `${roundTo(model.going, 1)} mm`],
       ['PENTE', model.slope ? `${roundTo(model.slope, 1)} °` : formatMeasure(values.pente, '°')],
-      ['RECULEMENT', `${Math.round(model.setback)} mm`],
-      ['TRÉMIE', `${Math.round(model.tremie.length)} / ${Math.round(model.tremie.width)} mm`],
-      ['TOURNANT', turnLabel],
-      ['RÉPARTITION', distribution],
-      ['POSITION V.', turnPositions]
+      ['LARGEUR', `${Math.round(model.width)} mm`],
+      ['EMPRISE X', `${Math.round(model.dimensions.footprintX)} mm`],
+      ['EMPRISE Y', `${Math.round(model.dimensions.footprintY)} mm`],
+      ['TRÉMIE', `${Math.round(model.tremie.length)} x ${Math.round(model.tremie.width)} mm`]
     ];
-    const rowH = (height - 42) / rows.length;
+    const rowH = (height - 74) / rows.length;
     return `<g>
       <rect class="schedule-box" x="${x}" y="${y}" width="${width}" height="${height}"/>
-      <line class="schedule-line" x1="${x}" y1="${y + 42}" x2="${x + width}" y2="${y + 42}"/>
+      <line class="schedule-line strong" x1="${x}" y1="${y + 42}" x2="${x + width}" y2="${y + 42}"/>
+      <line class="schedule-line" x1="${x}" y1="${y + 66}" x2="${x + width}" y2="${y + 66}"/>
       <text class="brand-title" x="${x + 14}" y="${y + 28}">A2 MÉTAL</text>
-      <text class="schedule-title" x="${x + width - 14}" y="${y + 28}" text-anchor="end">Données issues du modèle</text>
+      <text class="schedule-title" x="${x + width - 14}" y="${y + 25}" text-anchor="end">PLAN ESCALIER</text>
+      <text class="schedule-label" x="${x + 14}" y="${y + 58}">Client</text>
+      <text class="schedule-value" x="${x + width - 14}" y="${y + 58}" text-anchor="end">${escSvgText(values.client || '—')}</text>
       ${rows.map(([label, value], index) => {
-        const rowY = y + 42 + index * rowH;
+        const rowY = y + 66 + index * rowH;
         return `<line class="schedule-line" x1="${x}" y1="${rowY}" x2="${x + width}" y2="${rowY}"/>
           <text class="schedule-label" x="${x + 12}" y="${rowY + rowH * 0.68}">${escSvgText(label)}</text>
           <text class="schedule-value" x="${x + width - 12}" y="${rowY + rowH * 0.68}" text-anchor="end">${escSvgText(value)}</text>`;
@@ -1236,14 +1207,15 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     const width = 1120;
     const height = 760;
     const body = `
-      <rect class="sheet-frame" x="24" y="24" width="${width - 48}" height="${height - 48}"/>
-      <text class="cad-brand" x="52" y="58">A2 MÉTAL</text>
-      <text class="cad-sheet-title" x="52" y="88">Plan de pré-dimensionnement escalier</text>
-      <text class="small-note" x="${width - 52}" y="58" text-anchor="end">Document indicatif - à valider chantier</text>
-      ${renderTopViewFromModel(model, { x: 52, y: 112, width: 690, height: 360 })}
-      ${renderSideViewFromModel(model, { x: 52, y: 500, width: 690, height: 176 })}
-      ${renderCadParameterPanel(values, 770, 112, 300, 180)}
-      ${renderDimensionsFromModel(model, values, 770, 328, 300, 348)}
+      <rect class="sheet-frame" x="22" y="22" width="${width - 44}" height="${height - 44}"/>
+      <line class="sheet-separator" x1="22" y1="92" x2="${width - 22}" y2="92"/>
+      <text class="cad-brand" x="48" y="58">A2 MÉTAL</text>
+      <text class="cad-sheet-title" x="48" y="80">Plan technique escalier</text>
+      <text class="small-note" x="${width - 46}" y="58" text-anchor="end">Pré-dimensionnement indicatif - unité mm</text>
+      <text class="small-note" x="${width - 46}" y="78" text-anchor="end">${escSvgText(values.date || 'Rév. 0')}</text>
+      ${renderTopViewFromModel(model, { x: 44, y: 112, width: 650, height: 560 })}
+      ${renderSideViewFromModel(model, { x: 724, y: 112, width: 350, height: 270 })}
+      ${renderDimensionsFromModel(model, values, 724, 410, 350, 262)}
     `;
     topViewSvg.innerHTML = svgShell(width, height, body);
   }
@@ -1264,17 +1236,16 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     svgMarkerPrefix = 'pdfClient';
     const width = 1120;
     const height = 760;
-    const title = 'Plan client escalier';
-    const note = 'Version client - pré-dimensionnement indicatif';
     const body = `
-      <rect class="sheet-frame" x="24" y="24" width="${width - 48}" height="${height - 48}"/>
-      <text class="cad-brand" x="52" y="58">A2 MÉTAL</text>
-      <text class="cad-sheet-title" x="52" y="88">${escSvgText(title)}</text>
-      <text class="small-note" x="${width - 52}" y="58" text-anchor="end">${escSvgText(note)}</text>
-      ${renderTopViewFromModel(model, { x: 52, y: 112, width: 690, height: 360 })}
-      ${renderSideViewFromModel(model, { x: 52, y: 500, width: 690, height: 176 })}
-      ${renderCadParameterPanel(values, 770, 112, 300, 180)}
-      ${renderDimensionsFromModel(model, values, 770, 328, 300, 348)}
+      <rect class="sheet-frame" x="22" y="22" width="${width - 44}" height="${height - 44}"/>
+      <line class="sheet-separator" x1="22" y1="92" x2="${width - 22}" y2="92"/>
+      <text class="cad-brand" x="48" y="58">A2 MÉTAL</text>
+      <text class="cad-sheet-title" x="48" y="80">Plan technique escalier</text>
+      <text class="small-note" x="${width - 46}" y="58" text-anchor="end">Pré-dimensionnement indicatif - unité mm</text>
+      <text class="small-note" x="${width - 46}" y="78" text-anchor="end">${escSvgText(values.date || 'Rév. 0')}</text>
+      ${renderTopViewFromModel(model, { x: 44, y: 112, width: 650, height: 560 })}
+      ${renderSideViewFromModel(model, { x: 724, y: 112, width: 350, height: 270 })}
+      ${renderDimensionsFromModel(model, values, 724, 410, 350, 262)}
     `;
     return svgShell(width, height, body);
   }
