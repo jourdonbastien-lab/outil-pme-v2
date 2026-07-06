@@ -8,7 +8,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   const resetBtn = document.getElementById('resetBtn');
   const printBtn = document.getElementById('printBtn');
   const exportClientPdfBtn = document.getElementById('exportClientPdfBtn');
-  const exportWorkshopPdfBtn = document.getElementById('exportWorkshopPdfBtn');
   const proposalBtn = document.getElementById('proposalBtn');
   const proposalResult = document.getElementById('proposalResult');
   const configuratorFields = Array.from(document.querySelectorAll('[data-sync-field]'));
@@ -18,7 +17,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   const recordNameField = document.getElementById('recordName');
   const photoTemplate = document.getElementById('photoItemTemplate');
   const topViewSvg = document.getElementById('topViewSvg');
-  const fabricationPanel = document.getElementById('fabricationData');
   const tremieGroups = Array.from(document.querySelectorAll('[data-tremie-group]'));
 
   let photos = [];
@@ -577,7 +575,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       <text class="cad-sheet-title" x="52" y="88">Plan de pré-dimensionnement escalier</text>
       <text class="empty-plan-message" x="${width / 2}" y="${height / 2}" text-anchor="middle">Sélectionnez une solution pour générer le schéma.</text>
     `);
-    renderEmptyFabricationData();
   }
 
   function cadScale(maxMmX, maxMmY, maxPxX, maxPxY) {
@@ -1016,36 +1013,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     };
   }
 
-  function distanceBetween(pointA, pointB) {
-    return Math.hypot(pointB.x - pointA.x, pointB.y - pointA.y);
-  }
-
-  function polylineLength(points) {
-    return points.reduce((total, point, index) => {
-      if (index === 0) return total;
-      return total + distanceBetween(points[index - 1], point);
-    }, 0);
-  }
-
-  function polygonArea(points) {
-    const signedArea = points.reduce((total, point, index) => {
-      const next = points[(index + 1) % points.length];
-      return total + point.x * next.y - next.x * point.y;
-    }, 0);
-    return Math.abs(signedArea) / 2;
-  }
-
-  function polygonBounds(points) {
-    const xs = points.map((point) => point.x);
-    const ys = points.map((point) => point.y);
-    return {
-      minX: Math.min(...xs),
-      maxX: Math.max(...xs),
-      minY: Math.min(...ys),
-      maxY: Math.max(...ys)
-    };
-  }
-
   function buildStringersFromModel(model) {
     if (!model || model.stringerType === 'none' || !model.steps || model.steps.length < 1) {
       return { type: 'none', lines: [] };
@@ -1097,139 +1064,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       const pointB = mapModelPoint(step.topView[2], origin, scale);
       return `<line class="nosing-line" x1="${pointA.x}" y1="${pointA.y}" x2="${pointB.x}" y2="${pointB.y}"/>`;
     }).join('');
-  }
-
-  function buildFabricationDataFromModel(model) {
-    const steps = model.steps.map((step) => {
-      const bounds = polygonBounds(step.topView);
-      const width = bounds.maxY - bounds.minY;
-      const depth = bounds.maxX - bounds.minX;
-      const area = polygonArea(step.topView);
-      const isTurnStep = String(step.zone || '').startsWith('turn');
-      return {
-        index: step.index,
-        zone: step.zone || 'flight_1',
-        type: isTurnStep ? 'tournante' : 'droite',
-        z: step.z,
-        width,
-        depth,
-        area
-      };
-    });
-    const stringers = (model.stringers && model.stringers.lines ? model.stringers.lines : []).map((line, index) => ({
-      label: line.kind === 'central' ? 'Limon central' : `Limon latéral ${index + 1}`,
-      type: line.kind === 'central' ? 'central' : 'latéral',
-      length: polylineLength(line.points)
-    }));
-    const totalStepArea = steps.reduce((total, step) => total + step.area, 0);
-    const totalStringerLength = stringers.reduce((total, stringer) => total + stringer.length, 0);
-    return {
-      steps,
-      stringers,
-      materials: [
-        {
-          label: 'Marches',
-          value: `${steps.length} pièces`,
-          detail: `Surface approx. ${roundTo(totalStepArea / 1000000, 2)} m²`
-        },
-        {
-          label: 'Limons',
-          value: stringers.length ? `${stringers.length} élément${stringers.length > 1 ? 's' : ''}` : 'Aucun',
-          detail: stringers.length ? `Longueur approx. ${Math.round(totalStringerLength)} mm` : 'Non sélectionné'
-        }
-      ]
-    };
-  }
-
-  function renderEmptyFabricationData() {
-    if (!fabricationPanel) return;
-    fabricationPanel.innerHTML = '<p>Sélectionnez une solution pour générer les informations de fabrication.</p>';
-  }
-
-  function renderFabricationDataFromModel(model) {
-    if (!fabricationPanel) return;
-    const fabrication = buildFabricationDataFromModel(model);
-    fabricationPanel.innerHTML = `
-      <div class="fabrication-head">
-        <h5>Fabrication</h5>
-        <p>Données indicatives générées depuis le modèle géométrique.</p>
-      </div>
-      ${renderFabricationTablesHtml(fabrication)}
-    `;
-  }
-
-  function renderFabricationTablesHtml(fabrication) {
-    const stepRows = fabrication.steps.map((step) => `
-      <tr>
-        <td>${step.index}</td>
-        <td>${escSvgText(step.zone)}</td>
-        <td>${escSvgText(step.type)}</td>
-        <td>${Math.round(step.depth)} x ${Math.round(step.width)} mm</td>
-        <td>${roundTo(step.z, 1)} mm</td>
-        <td>${roundTo(step.area / 1000000, 3)} m²</td>
-      </tr>
-    `).join('');
-    const stringerRows = fabrication.stringers.length
-      ? fabrication.stringers.map((stringer) => `
-        <tr>
-          <td>${escSvgText(stringer.label)}</td>
-          <td>${escSvgText(stringer.type)}</td>
-          <td>${Math.round(stringer.length)} mm</td>
-        </tr>
-      `).join('')
-      : '<tr><td colspan="3">Aucun limon sélectionné dans la structure.</td></tr>';
-    const materialRows = fabrication.materials.map((item) => `
-      <tr>
-        <td>${escSvgText(item.label)}</td>
-        <td>${escSvgText(item.value)}</td>
-        <td>${escSvgText(item.detail)}</td>
-      </tr>
-    `).join('');
-
-    return `
-      <div class="fabrication-table-wrap">
-        <h6>Marches</h6>
-        <table class="fabrication-table">
-          <thead>
-            <tr>
-              <th>N°</th>
-              <th>Zone</th>
-              <th>Type</th>
-              <th>Dimensions approx.</th>
-              <th>Hauteur z</th>
-              <th>Surface approx.</th>
-            </tr>
-          </thead>
-          <tbody>${stepRows}</tbody>
-        </table>
-      </div>
-      <div class="fabrication-table-wrap">
-        <h6>Limons</h6>
-        <table class="fabrication-table">
-          <thead>
-            <tr>
-              <th>Élément</th>
-              <th>Type</th>
-              <th>Longueur estimée</th>
-            </tr>
-          </thead>
-          <tbody>${stringerRows}</tbody>
-        </table>
-      </div>
-      <div class="fabrication-table-wrap">
-        <h6>Résumé matière</h6>
-        <table class="fabrication-table">
-          <thead>
-            <tr>
-              <th>Famille</th>
-              <th>Quantité</th>
-              <th>Estimation</th>
-            </tr>
-          </thead>
-          <tbody>${materialRows}</tbody>
-        </table>
-      </div>
-    `;
   }
 
   function renderTurnPositionDimensions(model, origin, scale, bounds, extentY1) {
@@ -1412,7 +1246,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       ${renderDimensionsFromModel(model, values, 770, 328, 300, 348)}
     `;
     topViewSvg.innerHTML = svgShell(width, height, body);
-    renderFabricationDataFromModel(model);
   }
 
   function getCurrentPlanModel() {
@@ -1428,15 +1261,11 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   }
 
   function renderPdfPlanSvg(model, values, variant) {
-    svgMarkerPrefix = variant === 'atelier' ? 'pdfAtelier' : 'pdfClient';
+    svgMarkerPrefix = 'pdfClient';
     const width = 1120;
     const height = 760;
-    const title = variant === 'atelier'
-      ? 'Plan atelier escalier'
-      : 'Plan client escalier';
-    const note = variant === 'atelier'
-      ? 'Version atelier - fabrication indicative'
-      : 'Version client - pré-dimensionnement indicatif';
+    const title = 'Plan client escalier';
+    const note = 'Version client - pré-dimensionnement indicatif';
     const body = `
       <rect class="sheet-frame" x="24" y="24" width="${width - 48}" height="${height - 48}"/>
       <text class="cad-brand" x="52" y="58">A2 MÉTAL</text>
@@ -1451,7 +1280,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   }
 
   function buildPdfDocument(model, values, variant) {
-    const fabrication = buildFabricationDataFromModel(model);
     const projectTitle = values.chantier || values.client || recordNameField.value.trim() || 'Projet escalier';
     const typeLabel = model.type === 'quarter_turn'
       ? '1/4 tournant'
@@ -1479,23 +1307,11 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
         <td>${escSvgText(value)}</td>
       </tr>
     `).join('')}</tbody></table>`;
-    const fabricationSection = variant === 'atelier'
-      ? `<section class="pdf-sheet pdf-sheet-fabrication pdf-break">
-          <header class="pdf-page-title">
-            <div>
-              <p>A2 MÉTAL · Version atelier</p>
-              <h2>Fabrication escalier</h2>
-            </div>
-            <span>Page 2</span>
-          </header>
-          ${renderFabricationTablesHtml(fabrication)}
-        </section>`
-      : '';
     return `<!doctype html>
       <html lang="fr">
       <head>
         <meta charset="utf-8">
-        <title>${escSvgText(variant === 'atelier' ? 'PDF atelier escalier' : 'PDF client escalier')}</title>
+        <title>PDF client escalier</title>
         <link rel="stylesheet" href="measurements.css">
         <style>
           @page { size: A4 landscape; margin: 8mm; }
@@ -1557,7 +1373,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
             align-items: center;
             justify-content: center;
             width: 100%;
-            height: ${variant === 'atelier' ? '150mm' : '154mm'};
+            height: 154mm;
             border: 1px solid #1f2933;
             overflow: hidden;
             page-break-inside: avoid;
@@ -1568,48 +1384,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
             width: 100%;
             height: 100%;
             min-width: 0;
-          }
-          .pdf-page-title {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 8mm;
-            padding-bottom: 4mm;
-            border-bottom: 2px solid #1f2933;
-            margin-bottom: 5mm;
-          }
-          .pdf-page-title p { margin: 0; color: #64727d; font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
-          .pdf-page-title h2 { margin: 1mm 0 0; font-size: 17pt; }
-          .pdf-page-title span { color: #64727d; font-size: 9pt; font-weight: 800; }
-          .pdf-break { page-break-before: always; break-before: page; }
-          .fabrication-table-wrap {
-            overflow: visible;
-            margin-top: 4mm;
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          .fabrication-table-wrap h6 { margin: 0 0 2mm; font-size: 9pt; }
-          .fabrication-table {
-            width: 100%;
-            min-width: 0;
-            border-collapse: collapse;
-            font-size: 8pt;
-            page-break-inside: auto;
-          }
-          .fabrication-table thead { display: table-header-group; }
-          .fabrication-table tr { page-break-inside: avoid; break-inside: avoid; }
-          .fabrication-table th,
-          .fabrication-table td {
-            padding: 1.5mm 1.8mm;
-            border: 1px solid #d8dee4;
-            white-space: nowrap;
-          }
-          .fabrication-table th {
-            background: #f3f6f8;
-            color: #64727d;
-            font-size: 7pt;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
           }
           @media print {
             html, body { background: #fff; }
@@ -1624,16 +1398,15 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
             <header class="pdf-header">
               <div class="pdf-title-block">
                 <div>
-                  <p>A2 MÉTAL · ${variant === 'atelier' ? 'Plan atelier' : 'Plan client'}</p>
+                  <p>A2 MÉTAL · Plan client</p>
                   <h1>${escSvgText(projectTitle)}</h1>
                 </div>
-                <div class="pdf-version">${variant === 'atelier' ? 'Version atelier · Page 1' : 'Version client'}</div>
+                <div class="pdf-version">Version client</div>
               </div>
               ${metaTable}
             </header>
             <div class="pdf-svg">${renderPdfPlanSvg(model, values, variant)}</div>
           </section>
-          ${fabricationSection}
         </main>
         <script>
           window.addEventListener('load', () => {
@@ -1904,9 +1677,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   printBtn.addEventListener('click', () => window.print());
   if (exportClientPdfBtn) {
     exportClientPdfBtn.addEventListener('click', () => exportStairPdf('client'));
-  }
-  if (exportWorkshopPdfBtn) {
-    exportWorkshopPdfBtn.addEventListener('click', () => exportStairPdf('atelier'));
   }
   if (proposalBtn) {
     proposalBtn.addEventListener('click', () => {
