@@ -609,7 +609,7 @@ textarea:focus {
 .technical-svg {
   display: block;
   width: 100%;
-  aspect-ratio: 1120 / 760;
+  aspect-ratio: 2970 / 2100;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #ffffff;
@@ -618,14 +618,14 @@ textarea:focus {
 }
 
 .technical-svg-main {
-  aspect-ratio: 1120 / 760;
+  aspect-ratio: 2970 / 2100;
 }
 
 .technical-svg svg {
   display: block;
   width: 100%;
   height: 100%;
-  min-width: 1120px;
+  min-width: 1180px;
 }
 
 .technical-svg .sheet-bg {
@@ -737,7 +737,7 @@ textarea:focus {
 
 .technical-svg .turn-marker-line {
   fill: none;
-  stroke: #9a4a00;
+  stroke: #666666;
   stroke-width: 0.8;
   stroke-dasharray: 4 4;
   vector-effect: non-scaling-stroke;
@@ -745,7 +745,7 @@ textarea:focus {
 
 .technical-svg .turn-marker-dot {
   fill: #ffffff;
-  stroke: #9a4a00;
+  stroke: #666666;
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
@@ -804,7 +804,7 @@ textarea:focus {
 
 .technical-svg .dim-line {
   fill: none;
-  stroke: #c65f00;
+  stroke: #666666;
   stroke-width: 0.7;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
@@ -812,7 +812,7 @@ textarea:focus {
 
 .technical-svg .dim-extension {
   fill: none;
-  stroke: #c65f00;
+  stroke: #666666;
   stroke-width: 0.5;
   stroke-dasharray: 3 3;
   vector-effect: non-scaling-stroke;
@@ -887,13 +887,6 @@ textarea:focus {
   fill: #4b5563;
 }
 
-.technical-svg .step-number-dot {
-  fill: #ffffff;
-  stroke: #9aa4b2;
-  stroke-width: 0.7;
-  vector-effect: non-scaling-stroke;
-}
-
 .technical-svg .empty-plan-message {
   font-size: 17px;
   font-weight: 700;
@@ -909,7 +902,7 @@ textarea:focus {
 .technical-svg .dim-label {
   font-size: 10px;
   font-weight: 700;
-  fill: #9a4a00;
+  fill: #333333;
 }
 
 .technical-svg .cad-panel {
@@ -927,7 +920,7 @@ textarea:focus {
 }
 
 .technical-svg .active .label-box {
-  stroke: #ff7a00;
+  stroke: #222222;
   stroke-width: 1.6;
 }
 
@@ -973,6 +966,121 @@ textarea:focus {
   font-size: 9px;
   font-weight: 800;
   fill: #1f2933;
+}
+
+.technical-svg .cad-sheet-frame,
+.technical-svg .cad-view-frame,
+.technical-svg .cad-title-block {
+  fill: none;
+  stroke: #222222;
+  stroke-width: 1.1;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .cad-sheet-heading,
+.technical-svg .cad-view-title,
+.technical-svg .cad-title-brand,
+.technical-svg .cad-title-small,
+.technical-svg .cad-title-label,
+.technical-svg .cad-title-value,
+.technical-svg .cad-dim-text,
+.technical-svg .cad-step-number {
+  font-family: Arial, Helvetica, sans-serif;
+  fill: #222222;
+}
+
+.technical-svg .cad-sheet-heading {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+.technical-svg .cad-view-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.technical-svg .cad-main-outline,
+.technical-svg .cad-main-line {
+  fill: none;
+  stroke: #222222;
+  stroke-width: 1.2;
+  stroke-linejoin: miter;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .cad-step,
+.technical-svg .cad-nosing,
+.technical-svg .cad-secondary-line {
+  fill: none;
+  stroke: #444444;
+  stroke-width: 0.75;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .cad-nosing {
+  stroke: #222222;
+  stroke-width: 0.85;
+}
+
+.technical-svg .cad-hidden {
+  fill: none;
+  stroke: #666666;
+  stroke-width: 0.8;
+  stroke-dasharray: 12 8;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .cad-walking-line {
+  fill: none;
+  stroke: #444444;
+  stroke-width: 0.8;
+  stroke-dasharray: 14 9;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .cad-dim-line,
+.technical-svg .cad-dim-ext,
+.technical-svg .cad-title-line {
+  fill: none;
+  stroke: #666666;
+  stroke-width: 0.7;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .cad-dim-ext {
+  stroke-width: 0.5;
+}
+
+.technical-svg .cad-dim-text {
+  font-size: 20px;
+  dominant-baseline: middle;
+}
+
+.technical-svg .cad-step-number {
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.technical-svg .cad-title-brand {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.technical-svg .cad-title-small {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.technical-svg .cad-title-label {
+  font-size: 16px;
+  fill: #555555;
+}
+
+.technical-svg .cad-title-value {
+  font-size: 17px;
+  font-weight: 700;
 }
 
 .plan-legend {

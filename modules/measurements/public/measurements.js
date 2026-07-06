@@ -558,7 +558,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
           <path d="M 0 0 L 8 4 L 0 8 z" fill="#1f2933"/>
         </marker>
         <marker id="${svgMarkerPrefix}DimArrow" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto-start-reverse" markerUnits="strokeWidth">
-          <path d="M 0 0 L 7 3.5 L 0 7" fill="none" stroke="#c65f00" stroke-width="1.1"/>
+          <path d="M 0 0 L 7 3.5 L 0 7" fill="none" stroke="#666666" stroke-width="1.1"/>
         </marker>
       </defs>
       <rect class="sheet-bg" x="0" y="0" width="${width}" height="${height}"/>
@@ -567,12 +567,11 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   }
 
   function renderEmptyPlan(target) {
-    const width = 1120;
-    const height = 760;
+    const width = 2970;
+    const height = 2100;
     target.innerHTML = svgShell(width, height, `
-      <rect class="sheet-frame" x="24" y="24" width="${width - 48}" height="${height - 48}"/>
-      <text class="cad-brand" x="52" y="58">A2 MÉTAL</text>
-      <text class="cad-sheet-title" x="52" y="88">Plan de pré-dimensionnement escalier</text>
+      <rect class="cad-sheet-frame" x="55" y="55" width="${width - 110}" height="${height - 110}"/>
+      <text class="cad-sheet-heading" x="90" y="100">PLAN TECHNIQUE ESCALIER - PRÉ-DIMENSIONNEMENT</text>
       <text class="empty-plan-message" x="${width / 2}" y="${height / 2}" text-anchor="middle">Sélectionnez une solution pour générer le schéma.</text>
     `);
   }
@@ -1084,10 +1083,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     const nosingLines = renderStepNosingLines(model, origin, scale);
     const stepNumbers = model.steps.map((step) => {
       const center = polygonCenter(step.topView, origin, scale);
-      return `<g>
-        <circle class="step-number-dot" cx="${center.x}" cy="${center.y}" r="7"/>
-        <text class="step-number" x="${center.x}" y="${center.y + 3.5}" text-anchor="middle">${step.index}</text>
-      </g>`;
+      return `<text class="step-number" x="${center.x}" y="${center.y + 3.5}" text-anchor="middle">${step.index}</text>`;
     }).join('');
     const outline = model.outline && model.outline.length
       ? `<polygon class="stringer-shadow" points="${polygonPoints(model.outline, origin, scale)}"/>`
@@ -1117,8 +1113,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       ${turnDimensions}
       <text class="caption" x="${tremie.x + tremie.width / 2}" y="${tremie.y - 8}" text-anchor="middle">Trémie</text>
       <text class="cad-tag" x="${midCenter.x + 12}" y="${midCenter.y - 12}">Montée</text>
-      <text class="cad-tag" x="${firstCenter.x - 26}" y="${firstCenter.y - 18}">Départ</text>
-      <text class="cad-tag" x="${lastCenter.x - 26}" y="${lastCenter.y - 18}">Arrivée</text>
     </g>`;
   }
 
@@ -1197,6 +1191,231 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     </g>`;
   }
 
+  function createViewTransform(bounds, box, marginRatio = 0.1) {
+    const boundsWidth = Math.max(bounds.maxX - bounds.minX, 1);
+    const boundsHeight = Math.max(bounds.maxY - bounds.minY, 1);
+    const marginX = box.width * marginRatio;
+    const marginY = box.height * marginRatio;
+    const drawableWidth = Math.max(1, box.width - marginX * 2);
+    const drawableHeight = Math.max(1, box.height - marginY * 2);
+    const scale = Math.min(drawableWidth / boundsWidth, drawableHeight / boundsHeight);
+    const drawnWidth = boundsWidth * scale;
+    const drawnHeight = boundsHeight * scale;
+    const offsetX = box.x + marginX + (drawableWidth - drawnWidth) / 2 - bounds.minX * scale;
+    const offsetY = box.y + marginY + (drawableHeight - drawnHeight) / 2 - bounds.minY * scale;
+    return {
+      scale,
+      map(point) {
+        return {
+          x: offsetX + point.x * scale,
+          y: offsetY + point.y * scale
+        };
+      }
+    };
+  }
+
+  function pointList(points, transform) {
+    return points.map((point) => {
+      const mapped = transform.map(point);
+      return `${roundTo(mapped.x, 2)},${roundTo(mapped.y, 2)}`;
+    }).join(' ');
+  }
+
+  function centerOfPoints(points) {
+    return points.reduce((acc, point) => ({
+      x: acc.x + point.x / points.length,
+      y: acc.y + point.y / points.length
+    }), { x: 0, y: 0 });
+  }
+
+  function renderCadDimension(x1, y1, x2, y2, label, orientation = 'h') {
+    const tick = 12;
+    if (orientation === 'v') {
+      const textX = x1 - 14;
+      return `<g class="cad-dim">
+        <line class="cad-dim-ext" x1="${x1}" y1="${y1}" x2="${x1 - 26}" y2="${y1}"/>
+        <line class="cad-dim-ext" x1="${x2}" y1="${y2}" x2="${x2 - 26}" y2="${y2}"/>
+        <line class="cad-dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>
+        <line class="cad-dim-line" x1="${x1 - tick / 2}" y1="${y1 + tick / 2}" x2="${x1 + tick / 2}" y2="${y1 - tick / 2}"/>
+        <line class="cad-dim-line" x1="${x2 - tick / 2}" y1="${y2 + tick / 2}" x2="${x2 + tick / 2}" y2="${y2 - tick / 2}"/>
+        <text class="cad-dim-text" x="${textX}" y="${(y1 + y2) / 2}" text-anchor="end">${escSvgText(label)}</text>
+      </g>`;
+    }
+    return `<g class="cad-dim">
+      <line class="cad-dim-ext" x1="${x1}" y1="${y1}" x2="${x1}" y2="${y1 + 26}"/>
+      <line class="cad-dim-ext" x1="${x2}" y1="${y2}" x2="${x2}" y2="${y2 + 26}"/>
+      <line class="cad-dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>
+      <line class="cad-dim-line" x1="${x1 - tick / 2}" y1="${y1 + tick / 2}" x2="${x1 + tick / 2}" y2="${y1 - tick / 2}"/>
+      <line class="cad-dim-line" x1="${x2 - tick / 2}" y1="${y2 + tick / 2}" x2="${x2 + tick / 2}" y2="${y2 - tick / 2}"/>
+      <text class="cad-dim-text" x="${(x1 + x2) / 2}" y="${y1 - 10}" text-anchor="middle">${escSvgText(label)}</text>
+    </g>`;
+  }
+
+  function renderCadViewFrame(box, title) {
+    return `<rect class="cad-view-frame" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}"/>
+      <text class="cad-view-title" x="${box.x + 18}" y="${box.y + 34}">${escSvgText(title)}</text>`;
+  }
+
+  function renderPlanView(model, box, title = 'VUE EN PLAN') {
+    const bounds = modelBounds(model);
+    const modelCenter = {
+      x: bounds.minX + (bounds.maxX - bounds.minX) / 2,
+      y: bounds.minY + (bounds.maxY - bounds.minY) / 2
+    };
+    const planBounds = {
+      minX: Math.min(bounds.minX, modelCenter.x - model.tremie.length / 2),
+      maxX: Math.max(bounds.maxX, modelCenter.x + model.tremie.length / 2),
+      minY: Math.min(bounds.minY, modelCenter.y - model.tremie.width / 2),
+      maxY: Math.max(bounds.maxY, modelCenter.y + model.tremie.width / 2)
+    };
+    const transform = createViewTransform(planBounds, box, 0.16);
+    const outline = model.outline && model.outline.length
+      ? `<polygon class="cad-main-outline" points="${pointList(model.outline, transform)}"/>`
+      : '';
+    const steps = model.steps.map((step) => `<polygon class="cad-step" points="${pointList(step.topView, transform)}"/>`).join('');
+    const nosings = model.steps.map((step) => {
+      const a = transform.map(step.topView[1]);
+      const b = transform.map(step.topView[2]);
+      return `<line class="cad-nosing" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
+    }).join('');
+    const stepNumbers = model.steps.map((step, index) => {
+      if (model.steps.length > 18 && index % 2 !== 0) return '';
+      const center = transform.map(centerOfPoints(step.topView));
+      return `<text class="cad-step-number" x="${center.x}" y="${center.y + 4}" text-anchor="middle">${step.index}</text>`;
+    }).join('');
+    const walkingPoints = model.steps.map((step) => transform.map(centerOfPoints(step.topView)));
+    const walkingLine = `<polyline class="cad-walking-line" points="${walkingPoints.map((point) => `${point.x},${point.y}`).join(' ')}" marker-end="url(#${svgMarkerPrefix}Arrow)"/>`;
+    const tremieTopLeft = transform.map({ x: modelCenter.x - model.tremie.length / 2, y: modelCenter.y - model.tremie.width / 2 });
+    const tremieBottomRight = transform.map({ x: modelCenter.x + model.tremie.length / 2, y: modelCenter.y + model.tremie.width / 2 });
+    const x1 = transform.map({ x: bounds.minX, y: bounds.minY }).x;
+    const x2 = transform.map({ x: bounds.maxX, y: bounds.minY }).x;
+    const y1 = transform.map({ x: bounds.minX, y: bounds.minY }).y;
+    const y2 = transform.map({ x: bounds.minX, y: bounds.maxY }).y;
+    const dimBottom = y2 + 46;
+    const dimLeft = x1 - 46;
+    const dimTop = Math.min(tremieTopLeft.y - 28, y1 - 30);
+    const dimRight = tremieBottomRight.x + 34;
+
+    return `<g>
+      ${renderCadViewFrame(box, title)}
+      <rect class="cad-hidden" x="${tremieTopLeft.x}" y="${tremieTopLeft.y}" width="${tremieBottomRight.x - tremieTopLeft.x}" height="${tremieBottomRight.y - tremieTopLeft.y}"/>
+      ${steps}${nosings}${outline}${renderStringersFromModel(model, { x: transform.map({ x: 0, y: 0 }).x, y: transform.map({ x: 0, y: 0 }).y }, transform.scale)}${walkingLine}${stepNumbers}
+      ${renderCadDimension(x1, dimBottom, x2, dimBottom, `${Math.round(model.dimensions.footprintX)} mm`)}
+      ${renderCadDimension(dimLeft, y1, dimLeft, y2, `${Math.round(model.dimensions.footprintY)} mm`, 'v')}
+      ${renderCadDimension(tremieTopLeft.x, dimTop, tremieBottomRight.x, dimTop, `Trémie ${Math.round(model.tremie.length)} mm`)}
+      ${renderCadDimension(dimRight, tremieTopLeft.y, dimRight, tremieBottomRight.y, `${Math.round(model.tremie.width)} mm`, 'v')}
+    </g>`;
+  }
+
+  function renderSideElevation(model, box, title = 'ÉLÉVATION PRINCIPALE') {
+    const bounds = { minX: 0, maxX: model.developedLength, minY: -model.totalHeight, maxY: 0 };
+    const transform = createViewTransform(bounds, box, 0.16);
+    const baseStart = transform.map({ x: 0, y: 0 });
+    const baseEnd = transform.map({ x: model.developedLength, y: 0 });
+    const topStart = transform.map({ x: model.developedLength - 420, y: -model.totalHeight });
+    const topEnd = transform.map({ x: model.developedLength + 360, y: -model.totalHeight });
+    const stairPath = model.steps.reduce((path, step) => {
+      const point = transform.map({ x: step.index * model.going, y: -step.z });
+      return `${path} H ${point.x} V ${point.y}`;
+    }, `M ${baseStart.x} ${baseStart.y}`);
+    const slopeA = transform.map({ x: 0, y: 0 });
+    const slopeB = transform.map({ x: model.developedLength, y: -model.totalHeight });
+    const dimBottom = baseStart.y + 46;
+    const dimLeft = baseStart.x - 46;
+    const goingA = transform.map({ x: 0, y: 0 });
+    const goingB = transform.map({ x: model.going, y: 0 });
+    const riserTop = transform.map({ x: model.going, y: -model.riser });
+    const riserBottom = transform.map({ x: model.going, y: 0 });
+
+    return `<g>
+      ${renderCadViewFrame(box, title)}
+      <line class="cad-main-line" x1="${baseStart.x - 26}" y1="${baseStart.y}" x2="${baseEnd.x + 36}" y2="${baseEnd.y}"/>
+      <line class="cad-main-line" x1="${topStart.x}" y1="${topStart.y}" x2="${topEnd.x}" y2="${topEnd.y}"/>
+      <path class="cad-main-outline" d="${stairPath}"/>
+      <line class="cad-secondary-line" x1="${slopeA.x}" y1="${slopeA.y}" x2="${slopeB.x}" y2="${slopeB.y}"/>
+      ${renderCadDimension(dimLeft, slopeB.y, dimLeft, baseStart.y, `${Math.round(model.totalHeight)} mm`, 'v')}
+      ${renderCadDimension(baseStart.x, dimBottom, baseEnd.x, dimBottom, `${Math.round(model.developedLength)} mm`)}
+      ${renderCadDimension(goingA.x, dimBottom + 42, goingB.x, dimBottom + 42, `Giron ${roundTo(model.going, 1)} mm`)}
+      ${renderCadDimension(riserBottom.x + 42, riserTop.y, riserBottom.x + 42, riserBottom.y, `H ${roundTo(model.riser, 1)} mm`, 'v')}
+    </g>`;
+  }
+
+  function renderFrontElevation(model, box) {
+    const bounds = { minX: 0, maxX: model.width, minY: -model.totalHeight, maxY: 0 };
+    const transform = createViewTransform(bounds, box, 0.18);
+    const leftBase = transform.map({ x: 0, y: 0 });
+    const rightBase = transform.map({ x: model.width, y: 0 });
+    const leftTop = transform.map({ x: 0, y: -model.totalHeight });
+    const rightTop = transform.map({ x: model.width, y: -model.totalHeight });
+    const dimBottom = leftBase.y + 42;
+    const dimLeft = leftBase.x - 42;
+    const riserLines = Array.from({ length: Math.min(model.stepCount, 14) }, (_, index) => {
+      const ratio = (index + 1) / Math.min(model.stepCount, 14);
+      const y = leftBase.y + (leftTop.y - leftBase.y) * ratio;
+      return `<line class="cad-secondary-line" x1="${leftTop.x}" y1="${y}" x2="${rightTop.x}" y2="${y}"/>`;
+    }).join('');
+    return `<g>
+      ${renderCadViewFrame(box, 'ÉLÉVATION DE FACE')}
+      <rect class="cad-main-outline" x="${leftTop.x}" y="${leftTop.y}" width="${rightTop.x - leftTop.x}" height="${leftBase.y - leftTop.y}"/>
+      ${riserLines}
+      ${renderCadDimension(leftBase.x, dimBottom, rightBase.x, dimBottom, `Largeur ${Math.round(model.width)} mm`)}
+      ${renderCadDimension(dimLeft, leftTop.y, dimLeft, leftBase.y, `${Math.round(model.totalHeight)} mm`, 'v')}
+    </g>`;
+  }
+
+  function renderSecondaryView(model, box) {
+    return renderPlanView(model, box, 'VUE COMPLÉMENTAIRE');
+  }
+
+  function renderTitleBlock(model, values, x, y, width, height) {
+    const typeLabel = model.type === 'quarter_turn' ? '1/4 tournant' : model.type === 'double_quarter_turn' ? '2/4 tournants' : 'Droit';
+    const stringerLabel = model.stringerType === 'central' ? 'Central' : model.stringerType === 'side' ? 'Latéraux' : 'Aucun';
+    const rows = [
+      ['Client', values.client || '—'],
+      ['Chantier', values.chantier || '—'],
+      ['Type', typeLabel],
+      ['Marches', `${model.stepCount}`],
+      ['Hauteur', `${Math.round(model.totalHeight)} mm`],
+      ['H. marche', `${roundTo(model.riser, 1)} mm`],
+      ['Giron', `${roundTo(model.going, 1)} mm`],
+      ['Pente', model.slope ? `${roundTo(model.slope, 1)}°` : '—'],
+      ['Largeur', `${Math.round(model.width)} mm`],
+      ['Limon', stringerLabel]
+    ];
+    const headerH = 58;
+    const rowH = (height - headerH) / rows.length;
+    return `<g>
+      <rect class="cad-title-block" x="${x}" y="${y}" width="${width}" height="${height}"/>
+      <line class="cad-title-line" x1="${x}" y1="${y + headerH}" x2="${x + width}" y2="${y + headerH}"/>
+      <text class="cad-title-brand" x="${x + 18}" y="${y + 35}">A2 MÉTAL</text>
+      <text class="cad-title-small" x="${x + width - 18}" y="${y + 32}" text-anchor="end">PLAN ESCALIER</text>
+      ${rows.map(([label, value], index) => {
+        const rowY = y + headerH + index * rowH;
+        return `<line class="cad-title-line" x1="${x}" y1="${rowY}" x2="${x + width}" y2="${rowY}"/>
+          <text class="cad-title-label" x="${x + 14}" y="${rowY + rowH * 0.68}">${escSvgText(label)}</text>
+          <text class="cad-title-value" x="${x + width - 14}" y="${rowY + rowH * 0.68}" text-anchor="end">${escSvgText(value)}</text>`;
+      }).join('')}
+    </g>`;
+  }
+
+  function renderCadSheet(model, values) {
+    const width = 2970;
+    const height = 2100;
+    const topLeft = { x: 90, y: 130, width: 1300, height: 760 };
+    const topRight = { x: 1510, y: 130, width: 1370, height: 760 };
+    const bottomLeft = { x: 90, y: 1010, width: 1300, height: 760 };
+    const bottomRight = { x: 1510, y: 1010, width: 900, height: 760 };
+    return svgShell(width, height, `
+      <rect class="cad-sheet-frame" x="55" y="55" width="${width - 110}" height="${height - 110}"/>
+      <text class="cad-sheet-heading" x="90" y="100">PLAN TECHNIQUE ESCALIER - PRÉ-DIMENSIONNEMENT</text>
+      ${renderSideElevation(model, topLeft)}
+      ${renderPlanView(model, topRight)}
+      ${renderFrontElevation(model, bottomLeft)}
+      ${renderSecondaryView(model, bottomRight)}
+      ${renderTitleBlock(model, values, 2440, 1010, 440, 760)}
+    `);
+  }
+
   function renderProfessionalStairPlan(values) {
     svgMarkerPrefix = 'cadPlan';
     if (!currentSelectedSolution) {
@@ -1204,20 +1423,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       return;
     }
     const model = buildStairModel(currentSelectedSolution, values);
-    const width = 1120;
-    const height = 760;
-    const body = `
-      <rect class="sheet-frame" x="22" y="22" width="${width - 44}" height="${height - 44}"/>
-      <line class="sheet-separator" x1="22" y1="92" x2="${width - 22}" y2="92"/>
-      <text class="cad-brand" x="48" y="58">A2 MÉTAL</text>
-      <text class="cad-sheet-title" x="48" y="80">Plan technique escalier</text>
-      <text class="small-note" x="${width - 46}" y="58" text-anchor="end">Pré-dimensionnement indicatif - unité mm</text>
-      <text class="small-note" x="${width - 46}" y="78" text-anchor="end">${escSvgText(values.date || 'Rév. 0')}</text>
-      ${renderTopViewFromModel(model, { x: 44, y: 112, width: 650, height: 560 })}
-      ${renderSideViewFromModel(model, { x: 724, y: 112, width: 350, height: 270 })}
-      ${renderDimensionsFromModel(model, values, 724, 410, 350, 262)}
-    `;
-    topViewSvg.innerHTML = svgShell(width, height, body);
+    topViewSvg.innerHTML = renderCadSheet(model, values);
   }
 
   function getCurrentPlanModel() {
@@ -1234,20 +1440,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
 
   function renderPdfPlanSvg(model, values, variant) {
     svgMarkerPrefix = 'pdfClient';
-    const width = 1120;
-    const height = 760;
-    const body = `
-      <rect class="sheet-frame" x="22" y="22" width="${width - 44}" height="${height - 44}"/>
-      <line class="sheet-separator" x1="22" y1="92" x2="${width - 22}" y2="92"/>
-      <text class="cad-brand" x="48" y="58">A2 MÉTAL</text>
-      <text class="cad-sheet-title" x="48" y="80">Plan technique escalier</text>
-      <text class="small-note" x="${width - 46}" y="58" text-anchor="end">Pré-dimensionnement indicatif - unité mm</text>
-      <text class="small-note" x="${width - 46}" y="78" text-anchor="end">${escSvgText(values.date || 'Rév. 0')}</text>
-      ${renderTopViewFromModel(model, { x: 44, y: 112, width: 650, height: 560 })}
-      ${renderSideViewFromModel(model, { x: 724, y: 112, width: 350, height: 270 })}
-      ${renderDimensionsFromModel(model, values, 724, 410, 350, 262)}
-    `;
-    return svgShell(width, height, body);
+    return renderCadSheet(model, values);
   }
 
   function buildPdfDocument(model, values, variant) {
@@ -1316,7 +1509,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
           }
           .pdf-title-block p { margin: 0; color: #64727d; font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
           .pdf-title-block h1 { margin: 2mm 0 0; font-size: 18pt; line-height: 1.05; letter-spacing: -0.02em; }
-          .pdf-version { color: #9a4a00; font-size: 10pt; font-weight: 900; text-transform: uppercase; }
+          .pdf-version { color: #222222; font-size: 10pt; font-weight: 900; text-transform: uppercase; }
           .pdf-meta-table {
             width: 100%;
             height: 100%;
