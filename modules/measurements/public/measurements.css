@@ -458,9 +458,10 @@ textarea:focus {
   width: 100%;
   aspect-ratio: 760 / 620;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 4px;
   background: #ffffff;
-  overflow: hidden;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .technical-svg-main {
@@ -471,6 +472,7 @@ textarea:focus {
   display: block;
   width: 100%;
   height: 100%;
+  min-width: 760px;
 }
 
 .technical-svg .sheet-bg {
@@ -487,6 +489,18 @@ textarea:focus {
   stroke: #1f2933;
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .sheet-frame,
+.technical-svg .view-frame {
+  fill: none;
+  stroke: #1f2933;
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .view-frame {
+  stroke-width: 0.9;
 }
 
 .technical-svg .stringer-line {
@@ -527,7 +541,7 @@ textarea:focus {
 }
 
 .technical-svg .slab-fill {
-  fill: #eef1f3;
+  fill: url(#slabHatch);
   stroke: #1f2933;
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
@@ -548,7 +562,7 @@ textarea:focus {
 }
 
 .technical-svg .tremie-fill {
-  fill: none;
+  fill: url(#tremieHatch);
   stroke: #c65f00;
   stroke-width: 1.2;
   stroke-dasharray: 7 5;
@@ -584,6 +598,28 @@ textarea:focus {
   fill: #5f6b75;
 }
 
+.technical-svg .view-title {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+  fill: #1f2933;
+  letter-spacing: 0.03em;
+}
+
+.technical-svg .small-note,
+.technical-svg .step-number {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 11px;
+  fill: #66717b;
+}
+
+.technical-svg .section-marker {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  fill: #1f2933;
+}
+
 .technical-svg .dim-label {
   font-size: 15px;
   font-weight: 700;
@@ -604,13 +640,13 @@ textarea:focus {
 
 .technical-svg .schedule-box {
   fill: #ffffff;
-  stroke: #9aa6af;
-  stroke-width: 1;
+  stroke: #1f2933;
+  stroke-width: 1.1;
   vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .schedule-line {
-  stroke: #d7dde2;
+  stroke: #1f2933;
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
@@ -619,6 +655,13 @@ textarea:focus {
   font-family: "Segoe UI", Arial, sans-serif;
   font-size: 13px;
   font-weight: 800;
+  fill: #1f2933;
+}
+
+.technical-svg .brand-title {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 20px;
+  font-weight: 900;
   fill: #1f2933;
 }
 
@@ -784,7 +827,12 @@ textarea:focus {
   }
 
   .technical-svg {
-    border-radius: 14px;
+    border-radius: 4px;
+  }
+
+  .technical-svg svg {
+    width: 760px;
+    max-width: none;
   }
 
   .technical-svg .label {

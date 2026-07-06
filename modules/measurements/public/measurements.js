@@ -180,33 +180,89 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   }
 
   function renderTitleBlock(values, x, y, width) {
-    const rows = [
-      ['Type escalier', values.stairTypeLabel, 'Sens montée', values.direction],
-      ['Client', values.client || '—', 'Chantier', values.chantier || '—'],
-      ['Date', values.date || '—', 'Trémie L', formatMeasure(values.tremieType === 'l' ? values.tremieLGrandeLongueur : values.tremieLongueur)],
-      ['Hauteur', formatMeasure(values.hauteur), 'Trémie l', formatMeasure(values.tremieType === 'l' ? values.tremieLGrandeLargeur : values.tremieLargeur)],
-      ['Longueur', formatMeasure(values.longueur), 'Largeur', formatMeasure(values.largeur)],
-      ['Reculement', formatMeasure(values.reculement), 'Échappée', formatMeasure(values.echappee)],
-      ['Marches', formatMeasure(values.marchesNombre, 'marches'), 'H. marche', formatMeasure(values.hauteurMarche)],
-      ['Giron', formatMeasure(values.giron), '', ''],
-    ];
-    const rowHeight = 24;
-    const height = 26 + rows.length * rowHeight;
-    const half = width / 2;
-    const cells = rows.map((row, index) => {
-      const rowY = y + 26 + index * rowHeight;
-      return `<line class="schedule-line" x1="${x}" y1="${rowY}" x2="${x + width}" y2="${rowY}"/>
-        <text class="schedule-label" x="${x + 12}" y="${rowY + 16}">${escSvgText(row[0])}</text>
-        <text class="schedule-value" x="${x + half - 12}" y="${rowY + 16}" text-anchor="end">${escSvgText(row[1])}</text>
-        <line class="schedule-line" x1="${x + half}" y1="${rowY}" x2="${x + half}" y2="${rowY + rowHeight}"/>
-        <text class="schedule-label" x="${x + half + 12}" y="${rowY + 16}">${escSvgText(row[2])}</text>
-        <text class="schedule-value" x="${x + width - 12}" y="${rowY + 16}" text-anchor="end">${escSvgText(row[3])}</text>`;
-    }).join('');
+    const project = values.chantier || '—';
+    const client = values.client || '—';
+    const date = values.date || '—';
+    const colA = 148;
+    const colB = 322;
+    const colC = 462;
+    const row = 24;
+    const height = 120;
     return `<g>
       <rect class="schedule-box" x="${x}" y="${y}" width="${width}" height="${height}"/>
-      <text class="schedule-title" x="${x + 12}" y="${y + 18}">Cartouche technique</text>
-      ${cells}
+      <line class="schedule-line" x1="${x + colA}" y1="${y}" x2="${x + colA}" y2="${y + height}"/>
+      <line class="schedule-line" x1="${x + colB}" y1="${y}" x2="${x + colB}" y2="${y + height}"/>
+      <line class="schedule-line" x1="${x + colC}" y1="${y}" x2="${x + colC}" y2="${y + height}"/>
+      ${[1, 2, 3, 4].map((index) => `<line class="schedule-line" x1="${x}" y1="${y + index * row}" x2="${x + width}" y2="${y + index * row}"/>`).join('')}
+      <text class="brand-title" x="${x + 16}" y="${y + 32}">A2 MÉTAL</text>
+      <text class="schedule-label" x="${x + 16}" y="${y + 62}">Unité</text>
+      <text class="schedule-value" x="${x + 92}" y="${y + 62}" text-anchor="end">mm</text>
+      <text class="schedule-label" x="${x + 16}" y="${y + 86}">Révision</text>
+      <text class="schedule-value" x="${x + 92}" y="${y + 86}" text-anchor="end">0</text>
+      <text class="schedule-label" x="${x + colA + 10}" y="${y + 16}">Projet / chantier</text>
+      <text class="schedule-value" x="${x + colB - 10}" y="${y + 16}" text-anchor="end">${escSvgText(project)}</text>
+      <text class="schedule-label" x="${x + colA + 10}" y="${y + 40}">Client</text>
+      <text class="schedule-value" x="${x + colB - 10}" y="${y + 40}" text-anchor="end">${escSvgText(client)}</text>
+      <text class="schedule-label" x="${x + colA + 10}" y="${y + 64}">Type escalier</text>
+      <text class="schedule-value" x="${x + colB - 10}" y="${y + 64}" text-anchor="end">${escSvgText(values.stairTypeLabel)}</text>
+      <text class="schedule-label" x="${x + colA + 10}" y="${y + 88}">Sens de montée</text>
+      <text class="schedule-value" x="${x + colB - 10}" y="${y + 88}" text-anchor="end">${escSvgText(values.direction)}</text>
+      <text class="schedule-label" x="${x + colB + 10}" y="${y + 16}">Page</text>
+      <text class="schedule-value" x="${x + colC - 10}" y="${y + 16}" text-anchor="end">Prise de cotes escalier</text>
+      <text class="schedule-label" x="${x + colB + 10}" y="${y + 40}">Date</text>
+      <text class="schedule-value" x="${x + colC - 10}" y="${y + 40}" text-anchor="end">${escSvgText(date)}</text>
+      <text class="schedule-label" x="${x + colB + 10}" y="${y + 64}">Longueur / largeur</text>
+      <text class="schedule-value" x="${x + colC - 10}" y="${y + 64}" text-anchor="end">${escSvgText(formatMeasure(values.longueur))} / ${escSvgText(formatMeasure(values.largeur))}</text>
+      <text class="schedule-label" x="${x + colB + 10}" y="${y + 88}">Hauteur / reculement</text>
+      <text class="schedule-value" x="${x + colC - 10}" y="${y + 88}" text-anchor="end">${escSvgText(formatMeasure(values.hauteur))} / ${escSvgText(formatMeasure(values.reculement))}</text>
+      <text class="schedule-label" x="${x + colC + 10}" y="${y + 16}">Trémie L/l</text>
+      <text class="schedule-value" x="${x + width - 10}" y="${y + 16}" text-anchor="end">${escSvgText(formatMeasure(values.tremieType === 'l' ? values.tremieLGrandeLongueur : values.tremieLongueur))} / ${escSvgText(formatMeasure(values.tremieType === 'l' ? values.tremieLGrandeLargeur : values.tremieLargeur))}</text>
+      <text class="schedule-label" x="${x + colC + 10}" y="${y + 40}">Marches</text>
+      <text class="schedule-value" x="${x + width - 10}" y="${y + 40}" text-anchor="end">${escSvgText(formatMeasure(values.marchesNombre, 'marches'))}</text>
+      <text class="schedule-label" x="${x + colC + 10}" y="${y + 64}">H. marche / giron</text>
+      <text class="schedule-value" x="${x + width - 10}" y="${y + 64}" text-anchor="end">${escSvgText(formatMeasure(values.hauteurMarche))} / ${escSvgText(formatMeasure(values.giron))}</text>
+      <text class="schedule-label" x="${x + colC + 10}" y="${y + 88}">Échappée</text>
+      <text class="schedule-value" x="${x + width - 10}" y="${y + 88}" text-anchor="end">${escSvgText(formatMeasure(values.echappee))}</text>
     </g>`;
+  }
+
+  function renderSheetFrame(width, height, title, titleBlockY) {
+    return `<rect class="sheet-frame" x="18" y="18" width="${width - 36}" height="${height - 36}"/>
+      <rect class="view-frame" x="42" y="48" width="${width - 84}" height="${titleBlockY - 62}"/>
+      <text class="view-title" x="54" y="38">${title}</text>
+      <text class="small-note" x="${width - 54}" y="38" text-anchor="end">Échelle visuelle - contrôle chantier</text>`;
+  }
+
+  function renderSectionMarkers(x1, y1, x2, y2, label) {
+    return `<line class="thin-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>
+      <text class="section-marker" x="${x1 - 12}" y="${y1 - 5}" text-anchor="end">${label}</text>
+      <text class="section-marker" x="${x2 + 12}" y="${y2 - 5}">${label}</text>`;
+  }
+
+  function renderScaleBar(x, y) {
+    return `<g>
+      <line class="thin-line" x1="${x}" y1="${y}" x2="${x + 110}" y2="${y}"/>
+      <line class="thin-line" x1="${x}" y1="${y - 5}" x2="${x}" y2="${y + 5}"/>
+      <line class="thin-line" x1="${x + 55}" y1="${y - 5}" x2="${x + 55}" y2="${y + 5}"/>
+      <line class="thin-line" x1="${x + 110}" y1="${y - 5}" x2="${x + 110}" y2="${y + 5}"/>
+      <text class="small-note" x="${x}" y="${y + 18}">0</text>
+      <text class="small-note" x="${x + 55}" y="${y + 18}" text-anchor="middle">500</text>
+      <text class="small-note" x="${x + 110}" y="${y + 18}" text-anchor="end">1000 mm</text>
+    </g>`;
+  }
+
+  function renderPlanDirectionArrow(x, y, label = 'Sens montée') {
+    return `<g>
+      <line class="walking-line" x1="${x}" y1="${y}" x2="${x + 56}" y2="${y}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>
+      <text class="small-note" x="${x}" y="${y - 8}">${label}</text>
+    </g>`;
+  }
+
+  function renderStepNumbers(points, values, drawingWidth) {
+    return points.map(({ x, y, label }) => {
+      const pointX = values.direction === 'Gauche' ? drawingWidth - x : x;
+      return `<text class="step-number" x="${pointX}" y="${y}" text-anchor="middle">${label}</text>`;
+    }).join('');
   }
 
   function renderStepLines(options) {
@@ -249,6 +305,14 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   function svgShell(width, height, body) {
     return `<svg viewBox="0 0 ${width} ${height}" role="img" preserveAspectRatio="xMidYMid meet">
       <defs>
+        <pattern id="slabHatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+          <rect width="8" height="8" fill="#f7f8f9"/>
+          <line x1="0" y1="0" x2="0" y2="8" stroke="#9aa4b2" stroke-width="0.8"/>
+        </pattern>
+        <pattern id="tremieHatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+          <rect width="8" height="8" fill="#ffffff"/>
+          <line x1="0" y1="0" x2="0" y2="8" stroke="#d9480f" stroke-width="0.7"/>
+        </pattern>
         <marker id="${svgMarkerPrefix}TravelArrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth">
           <path d="M 0 0 L 7 3.5 L 0 7 z" fill="#374957"/>
         </marker>
@@ -262,6 +326,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     svgMarkerPrefix = 'sidePlan';
     const width = 760;
     const height = 620;
+    const titleBlockY = 470;
     const left = 116;
     const right = 632;
     const top = 78;
@@ -277,6 +342,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     }
 
     const body = `
+      ${renderSheetFrame(width, height, 'Vue de côté', titleBlockY)}
       <line class="cut-line" x1="72" y1="${bottom}" x2="696" y2="${bottom}"/>
       <text class="caption" x="74" y="${bottom + 23}">Sol bas / départ</text>
       <rect class="slab-fill" x="${right - 8}" y="${top - 13}" width="86" height="22"/>
@@ -290,7 +356,9 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       ${dimH(left, 326, right, `Reculement ${formatMeasure(values.reculement)}`, 'reculement')}
       ${dimH(left, 360, right, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
       ${dimV(right + 58, top + 12, top + 112, `Échappée ${formatMeasure(values.echappee)}`, 'echappee', 'right')}
-      ${renderTitleBlock(values, 76, 390, 608)}
+      ${renderSectionMarkers(left + 80, bottom - 32, left + 220, bottom - 88, 'B-B')}
+      ${renderScaleBar(560, 416)}
+      ${renderTitleBlock(values, 76, titleBlockY, 608)}
     `;
     sideViewSvg.innerHTML = svgShell(width, height, body);
   }
@@ -330,6 +398,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     const outline = `M ${x} ${y} H ${x + width} V ${y + depth} H ${x} Z`;
     const tremie = { x: x + width * 0.58, y: y + 14, width: 154, height: depth - 28 };
     const tremieX = mirrorRectX(tremie.x, tremie.width, values, 760);
+    const titleBlockY = 530;
     const geometry = `
       ${renderStairOutline(outline)}
       ${renderStepLines({ x, y, width, height: depth, count: values.marchesGeom, orientation: 'h' })}
@@ -337,13 +406,22 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       ${renderCornerMarkers([[x, y], [x + width, y], [x + width, y + depth], [x, y + depth]])}
     `;
     return `
+      ${renderSheetFrame(760, 680, 'Vue en plan', titleBlockY)}
       ${mirrorPlanForDirection(geometry, values, 760)}
       ${renderTremie(values, tremieX, tremie.y, tremie.width, tremie.height)}
+      ${renderStepNumbers([
+        { x: x + 60, y: y + depth / 2 + 4, label: '1' },
+        { x: x + width / 2, y: y + depth / 2 + 4, label: `${Math.ceil(values.marchesGeom / 2)}` },
+        { x: x + width - 60, y: y + depth / 2 + 4, label: `${values.marchesGeom}` },
+      ], values, 760)}
       <text class="caption" x="${x}" y="${y - 22}">Départ</text>
       <text class="caption" x="${x + width - 54}" y="${y - 22}">Arrivée</text>
       ${dimH(x, y + depth + 54, x + width, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
       ${dimV(x - 38, y, y + depth, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}
-      ${renderTitleBlock(values, 76, 420, 608)}
+      ${renderSectionMarkers(x + 120, y - 34, x + 120, y + depth + 34, 'A-A')}
+      ${renderPlanDirectionArrow(520, 82)}
+      ${renderScaleBar(548, 476)}
+      ${renderTitleBlock(values, 76, titleBlockY, 608)}
     `;
   }
 
@@ -360,6 +438,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     const upperRun = Math.max(3, Math.round(values.marchesGeom * 0.36));
     const tremie = { x: cornerX - 156, y: y + 36, width: 136, height: 142 };
     const tremieX = mirrorRectX(tremie.x, tremie.width, values, 760);
+    const titleBlockY = 530;
     const geometry = `
       ${renderStairOutline(outline)}
       ${renderStepLines({ x, y: cornerY, width: horizontal - flight, height: flight, count: lowerRun, orientation: 'h' })}
@@ -371,14 +450,24 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     const startLabelX = values.direction === 'Gauche' ? 760 - x - 42 : x;
     const endLabelX = values.direction === 'Gauche' ? 760 - (cornerX + flight + 82) : cornerX + flight + 20;
     return `
+      ${renderSheetFrame(760, 680, 'Vue en plan', titleBlockY)}
       ${mirrorPlanForDirection(geometry, values, 760)}
       ${renderTremie(values, tremieX, tremie.y, tremie.width, tremie.height)}
+      ${renderStepNumbers([
+        { x: x + 52, y: cornerY + flight / 2 + 4, label: '1' },
+        { x: cornerX + flight / 2, y: cornerY + flight / 2 + 4, label: `${Math.ceil(values.marchesGeom / 2)}` },
+        { x: cornerX + flight / 2, y: y + 52, label: `${values.marchesGeom}` },
+      ], values, 760)}
       <text class="caption" x="${startLabelX}" y="${cornerY - 22}">Départ</text>
       <text class="caption" x="${endLabelX}" y="${y + 36}">Arrivée</text>
       ${dimH(x, y + vertical + 42, x + horizontal, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
       ${dimV(x + horizontal + 42, y, y + vertical, `Reculement ${formatMeasure(values.reculement)}`, 'reculement', 'right')}
       ${dimV(x - 38, cornerY, cornerY + flight, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}
-      ${renderTitleBlock(values, 76, 430, 608)}
+      ${renderSectionMarkers(x + 84, cornerY - 34, x + 84, cornerY + flight + 34, 'A-A')}
+      ${renderSectionMarkers(cornerX - 34, y + 84, cornerX + flight + 34, y + 84, 'B-B')}
+      ${renderPlanDirectionArrow(542, 92)}
+      ${renderScaleBar(548, 486)}
+      ${renderTitleBlock(values, 76, titleBlockY, 608)}
     `;
   }
 
@@ -395,6 +484,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     const middleSteps = Math.max(3, Math.round(values.marchesGeom * 0.30));
     const tremie = { x: x + 28, y: y + flight + 30, width: 172, height: 86 };
     const tremieX = mirrorRectX(tremie.x, tremie.width, values, 760);
+    const titleBlockY = 530;
     const geometry = `
       ${renderStairOutline(outline)}
       ${renderStepLines({ x, y, width: horizontal - flight, height: flight, count: runSteps, orientation: 'h' })}
@@ -407,14 +497,24 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     `;
     const labelX = values.direction === 'Gauche' ? 760 - x - 42 : x;
     return `
+      ${renderSheetFrame(760, 680, 'Vue en plan', titleBlockY)}
       ${mirrorPlanForDirection(geometry, values, 760)}
       ${renderTremie(values, tremieX, tremie.y, tremie.width, tremie.height)}
+      ${renderStepNumbers([
+        { x: x + 54, y: bottomY + flight / 2 + 4, label: '1' },
+        { x: cornerX + flight / 2, y: y + vertical / 2 + 4, label: `${Math.ceil(values.marchesGeom / 2)}` },
+        { x: x + 54, y: y + flight / 2 + 4, label: `${values.marchesGeom}` },
+      ], values, 760)}
       <text class="caption" x="${labelX}" y="${bottomY - 22}">Départ</text>
       <text class="caption" x="${labelX}" y="${y - 22}">Arrivée</text>
       ${dimH(x, y + vertical + 42, x + horizontal, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
       ${dimV(x + horizontal + 42, y, y + vertical, `Reculement ${formatMeasure(values.reculement)}`, 'reculement', 'right')}
       ${dimV(x - 38, y, y + flight, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}
-      ${renderTitleBlock(values, 76, 430, 608)}
+      ${renderSectionMarkers(x + 76, bottomY - 34, x + 76, bottomY + flight + 34, 'A-A')}
+      ${renderSectionMarkers(cornerX - 34, y + vertical / 2, cornerX + flight + 34, y + vertical / 2, 'B-B')}
+      ${renderPlanDirectionArrow(542, 92)}
+      ${renderScaleBar(548, 486)}
+      ${renderTitleBlock(values, 76, titleBlockY, 608)}
     `;
   }
 
