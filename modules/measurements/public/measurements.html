@@ -20,6 +20,8 @@
         <button id="loadBtn" type="button">Réouvrir</button>
         <button id="resetBtn" type="button">Nouvelle fiche</button>
         <button id="printBtn" type="button">Imprimer</button>
+        <button id="exportClientPdfBtn" type="button">Exporter PDF client</button>
+        <button id="exportWorkshopPdfBtn" type="button">Exporter PDF atelier</button>
       </div>
     </header>
 
@@ -263,22 +265,21 @@
 
             <aside class="plan-panel">
               <div class="plan-head">
-                <h4>Schémas techniques</h4>
-                <p>Profil, emprise, trémie et cotes principales se mettent à jour avec les valeurs saisies.</p>
+                <h4>Plan technique</h4>
+                <p>Feuille SVG avec vue en plan, élévation, trémie, cotes principales et cartouche.</p>
               </div>
               <div class="plan-svg-grid">
-                <div class="plan-svg-card">
-                  <h5>Plan de dessus</h5>
+                <div class="plan-svg-card plan-svg-card-wide">
+                  <h5>Plan technique escalier</h5>
                   <div id="topViewSvg" class="technical-svg technical-svg-main" aria-label="Plan de dessus de l'escalier"></div>
-                </div>
-                <div class="plan-svg-card">
-                  <h5>Plan de côté</h5>
-                  <div id="sideViewSvg" class="technical-svg" aria-label="Plan de côté de l'escalier"></div>
                 </div>
               </div>
               <div class="plan-legend">
                 <span><i class="legend-line"></i>Emprise escalier</span>
                 <span><i class="legend-dim"></i>Cotes à reporter</span>
+              </div>
+              <div id="fabricationData" class="fabrication-panel" aria-live="polite">
+                <p>Sélectionnez une solution pour générer les informations de fabrication.</p>
               </div>
             </aside>
           </div>

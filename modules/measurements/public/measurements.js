@@ -7,6 +7,8 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   const loadBtn = document.getElementById('loadBtn');
   const resetBtn = document.getElementById('resetBtn');
   const printBtn = document.getElementById('printBtn');
+  const exportClientPdfBtn = document.getElementById('exportClientPdfBtn');
+  const exportWorkshopPdfBtn = document.getElementById('exportWorkshopPdfBtn');
   const proposalBtn = document.getElementById('proposalBtn');
   const proposalResult = document.getElementById('proposalResult');
   const configuratorFields = Array.from(document.querySelectorAll('[data-sync-field]'));
@@ -15,8 +17,8 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   const saveStatus = document.getElementById('saveStatus');
   const recordNameField = document.getElementById('recordName');
   const photoTemplate = document.getElementById('photoItemTemplate');
-  const sideViewSvg = document.getElementById('sideViewSvg');
   const topViewSvg = document.getElementById('topViewSvg');
+  const fabricationPanel = document.getElementById('fabricationData');
   const tremieGroups = Array.from(document.querySelectorAll('[data-tremie-group]'));
 
   let photos = [];
@@ -554,8 +556,8 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   function svgShell(width, height, body) {
     return `<svg viewBox="0 0 ${width} ${height}" role="img" preserveAspectRatio="xMidYMid meet">
       <defs>
-        <marker id="${svgMarkerPrefix}TravelArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
-          <path d="M 0 0 L 6 3 L 0 6 z" fill="#4f6475"/>
+        <marker id="${svgMarkerPrefix}Arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M 0 0 L 8 4 L 0 8 z" fill="#4a5560"/>
         </marker>
       </defs>
       <rect class="sheet-bg" x="0" y="0" width="${width}" height="${height}"/>
@@ -563,208 +565,1087 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     </svg>`;
   }
 
-  function renderEmptyPlan(target, title) {
-    const width = 760;
-    const height = 420;
+  function renderEmptyPlan(target) {
+    const width = 1120;
+    const height = 760;
     target.innerHTML = svgShell(width, height, `
       <rect class="sheet-frame" x="24" y="24" width="${width - 48}" height="${height - 48}"/>
-      <text class="view-title" x="46" y="58">${title}</text>
+      <text class="cad-brand" x="52" y="58">A2 MÉTAL</text>
+      <text class="cad-sheet-title" x="52" y="88">Plan de pré-dimensionnement escalier</text>
       <text class="empty-plan-message" x="${width / 2}" y="${height / 2}" text-anchor="middle">Sélectionnez une solution pour générer le schéma.</text>
     `);
+    renderEmptyFabricationData();
   }
 
-  function renderSimpleDimension(x1, y1, x2, y2, label, orientation = 'h') {
-    if (orientation === 'v') {
-      return `<g>
-        <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>
-        <line class="dim-line" x1="${x1 - 6}" y1="${y1}" x2="${x1 + 6}" y2="${y1}"/>
-        <line class="dim-line" x1="${x2 - 6}" y1="${y2}" x2="${x2 + 6}" y2="${y2}"/>
-        <text class="dim-label" x="${x1 - 12}" y="${(y1 + y2) / 2 + 4}" text-anchor="end">${escSvgText(label)}</text>
-      </g>`;
-    }
-    return `<g>
-      <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>
-      <line class="dim-line" x1="${x1}" y1="${y1 - 6}" x2="${x1}" y2="${y1 + 6}"/>
-      <line class="dim-line" x1="${x2}" y1="${y2 - 6}" x2="${x2}" y2="${y2 + 6}"/>
-      <text class="dim-label" x="${(x1 + x2) / 2}" y="${y1 - 9}" text-anchor="middle">${escSvgText(label)}</text>
-    </g>`;
-  }
-
-  function renderStairTitleBlock(values, x, y, width) {
-    const tremieLength = values.tremieType === 'l' ? values.tremieLGrandeLongueur : values.tremieLongueur;
-    const tremieWidth = values.tremieType === 'l' ? values.tremieLGrandeLargeur : values.tremieLargeur;
-    const rows = [
-      ['Type escalier', values.stairTypeLabel],
-      ['Sens montée', values.direction],
-      ['Hauteur', formatMeasure(values.hauteur)],
-      ['Largeur', formatMeasure(values.largeur)],
-      ['Nombre marches', formatMeasure(values.marchesNombre, 'marches')],
-      ['Hauteur marche', formatMeasure(values.hauteurMarche)],
-      ['Giron', formatMeasure(values.giron)],
-      ['Pente', formatMeasure(values.pente, '°')],
-      ['Reculement', formatMeasure(values.reculement)],
-      ['Trémie L/l', `${formatMeasure(tremieLength)} / ${formatMeasure(tremieWidth)}`]
-    ];
-    const colW = width / 2;
-    const rowH = 24;
-    const bodyRows = rows.map(([label, value], index) => {
-      const col = index % 2;
-      const row = Math.floor(index / 2);
-      const cellX = x + col * colW;
-      const cellY = y + 30 + row * rowH;
-      return `<line class="schedule-line" x1="${cellX}" y1="${cellY}" x2="${cellX + colW}" y2="${cellY}"/>
-        <text class="schedule-label" x="${cellX + 10}" y="${cellY + 17}">${escSvgText(label)}</text>
-        <text class="schedule-value" x="${cellX + colW - 10}" y="${cellY + 17}" text-anchor="end">${escSvgText(value)}</text>`;
-    }).join('');
-    return `<g>
-      <rect class="schedule-box" x="${x}" y="${y}" width="${width}" height="154"/>
-      <line class="schedule-line" x1="${x}" y1="${y + 30}" x2="${x + width}" y2="${y + 30}"/>
-      <line class="schedule-line" x1="${x + colW}" y1="${y + 30}" x2="${x + colW}" y2="${y + 154}"/>
-      <text class="brand-title" x="${x + 10}" y="${y + 21}">A2 MÉTAL</text>
-      <text class="schedule-title" x="${x + width - 10}" y="${y + 21}" text-anchor="end">Cartouche technique escalier</text>
-      ${bodyRows}
-    </g>`;
-  }
-
-  function getSimpleScale(maxMmX, maxMmY, maxPxX, maxPxY) {
+  function cadScale(maxMmX, maxMmY, maxPxX, maxPxY) {
     return Math.min(maxPxX / Math.max(maxMmX, 1), maxPxY / Math.max(maxMmY, 1));
   }
 
-  function renderSimpleStepLines(x, y, width, height, count, orientation = 'h') {
-    const lines = [];
-    const steps = clamp(Math.round(count), 3, 22);
-    for (let index = 1; index < steps; index += 1) {
-      if (orientation === 'v') {
-        const py = y + (height / steps) * index;
-        lines.push(`<line class="step-line" x1="${x}" y1="${py}" x2="${x + width}" y2="${py}"/>`);
-      } else {
-        const px = x + (width / steps) * index;
-        lines.push(`<line class="step-line" x1="${px}" y1="${y}" x2="${px}" y2="${y + height}"/>`);
-      }
+  function cadDim(x1, y1, x2, y2, label, orientation = 'h') {
+    if (orientation === 'v') {
+      return `<g class="cad-dimension">
+        <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>
+        <line class="dim-line" x1="${x1 - 7}" y1="${y1 - 5}" x2="${x1 + 7}" y2="${y1 + 5}"/>
+        <line class="dim-line" x1="${x2 - 7}" y1="${y2 - 5}" x2="${x2 + 7}" y2="${y2 + 5}"/>
+        <text class="dim-label" x="${x1 - 13}" y="${(y1 + y2) / 2 + 4}" text-anchor="end">${escSvgText(label)}</text>
+      </g>`;
     }
-    return lines.join('');
+    return `<g class="cad-dimension">
+      <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>
+      <line class="dim-line" x1="${x1 - 5}" y1="${y1 + 7}" x2="${x1 + 5}" y2="${y1 - 7}"/>
+      <line class="dim-line" x1="${x2 - 5}" y1="${y2 + 7}" x2="${x2 + 5}" y2="${y2 - 7}"/>
+      <text class="dim-label" x="${(x1 + x2) / 2}" y="${y1 - 10}" text-anchor="middle">${escSvgText(label)}</text>
+    </g>`;
   }
 
-  function renderSimpleTopPlan(values) {
-    svgMarkerPrefix = 'topPlan';
+  function renderCadParameterPanel(values, x, y, width, height) {
+    const rows = [
+      ['Projet', values.chantier || '—'],
+      ['Client', values.client || '—'],
+      ['Date', values.date || '—'],
+      ['Unité', 'mm'],
+      ['Révision', '0'],
+      ['Page', 'Escalier']
+    ];
+    const rowH = height / rows.length;
+    return `<g>
+      <rect class="cad-panel" x="${x}" y="${y}" width="${width}" height="${height}"/>
+      ${rows.map(([label, value], index) => {
+        const rowY = y + index * rowH;
+        return `<line class="schedule-line" x1="${x}" y1="${rowY}" x2="${x + width}" y2="${rowY}"/>
+          <text class="schedule-label" x="${x + 12}" y="${rowY + rowH * 0.65}">${escSvgText(label)}</text>
+          <text class="schedule-value" x="${x + width - 12}" y="${rowY + rowH * 0.65}" text-anchor="end">${escSvgText(value)}</text>`;
+      }).join('')}
+    </g>`;
+  }
+
+  function buildStairModel(solution, inputs) {
+    const stepCount = clamp(Math.round(solution.steps || inputs.marchesGeom || 0), 1, 64);
+    const width = Number(solution.width || inputs.largeur.geom || 900);
+    const totalHeight = Number(inputs.hauteur.geom || solution.riser * stepCount || 2800);
+    const riser = totalHeight / stepCount;
+    const going = Number(solution.going || inputs.giron.geom || 260);
+    const setback = Number(solution.footprintReculement || going * stepCount);
+    const direction = solution.direction || inputs.direction;
+    const turnDirection = direction === 'Gauche' ? 'left' : 'right';
+    const type = solution.type === 'quarter'
+      ? 'quarter_turn'
+      : solution.type === 'double-quarter'
+        ? 'double_quarter_turn'
+        : 'straight';
+    const stringerType = getSelectedStringerType();
+    let steps = [];
+    let outline = [];
+    let flight1Steps = 0;
+    let turnSteps = 0;
+    let flight2Steps = 0;
+    let turn1Steps = 0;
+    let turn2Steps = 0;
+    let flight3Steps = 0;
+    let turnPositions = [];
+
+    if (type === 'quarter_turn') {
+      // Quart tournant simple : volée basse droite, 3 marches tournantes dans un carré,
+      // puis volée haute à 90°. Les marches tournantes sont de vrais polygones en plan.
+      turnSteps = Math.min(3, Math.max(0, stepCount - 2));
+      turn1Steps = turnSteps;
+      flight1Steps = Math.max(1, Math.floor((stepCount - turnSteps) * 0.55));
+      flight2Steps = Math.max(1, stepCount - turnSteps - flight1Steps);
+      if (flight1Steps + turnSteps + flight2Steps > stepCount) {
+        flight2Steps = Math.max(0, stepCount - turnSteps - flight1Steps);
+      }
+
+      const dir = turnDirection === 'left' ? -1 : 1;
+      const cornerX = flight1Steps * going;
+      const mirrorY = (points) => points.map((point) => ({ x: point.x, y: point.y * dir }));
+      let index = 1;
+
+      for (let flightIndex = 0; flightIndex < flight1Steps; flightIndex += 1) {
+        const x1 = flightIndex * going;
+        const x2 = (flightIndex + 1) * going;
+        steps.push({
+          index,
+          zone: 'flight_1',
+          z: roundTo(index * riser, 1),
+          topView: mirrorY([
+            { x: x1, y: 0 },
+            { x: x2, y: 0 },
+            { x: x2, y: width },
+            { x: x1, y: width }
+          ])
+        });
+        index += 1;
+      }
+
+      const winderPolygons = [
+        [
+          { x: cornerX, y: 0 },
+          { x: cornerX + width, y: 0 },
+          { x: cornerX + width, y: width * 0.22 },
+          { x: cornerX, y: width * 0.45 }
+        ],
+        [
+          { x: cornerX, y: width * 0.45 },
+          { x: cornerX + width, y: width * 0.22 },
+          { x: cornerX + width, y: width * 0.62 },
+          { x: cornerX + width * 0.38, y: width }
+        ],
+        [
+          { x: cornerX + width * 0.38, y: width },
+          { x: cornerX + width, y: width * 0.62 },
+          { x: cornerX + width, y: width },
+          { x: cornerX, y: width }
+        ]
+      ];
+
+      winderPolygons.slice(0, turnSteps).forEach((polygon) => {
+        steps.push({
+          index,
+          zone: 'turn_1',
+          z: roundTo(index * riser, 1),
+          topView: mirrorY(polygon)
+        });
+        index += 1;
+      });
+
+      for (let flightIndex = 0; flightIndex < flight2Steps; flightIndex += 1) {
+        const y1 = width + flightIndex * going;
+        const y2 = width + (flightIndex + 1) * going;
+        steps.push({
+          index,
+          zone: 'flight_2',
+          z: roundTo(index * riser, 1),
+          topView: mirrorY([
+            { x: cornerX, y: y1 },
+            { x: cornerX + width, y: y1 },
+            { x: cornerX + width, y: y2 },
+            { x: cornerX, y: y2 }
+          ])
+        });
+        index += 1;
+      }
+
+      outline = mirrorY([
+        { x: 0, y: 0 },
+        { x: cornerX + width, y: 0 },
+        { x: cornerX + width, y: width + flight2Steps * going },
+        { x: cornerX, y: width + flight2Steps * going },
+        { x: cornerX, y: width },
+        { x: 0, y: width }
+      ]);
+      turnPositions = [
+        Object.assign({ label: 'V1' }, mirrorY([{ x: cornerX + width * 0.5, y: width * 0.5 }])[0])
+      ];
+    } else if (type === 'double_quarter_turn') {
+      // Double quart tournant : première volée droite, premier virage 90°,
+      // volée intermédiaire, deuxième virage 90°, puis troisième volée parallèle
+      // en retour. Chaque virage utilise 3 marches polygonales indépendantes.
+      turn1Steps = Math.min(3, Math.max(0, Math.floor((stepCount - 3) / 2)));
+      turn2Steps = Math.min(3, Math.max(0, stepCount - turn1Steps - 3));
+      const straightSteps = Math.max(0, stepCount - turn1Steps - turn2Steps);
+      flight1Steps = straightSteps > 0 ? Math.max(1, Math.floor(straightSteps * 0.34)) : 0;
+      flight2Steps = straightSteps - flight1Steps > 0 ? Math.max(1, Math.floor(straightSteps * 0.32)) : 0;
+      flight3Steps = Math.max(0, straightSteps - flight1Steps - flight2Steps);
+
+      const dir = turnDirection === 'left' ? -1 : 1;
+      const mirrorY = (points) => points.map((point) => ({ x: point.x, y: point.y * dir }));
+      const firstCornerX = flight1Steps * going;
+      const middleStartY = width;
+      const middleEndY = width + flight2Steps * going;
+      let index = 1;
+
+      for (let flightIndex = 0; flightIndex < flight1Steps; flightIndex += 1) {
+        const x1 = flightIndex * going;
+        const x2 = (flightIndex + 1) * going;
+        steps.push({
+          index,
+          zone: 'flight_1',
+          z: roundTo(index * riser, 1),
+          topView: mirrorY([
+            { x: x1, y: 0 },
+            { x: x2, y: 0 },
+            { x: x2, y: width },
+            { x: x1, y: width }
+          ])
+        });
+        index += 1;
+      }
+
+      const firstTurnPolygons = [
+        [
+          { x: firstCornerX, y: 0 },
+          { x: firstCornerX + width, y: 0 },
+          { x: firstCornerX + width, y: width * 0.22 },
+          { x: firstCornerX, y: width * 0.45 }
+        ],
+        [
+          { x: firstCornerX, y: width * 0.45 },
+          { x: firstCornerX + width, y: width * 0.22 },
+          { x: firstCornerX + width, y: width * 0.62 },
+          { x: firstCornerX + width * 0.38, y: width }
+        ],
+        [
+          { x: firstCornerX + width * 0.38, y: width },
+          { x: firstCornerX + width, y: width * 0.62 },
+          { x: firstCornerX + width, y: width },
+          { x: firstCornerX, y: width }
+        ]
+      ];
+
+      firstTurnPolygons.slice(0, turn1Steps).forEach((polygon) => {
+        steps.push({
+          index,
+          zone: 'turn_1',
+          z: roundTo(index * riser, 1),
+          topView: mirrorY(polygon)
+        });
+        index += 1;
+      });
+
+      for (let flightIndex = 0; flightIndex < flight2Steps; flightIndex += 1) {
+        const y1 = middleStartY + flightIndex * going;
+        const y2 = middleStartY + (flightIndex + 1) * going;
+        steps.push({
+          index,
+          zone: 'flight_2',
+          z: roundTo(index * riser, 1),
+          topView: mirrorY([
+            { x: firstCornerX, y: y1 },
+            { x: firstCornerX + width, y: y1 },
+            { x: firstCornerX + width, y: y2 },
+            { x: firstCornerX, y: y2 }
+          ])
+        });
+        index += 1;
+      }
+
+      const secondTurnPolygons = [
+        [
+          { x: firstCornerX, y: middleEndY },
+          { x: firstCornerX + width, y: middleEndY },
+          { x: firstCornerX + width, y: middleEndY + width * 0.28 },
+          { x: firstCornerX, y: middleEndY + width * 0.52 }
+        ],
+        [
+          { x: firstCornerX, y: middleEndY + width * 0.52 },
+          { x: firstCornerX + width, y: middleEndY + width * 0.28 },
+          { x: firstCornerX + width, y: middleEndY + width * 0.68 },
+          { x: firstCornerX + width * 0.42, y: middleEndY + width }
+        ],
+        [
+          { x: firstCornerX + width * 0.42, y: middleEndY + width },
+          { x: firstCornerX + width, y: middleEndY + width * 0.68 },
+          { x: firstCornerX + width, y: middleEndY + width },
+          { x: firstCornerX, y: middleEndY + width }
+        ]
+      ];
+
+      secondTurnPolygons.slice(0, turn2Steps).forEach((polygon) => {
+        steps.push({
+          index,
+          zone: 'turn_2',
+          z: roundTo(index * riser, 1),
+          topView: mirrorY(polygon)
+        });
+        index += 1;
+      });
+
+      for (let flightIndex = 0; flightIndex < flight3Steps; flightIndex += 1) {
+        const x1 = firstCornerX - (flightIndex + 1) * going;
+        const x2 = firstCornerX - flightIndex * going;
+        steps.push({
+          index,
+          zone: 'flight_3',
+          z: roundTo(index * riser, 1),
+          topView: mirrorY([
+            { x: x1, y: middleEndY },
+            { x: x2, y: middleEndY },
+            { x: x2, y: middleEndY + width },
+            { x: x1, y: middleEndY + width }
+          ])
+        });
+        index += 1;
+      }
+
+      outline = mirrorY([
+        { x: 0, y: 0 },
+        { x: firstCornerX + width, y: 0 },
+        { x: firstCornerX + width, y: middleEndY + width },
+        { x: firstCornerX - flight3Steps * going, y: middleEndY + width },
+        { x: firstCornerX - flight3Steps * going, y: middleEndY },
+        { x: firstCornerX, y: middleEndY },
+        { x: firstCornerX, y: width },
+        { x: 0, y: width }
+      ]);
+      turnPositions = [
+        Object.assign({ label: 'V1' }, mirrorY([{ x: firstCornerX + width * 0.5, y: width * 0.5 }])[0]),
+        Object.assign({ label: 'V2' }, mirrorY([{ x: firstCornerX + width * 0.5, y: middleEndY + width * 0.5 }])[0])
+      ];
+    } else {
+      flight1Steps = stepCount;
+      for (let index = 0; index < stepCount; index += 1) {
+        const x1 = index * going;
+        const x2 = (index + 1) * going;
+        steps.push({
+          index: index + 1,
+          z: roundTo((index + 1) * riser, 1),
+          topView: [
+            { x: x1, y: 0 },
+            { x: x2, y: 0 },
+            { x: x2, y: width },
+            { x: x1, y: width }
+          ]
+        });
+      }
+      outline = [
+        { x: 0, y: 0 },
+        { x: going * stepCount, y: 0 },
+        { x: going * stepCount, y: width },
+        { x: 0, y: width }
+      ];
+    }
+
+    const allPoints = steps.flatMap((step) => step.topView).concat(outline);
+    const minX = Math.min(...allPoints.map((point) => point.x), 0);
+    const maxX = Math.max(...allPoints.map((point) => point.x), 1);
+    const minY = Math.min(...allPoints.map((point) => point.y), 0);
+    const maxY = Math.max(...allPoints.map((point) => point.y), 1);
+
+    const model = {
+      type,
+      direction,
+      turnDirection,
+      turn1Direction: type === 'double_quarter_turn' ? turnDirection : null,
+      turn2Direction: type === 'double_quarter_turn' ? turnDirection : null,
+      flight1Steps,
+      turnSteps,
+      turn1Steps,
+      flight2Steps,
+      turn2Steps,
+      flight3Steps,
+      width,
+      stringerType,
+      totalHeight,
+      setback,
+      developedLength: going * stepCount,
+      going,
+      riser,
+      slope: solution.slope || inputs.pente.value,
+      stepCount,
+      steps,
+      outline,
+      turnPositions,
+      dimensions: {
+        minX,
+        maxX,
+        minY,
+        maxY,
+        footprintX: maxX - minX,
+        footprintY: maxY - minY,
+        stairWidth: width,
+        setback,
+        totalHeight,
+        riser,
+        going,
+        slope: solution.slope || inputs.pente.value,
+        turnPositions
+      },
+      tremie: {
+        length: inputs.tremieType === 'l' ? inputs.tremieLGrandeLongueur.geom : inputs.tremieLongueur.geom,
+        width: inputs.tremieType === 'l' ? inputs.tremieLGrandeLargeur.geom : inputs.tremieLargeur.geom
+      }
+    };
+    model.stringers = buildStringersFromModel(model);
+    return model;
+  }
+
+  function getSelectedStringerType() {
+    const structures = getCheckboxValues('structure');
+    if (structures.includes('Limon central')) return 'central';
+    if (structures.includes('Double limon')) return 'side';
+    return 'none';
+  }
+
+  function modelBounds(model) {
+    const points = model.steps.flatMap((step) => step.topView).concat(model.outline || []);
+    return {
+      minX: Math.min(...points.map((point) => point.x), 0),
+      maxX: Math.max(...points.map((point) => point.x), 1),
+      minY: Math.min(...points.map((point) => point.y), 0),
+      maxY: Math.max(...points.map((point) => point.y), 1)
+    };
+  }
+
+  function mapModelPoint(point, origin, scale) {
+    return {
+      x: origin.x + point.x * scale,
+      y: origin.y + point.y * scale
+    };
+  }
+
+  function polygonPoints(points, origin, scale) {
+    return points.map((point) => {
+      const mapped = mapModelPoint(point, origin, scale);
+      return `${mapped.x},${mapped.y}`;
+    }).join(' ');
+  }
+
+  function polygonCenter(points, origin, scale) {
+    const center = points.reduce((acc, point) => ({
+      x: acc.x + point.x / points.length,
+      y: acc.y + point.y / points.length
+    }), { x: 0, y: 0 });
+    return mapModelPoint(center, origin, scale);
+  }
+
+  function polygonModelCenter(points) {
+    return points.reduce((acc, point) => ({
+      x: acc.x + point.x / points.length,
+      y: acc.y + point.y / points.length
+    }), { x: 0, y: 0 });
+  }
+
+  function edgeMidpoint(pointA, pointB) {
+    return {
+      x: (pointA.x + pointB.x) / 2,
+      y: (pointA.y + pointB.y) / 2
+    };
+  }
+
+  function distanceBetween(pointA, pointB) {
+    return Math.hypot(pointB.x - pointA.x, pointB.y - pointA.y);
+  }
+
+  function polylineLength(points) {
+    return points.reduce((total, point, index) => {
+      if (index === 0) return total;
+      return total + distanceBetween(points[index - 1], point);
+    }, 0);
+  }
+
+  function polygonArea(points) {
+    const signedArea = points.reduce((total, point, index) => {
+      const next = points[(index + 1) % points.length];
+      return total + point.x * next.y - next.x * point.y;
+    }, 0);
+    return Math.abs(signedArea) / 2;
+  }
+
+  function polygonBounds(points) {
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys)
+    };
+  }
+
+  function buildStringersFromModel(model) {
+    if (!model || model.stringerType === 'none' || !model.steps || model.steps.length < 1) {
+      return { type: 'none', lines: [] };
+    }
+
+    if (model.stringerType === 'central') {
+      return {
+        type: 'central',
+        lines: [{
+          kind: 'central',
+          points: model.steps.map((step) => polygonModelCenter(step.topView))
+        }]
+      };
+    }
+
+    if (model.stringerType === 'side') {
+      // Les limons latéraux suivent les deux familles de bords de chaque marche.
+      // Pour les marches tournantes, les milieux d'arêtes gardent une ligne lisible
+      // sans recalculer une enveloppe complexe.
+      const firstSide = model.steps.map((step) => edgeMidpoint(step.topView[0], step.topView[1]));
+      const secondSide = model.steps.map((step) => edgeMidpoint(step.topView[3], step.topView[2]));
+      return {
+        type: 'side',
+        lines: [
+          { kind: 'side', points: firstSide },
+          { kind: 'side', points: secondSide }
+        ]
+      };
+    }
+
+    return { type: 'none', lines: [] };
+  }
+
+  function renderStringersFromModel(model, origin, scale) {
+    if (!model.stringers || !model.stringers.lines.length) return '';
+    return model.stringers.lines.map((line) => {
+      const className = line.kind === 'central' ? 'central-stringer-line' : 'side-stringer-line';
+      const points = line.points
+        .map((point) => mapModelPoint(point, origin, scale))
+        .map((point) => `${point.x},${point.y}`)
+        .join(' ');
+      return `<polyline class="${className}" points="${points}"/>`;
+    }).join('');
+  }
+
+  function buildFabricationDataFromModel(model) {
+    const steps = model.steps.map((step) => {
+      const bounds = polygonBounds(step.topView);
+      const width = bounds.maxY - bounds.minY;
+      const depth = bounds.maxX - bounds.minX;
+      const area = polygonArea(step.topView);
+      const isTurnStep = String(step.zone || '').startsWith('turn');
+      return {
+        index: step.index,
+        zone: step.zone || 'flight_1',
+        type: isTurnStep ? 'tournante' : 'droite',
+        z: step.z,
+        width,
+        depth,
+        area
+      };
+    });
+    const stringers = (model.stringers && model.stringers.lines ? model.stringers.lines : []).map((line, index) => ({
+      label: line.kind === 'central' ? 'Limon central' : `Limon latéral ${index + 1}`,
+      type: line.kind === 'central' ? 'central' : 'latéral',
+      length: polylineLength(line.points)
+    }));
+    const totalStepArea = steps.reduce((total, step) => total + step.area, 0);
+    const totalStringerLength = stringers.reduce((total, stringer) => total + stringer.length, 0);
+    return {
+      steps,
+      stringers,
+      materials: [
+        {
+          label: 'Marches',
+          value: `${steps.length} pièces`,
+          detail: `Surface approx. ${roundTo(totalStepArea / 1000000, 2)} m²`
+        },
+        {
+          label: 'Limons',
+          value: stringers.length ? `${stringers.length} élément${stringers.length > 1 ? 's' : ''}` : 'Aucun',
+          detail: stringers.length ? `Longueur approx. ${Math.round(totalStringerLength)} mm` : 'Non sélectionné'
+        }
+      ]
+    };
+  }
+
+  function renderEmptyFabricationData() {
+    if (!fabricationPanel) return;
+    fabricationPanel.innerHTML = '<p>Sélectionnez une solution pour générer les informations de fabrication.</p>';
+  }
+
+  function renderFabricationDataFromModel(model) {
+    if (!fabricationPanel) return;
+    const fabrication = buildFabricationDataFromModel(model);
+    fabricationPanel.innerHTML = `
+      <div class="fabrication-head">
+        <h5>Fabrication</h5>
+        <p>Données indicatives générées depuis le modèle géométrique.</p>
+      </div>
+      ${renderFabricationTablesHtml(fabrication)}
+    `;
+  }
+
+  function renderFabricationTablesHtml(fabrication) {
+    const stepRows = fabrication.steps.map((step) => `
+      <tr>
+        <td>${step.index}</td>
+        <td>${escSvgText(step.zone)}</td>
+        <td>${escSvgText(step.type)}</td>
+        <td>${Math.round(step.depth)} x ${Math.round(step.width)} mm</td>
+        <td>${roundTo(step.z, 1)} mm</td>
+        <td>${roundTo(step.area / 1000000, 3)} m²</td>
+      </tr>
+    `).join('');
+    const stringerRows = fabrication.stringers.length
+      ? fabrication.stringers.map((stringer) => `
+        <tr>
+          <td>${escSvgText(stringer.label)}</td>
+          <td>${escSvgText(stringer.type)}</td>
+          <td>${Math.round(stringer.length)} mm</td>
+        </tr>
+      `).join('')
+      : '<tr><td colspan="3">Aucun limon sélectionné dans la structure.</td></tr>';
+    const materialRows = fabrication.materials.map((item) => `
+      <tr>
+        <td>${escSvgText(item.label)}</td>
+        <td>${escSvgText(item.value)}</td>
+        <td>${escSvgText(item.detail)}</td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="fabrication-table-wrap">
+        <h6>Marches</h6>
+        <table class="fabrication-table">
+          <thead>
+            <tr>
+              <th>N°</th>
+              <th>Zone</th>
+              <th>Type</th>
+              <th>Dimensions approx.</th>
+              <th>Hauteur z</th>
+              <th>Surface approx.</th>
+            </tr>
+          </thead>
+          <tbody>${stepRows}</tbody>
+        </table>
+      </div>
+      <div class="fabrication-table-wrap">
+        <h6>Limons</h6>
+        <table class="fabrication-table">
+          <thead>
+            <tr>
+              <th>Élément</th>
+              <th>Type</th>
+              <th>Longueur estimée</th>
+            </tr>
+          </thead>
+          <tbody>${stringerRows}</tbody>
+        </table>
+      </div>
+      <div class="fabrication-table-wrap">
+        <h6>Résumé matière</h6>
+        <table class="fabrication-table">
+          <thead>
+            <tr>
+              <th>Famille</th>
+              <th>Quantité</th>
+              <th>Estimation</th>
+            </tr>
+          </thead>
+          <tbody>${materialRows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderTurnPositionDimensions(model, origin, scale, bounds, extentY1) {
+    if (!model.turnPositions || !model.turnPositions.length) return '';
+    const baselineStart = origin.x + bounds.minX * scale;
+    return model.turnPositions.map((turn, index) => {
+      const point = mapModelPoint(turn, origin, scale);
+      const dimY = extentY1 - 28 - index * 22;
+      return `<g>
+        <line class="turn-marker-line" x1="${point.x}" y1="${extentY1}" x2="${point.x}" y2="${point.y}"/>
+        <circle class="turn-marker-dot" cx="${point.x}" cy="${point.y}" r="4"/>
+        ${cadDim(baselineStart, dimY, point.x, dimY, `${turn.label} ${Math.round(turn.x - bounds.minX)} mm`)}
+      </g>`;
+    }).join('');
+  }
+
+  function renderTopViewFromModel(model, box) {
+    const bounds = modelBounds(model);
+    const modelWidth = Math.max(bounds.maxX - bounds.minX, model.tremie.length, 1);
+    const modelDepth = Math.max(bounds.maxY - bounds.minY, model.tremie.width, 1);
+    const scale = cadScale(modelWidth, modelDepth, box.width - 120, box.height - 112);
+    const drawingWidth = modelWidth * scale;
+    const drawingDepth = modelDepth * scale;
+    const origin = {
+      x: box.x + (box.width - drawingWidth) / 2 - bounds.minX * scale,
+      y: box.y + 78 + (box.height - 128 - drawingDepth) / 2 - bounds.minY * scale
+    };
+    const tremie = {
+      x: box.x + (box.width - Math.max(44, model.tremie.length * scale)) / 2,
+      y: box.y + 78 + (box.height - 128 - Math.max(34, model.tremie.width * scale)) / 2,
+      width: Math.max(44, model.tremie.length * scale),
+      height: Math.max(34, model.tremie.width * scale)
+    };
+    const stepPolygons = model.steps.map((step) => `<polygon class="stair-step-fill" points="${polygonPoints(step.topView, origin, scale)}"/>`).join('');
+    const stepNumbers = model.steps.map((step) => {
+      const center = polygonCenter(step.topView, origin, scale);
+      return `<text class="step-number" x="${center.x}" y="${center.y + 4}" text-anchor="middle">${step.index}</text>`;
+    }).join('');
+    const outline = model.outline && model.outline.length
+      ? `<polygon class="stringer-shadow" points="${polygonPoints(model.outline, origin, scale)}"/>`
+      : '';
+    const stringers = renderStringersFromModel(model, origin, scale);
+    const stepCenters = model.steps.map((step) => polygonCenter(step.topView, origin, scale));
+    const firstCenter = stepCenters[0];
+    const lastCenter = stepCenters[stepCenters.length - 1];
+    const travel = `<polyline class="walking-line" points="${stepCenters.map((point) => `${point.x},${point.y}`).join(' ')}" marker-end="url(#${svgMarkerPrefix}Arrow)"/>`;
+    const extentX1 = origin.x + bounds.minX * scale;
+    const extentX2 = origin.x + bounds.maxX * scale;
+    const extentY1 = origin.y + bounds.minY * scale;
+    const extentY2 = origin.y + bounds.maxY * scale;
+    const turnDimensions = renderTurnPositionDimensions(model, origin, scale, bounds, extentY1);
+
+    return `<g>
+      <rect class="view-frame" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}"/>
+      <text class="view-title" x="${box.x + 14}" y="${box.y + 26}">VUE EN PLAN - MODÈLE PARAMÉTRIQUE</text>
+      <rect class="tremie-fill" x="${tremie.x}" y="${tremie.y}" width="${tremie.width}" height="${tremie.height}"/>
+      ${stepPolygons}${outline}${stringers}${stepNumbers}${travel}
+      ${cadDim(extentX1, extentY2 + 42, extentX2, extentY2 + 42, `Emprise X ${Math.round(model.dimensions.footprintX)} mm`)}
+      ${cadDim(extentX1 - 42, extentY1, extentX1 - 42, extentY2, `Emprise Y ${Math.round(model.dimensions.footprintY)} mm`, 'v')}
+      ${cadDim(extentX2 + 34, extentY1, extentX2 + 34, extentY1 + model.width * scale, `Largeur ${Math.round(model.width)} mm`, 'v')}
+      ${cadDim(tremie.x, tremie.y - 18, tremie.x + tremie.width, tremie.y - 18, `Trémie L ${Math.round(model.tremie.length)} mm`)}
+      ${cadDim(tremie.x + tremie.width + 24, tremie.y, tremie.x + tremie.width + 24, tremie.y + tremie.height, `Trémie l ${Math.round(model.tremie.width)} mm`, 'v')}
+      ${turnDimensions}
+      <text class="caption" x="${tremie.x + tremie.width / 2}" y="${tremie.y + tremie.height / 2 + 4}" text-anchor="middle">Trémie</text>
+      <text class="cad-tag" x="${firstCenter.x - 26}" y="${firstCenter.y - 18}">Départ</text>
+      <text class="cad-tag" x="${lastCenter.x - 26}" y="${lastCenter.y - 18}">Arrivée</text>
+    </g>`;
+  }
+
+  function renderSideViewFromModel(model, box) {
+    const scale = cadScale(model.developedLength, model.totalHeight, box.width - 120, box.height - 86);
+    const origin = {
+      x: box.x + 82,
+      y: box.y + box.height - 48
+    };
+    const stairPath = model.steps.reduce((path, step) => {
+      const x = origin.x + step.index * model.going * scale;
+      const y = origin.y - step.z * scale;
+      return `${path} H ${x} V ${y}`;
+    }, `M ${origin.x} ${origin.y}`);
+    const runPx = model.developedLength * scale;
+    const risePx = model.totalHeight * scale;
+
+    return `<g>
+      <rect class="view-frame" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}"/>
+      <text class="view-title" x="${box.x + 14}" y="${box.y + 26}">ÉLÉVATION - PROJECTION DU MODÈLE</text>
+      <line class="cut-line" x1="${box.x + 36}" y1="${origin.y}" x2="${box.x + box.width - 34}" y2="${origin.y}"/>
+      <line class="cut-line" x1="${origin.x + runPx - 30}" y1="${origin.y - risePx}" x2="${origin.x + runPx + 92}" y2="${origin.y - risePx}"/>
+      <path class="outline-line" d="${stairPath}"/>
+      <line class="thin-line" x1="${origin.x}" y1="${origin.y}" x2="${origin.x + runPx}" y2="${origin.y - risePx}"/>
+      <line class="walking-line" x1="${origin.x + 34}" y1="${origin.y - 24}" x2="${origin.x + runPx - 30}" y2="${origin.y - risePx + 24}" marker-end="url(#${svgMarkerPrefix}Arrow)"/>
+      ${cadDim(box.x + 44, origin.y - risePx, box.x + 44, origin.y, `Hauteur ${Math.round(model.totalHeight)} mm`, 'v')}
+      ${cadDim(origin.x, origin.y + 28, origin.x + runPx, origin.y + 28, `Développé ${Math.round(model.developedLength)} mm`)}
+      ${cadDim(origin.x, origin.y + 54, origin.x + model.going * scale, origin.y + 54, `Giron ${roundTo(model.going, 1)} mm`)}
+      <text class="caption" x="${box.x + 40}" y="${origin.y + 22}">Sol bas</text>
+      <text class="caption" x="${origin.x + runPx - 20}" y="${origin.y - risePx - 12}">Sol haut</text>
+      <text class="cad-callout" x="${origin.x + runPx + 22}" y="${origin.y - risePx + 18}">${model.stepCount} marches</text>
+      <text class="cad-callout" x="${origin.x + runPx + 22}" y="${origin.y - risePx + 38}">H. marche ${roundTo(model.riser, 1)} mm</text>
+      <text class="cad-callout" x="${origin.x + runPx + 22}" y="${origin.y - risePx + 58}">Pente ${model.slope ? roundTo(model.slope, 1) : '—'}°</text>
+    </g>`;
+  }
+
+  function renderDimensionsFromModel(model, values, x, y, width, height) {
+    const typeLabel = model.type === 'quarter_turn'
+      ? '1/4 tournant'
+      : model.type === 'double_quarter_turn'
+        ? '2/4 tournants'
+        : 'Droit';
+    const turnLabel = model.type === 'double_quarter_turn'
+      ? `${model.turn1Direction}/${model.turn2Direction} - ${model.turn1Steps}+${model.turn2Steps} marches`
+      : model.type === 'quarter_turn'
+        ? `${model.turnDirection} - ${model.turnSteps} marches`
+        : '—';
+    const distribution = model.type === 'double_quarter_turn'
+      ? `${model.flight1Steps}/${model.turn1Steps}/${model.flight2Steps}/${model.turn2Steps}/${model.flight3Steps}`
+      : `${model.flight1Steps}/${model.turnSteps}/${model.flight2Steps}`;
+    const turnPositions = model.turnPositions && model.turnPositions.length
+      ? model.turnPositions.map((turn) => `${turn.label}: ${Math.round(turn.x - model.dimensions.minX)}/${Math.round(turn.y - model.dimensions.minY)}`).join(' ')
+      : '—';
+    const stringerLabel = model.stringerType === 'central'
+      ? 'Central'
+      : model.stringerType === 'side'
+        ? 'Deux latéraux'
+        : 'Aucun';
+    const rows = [
+      ['TYPE', typeLabel],
+      ['SENS', model.direction],
+      ['LIMON', stringerLabel],
+      ['HAUTEUR', `${Math.round(model.totalHeight)} mm`],
+      ['LARGEUR', `${Math.round(model.width)} mm`],
+      ['EMPRISE X', `${Math.round(model.dimensions.footprintX)} mm`],
+      ['EMPRISE Y', `${Math.round(model.dimensions.footprintY)} mm`],
+      ['MARCHES', `${model.stepCount} marches`],
+      ['H. MARCHE', `${roundTo(model.riser, 1)} mm`],
+      ['GIRON', `${roundTo(model.going, 1)} mm`],
+      ['PENTE', model.slope ? `${roundTo(model.slope, 1)} °` : formatMeasure(values.pente, '°')],
+      ['RECULEMENT', `${Math.round(model.setback)} mm`],
+      ['TRÉMIE', `${Math.round(model.tremie.length)} / ${Math.round(model.tremie.width)} mm`],
+      ['TOURNANT', turnLabel],
+      ['RÉPARTITION', distribution],
+      ['POSITION V.', turnPositions]
+    ];
+    const rowH = (height - 42) / rows.length;
+    return `<g>
+      <rect class="schedule-box" x="${x}" y="${y}" width="${width}" height="${height}"/>
+      <line class="schedule-line" x1="${x}" y1="${y + 42}" x2="${x + width}" y2="${y + 42}"/>
+      <text class="brand-title" x="${x + 14}" y="${y + 28}">A2 MÉTAL</text>
+      <text class="schedule-title" x="${x + width - 14}" y="${y + 28}" text-anchor="end">Données issues du modèle</text>
+      ${rows.map(([label, value], index) => {
+        const rowY = y + 42 + index * rowH;
+        return `<line class="schedule-line" x1="${x}" y1="${rowY}" x2="${x + width}" y2="${rowY}"/>
+          <text class="schedule-label" x="${x + 12}" y="${rowY + rowH * 0.68}">${escSvgText(label)}</text>
+          <text class="schedule-value" x="${x + width - 12}" y="${rowY + rowH * 0.68}" text-anchor="end">${escSvgText(value)}</text>`;
+      }).join('')}
+    </g>`;
+  }
+
+  function renderProfessionalStairPlan(values) {
+    svgMarkerPrefix = 'cadPlan';
     if (!currentSelectedSolution) {
-      renderEmptyPlan(topViewSvg, 'Vue de dessus');
+      renderEmptyPlan(topViewSvg);
       return;
     }
-    const width = 760;
-    const height = 560;
-    const tremieLength = values.tremieType === 'l' ? values.tremieLGrandeLongueur.geom : values.tremieLongueur.geom;
-    const tremieWidth = values.tremieType === 'l' ? values.tremieLGrandeLargeur.geom : values.tremieLargeur.geom;
-    const scale = getSimpleScale(Math.max(values.longueur.geom, tremieLength), Math.max(values.reculement.geom, tremieWidth, values.largeur.geom), 500, 230);
-    const stairW = Math.max(40, values.longueur.geom * scale);
-    const stairH = Math.max(30, values.largeur.geom * scale);
-    const recH = Math.max(stairH, values.reculement.geom * scale);
-    const tremieW = Math.max(40, tremieLength * scale);
-    const tremieH = Math.max(30, tremieWidth * scale);
-    const x = 120;
-    const y = 96;
-    const tremieX = x + Math.max(0, (stairW - tremieW) / 2);
-    const tremieY = y + Math.max(0, (recH - tremieH) / 2);
-    let stairShape = '';
-    let stepLines = '';
-    let travel = '';
-
-    if (values.stairType === 'straight') {
-      stairShape = `<rect class="stair-fill" x="${x}" y="${y + (recH - stairH) / 2}" width="${stairW}" height="${stairH}"/>`;
-      stepLines = renderSimpleStepLines(x, y + (recH - stairH) / 2, stairW, stairH, values.marchesGeom, 'h');
-      travel = `<line class="walking-line" x1="${x + 18}" y1="${y + recH / 2}" x2="${x + stairW - 18}" y2="${y + recH / 2}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>`;
-    } else if (values.stairType === 'quarter') {
-      const flight = Math.max(34, stairH);
-      const hLen = Math.max(flight * 2, stairW);
-      const vLen = Math.max(flight * 2, recH);
-      const cornerX = x + hLen - flight;
-      const cornerY = y + vLen - flight;
-      stairShape = `<path class="stair-fill" d="M ${x} ${cornerY} H ${cornerX + flight} V ${y} H ${cornerX} V ${cornerY + flight} H ${x} Z"/>`;
-      stepLines = `${renderSimpleStepLines(x, cornerY, hLen, flight, Math.ceil(values.marchesGeom * 0.55), 'h')}
-        ${renderSimpleStepLines(cornerX, y, flight, vLen, Math.ceil(values.marchesGeom * 0.45), 'v')}`;
-      travel = `<path class="walking-line" d="M ${x + 18} ${cornerY + flight / 2} H ${cornerX + flight / 2} V ${y + 18}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>`;
-    } else {
-      const flight = Math.max(34, stairH);
-      const hLen = Math.max(flight * 2.2, stairW);
-      const vLen = Math.max(flight * 2.3, recH);
-      const rightX = x + hLen - flight;
-      const bottomY = y + vLen - flight;
-      stairShape = `<path class="stair-fill" d="M ${x} ${y} H ${x + hLen} V ${y + vLen} H ${x} V ${bottomY} H ${rightX} V ${y + flight} H ${x} Z"/>`;
-      stepLines = `${renderSimpleStepLines(x, y, hLen, flight, Math.ceil(values.marchesGeom * 0.35), 'h')}
-        ${renderSimpleStepLines(rightX, y + flight, flight, vLen - flight * 2, Math.ceil(values.marchesGeom * 0.3), 'v')}
-        ${renderSimpleStepLines(x, bottomY, hLen, flight, Math.ceil(values.marchesGeom * 0.35), 'h')}`;
-      travel = `<path class="walking-line" d="M ${x + 20} ${bottomY + flight / 2} H ${rightX + flight / 2} V ${y + flight / 2} H ${x + 24}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>`;
-    }
-
-    const mirrored = values.direction === 'Gauche'
-      ? `<g transform="translate(${width} 0) scale(-1 1)">${stairShape}${stepLines}${travel}</g>`
-      : `${stairShape}${stepLines}${travel}`;
+    const model = buildStairModel(currentSelectedSolution, values);
+    const width = 1120;
+    const height = 760;
     const body = `
       <rect class="sheet-frame" x="24" y="24" width="${width - 48}" height="${height - 48}"/>
-      <text class="view-title" x="46" y="58">Vue de dessus</text>
-      <rect class="tremie-fill" x="${tremieX}" y="${tremieY}" width="${tremieW}" height="${tremieH}"/>
-      ${mirrored}
-      ${renderSimpleDimension(x, y + recH + 34, x + stairW, y + recH + 34, `Longueur ${formatMeasure(values.longueur)}`)}
-      ${renderSimpleDimension(x - 34, y, x - 34, y + recH, `Reculement ${formatMeasure(values.reculement)}`, 'v')}
-      <text class="caption" x="${x}" y="${y - 16}">Départ</text>
-      <text class="caption" x="${x + stairW - 54}" y="${y - 16}">Arrivée</text>
-      <text class="caption" x="${tremieX + tremieW / 2}" y="${tremieY + tremieH / 2 + 4}" text-anchor="middle">Trémie</text>
-      ${renderStairTitleBlock(values, 56, 374, 648)}
+      <text class="cad-brand" x="52" y="58">A2 MÉTAL</text>
+      <text class="cad-sheet-title" x="52" y="88">Plan de pré-dimensionnement escalier</text>
+      <text class="small-note" x="${width - 52}" y="58" text-anchor="end">Document indicatif - à valider chantier</text>
+      ${renderTopViewFromModel(model, { x: 52, y: 112, width: 690, height: 360 })}
+      ${renderSideViewFromModel(model, { x: 52, y: 500, width: 690, height: 176 })}
+      ${renderCadParameterPanel(values, 770, 112, 300, 180)}
+      ${renderDimensionsFromModel(model, values, 770, 328, 300, 348)}
     `;
     topViewSvg.innerHTML = svgShell(width, height, body);
+    renderFabricationDataFromModel(model);
   }
 
-  function renderSimpleSidePlan(values) {
-    svgMarkerPrefix = 'sidePlan';
+  function getCurrentPlanModel() {
     if (!currentSelectedSolution) {
-      renderEmptyPlan(sideViewSvg, 'Vue de côté');
-      return;
+      window.alert('Sélectionnez une solution puis cliquez sur "Voir le plan" avant d’exporter le PDF.');
+      return null;
     }
-    const width = 760;
-    const height = 520;
-    const left = 110;
-    const bottom = 286;
-    const scale = getSimpleScale(values.reculement.geom, values.hauteur.geom, 500, 210);
-    const run = Math.max(80, values.reculement.geom * scale);
-    const rise = Math.max(60, values.hauteur.geom * scale);
-    const steps = values.marchesGeom;
-    let path = `M ${left} ${bottom}`;
-    for (let index = 1; index <= steps; index += 1) {
-      const stepX = left + (run / steps) * index;
-      const stepY = bottom - (rise / steps) * index;
-      const prevY = bottom - (rise / steps) * (index - 1);
-      path += ` H ${stepX} V ${stepY}`;
-      if (index < steps) path += ` V ${stepY}`;
-      if (index === steps) path += ` H ${left + run}`;
-    }
+    const values = getPlanValues();
+    return {
+      values,
+      model: buildStairModel(currentSelectedSolution, values)
+    };
+  }
+
+  function renderPdfPlanSvg(model, values, variant) {
+    svgMarkerPrefix = variant === 'atelier' ? 'pdfAtelier' : 'pdfClient';
+    const width = 1120;
+    const height = 760;
+    const title = variant === 'atelier'
+      ? 'Plan atelier escalier'
+      : 'Plan client escalier';
+    const note = variant === 'atelier'
+      ? 'Version atelier - fabrication indicative'
+      : 'Version client - pré-dimensionnement indicatif';
     const body = `
       <rect class="sheet-frame" x="24" y="24" width="${width - 48}" height="${height - 48}"/>
-      <text class="view-title" x="46" y="58">Vue de côté</text>
-      <line class="cut-line" x1="74" y1="${bottom}" x2="680" y2="${bottom}"/>
-      <line class="cut-line" x1="${left + run - 20}" y1="${bottom - rise}" x2="${left + run + 90}" y2="${bottom - rise}"/>
-      <path class="outline-line" d="${path}"/>
-      <line class="thin-line" x1="${left}" y1="${bottom}" x2="${left + run}" y2="${bottom - rise}"/>
-      <line class="walking-line" x1="${left + 28}" y1="${bottom - 24}" x2="${left + run - 28}" y2="${bottom - rise + 24}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>
-      ${renderSimpleDimension(74, bottom - rise, 74, bottom, `Hauteur ${formatMeasure(values.hauteur)}`, 'v')}
-      ${renderSimpleDimension(left, bottom + 38, left + run, bottom + 38, `Reculement ${formatMeasure(values.reculement)}`)}
-      <text class="caption" x="78" y="${bottom + 22}">Sol bas</text>
-      <text class="caption" x="${left + run - 18}" y="${bottom - rise - 14}">Sol haut</text>
-      ${renderStairTitleBlock(values, 56, 346, 648)}
+      <text class="cad-brand" x="52" y="58">A2 MÉTAL</text>
+      <text class="cad-sheet-title" x="52" y="88">${escSvgText(title)}</text>
+      <text class="small-note" x="${width - 52}" y="58" text-anchor="end">${escSvgText(note)}</text>
+      ${renderTopViewFromModel(model, { x: 52, y: 112, width: 690, height: 360 })}
+      ${renderSideViewFromModel(model, { x: 52, y: 500, width: 690, height: 176 })}
+      ${renderCadParameterPanel(values, 770, 112, 300, 180)}
+      ${renderDimensionsFromModel(model, values, 770, 328, 300, 348)}
     `;
-    sideViewSvg.innerHTML = svgShell(width, height, body);
+    return svgShell(width, height, body);
+  }
+
+  function buildPdfDocument(model, values, variant) {
+    const fabrication = buildFabricationDataFromModel(model);
+    const projectTitle = values.chantier || values.client || recordNameField.value.trim() || 'Projet escalier';
+    const typeLabel = model.type === 'quarter_turn'
+      ? '1/4 tournant'
+      : model.type === 'double_quarter_turn'
+        ? '2/4 tournants'
+        : 'Droit';
+    const stringerLabel = model.stringerType === 'central'
+      ? 'Limon central'
+      : model.stringerType === 'side'
+        ? 'Deux limons latéraux'
+        : 'Aucun limon sélectionné';
+    const metaRows = [
+      ['Client', values.client || '—'],
+      ['Chantier', values.chantier || '—'],
+      ['Date', values.date || '—'],
+      ['Type escalier', typeLabel],
+      ['Limon', stringerLabel],
+      ['Dimensions', `H ${Math.round(model.totalHeight)} mm · Larg. ${Math.round(model.width)} mm`],
+      ['Marches', `${model.stepCount} · H ${roundTo(model.riser, 1)} mm · Giron ${roundTo(model.going, 1)} mm`],
+      ['Trémie', `${Math.round(model.tremie.length)} x ${Math.round(model.tremie.width)} mm`]
+    ];
+    const metaTable = `<table class="pdf-meta-table"><tbody>${metaRows.map(([label, value]) => `
+      <tr>
+        <th>${escSvgText(label)}</th>
+        <td>${escSvgText(value)}</td>
+      </tr>
+    `).join('')}</tbody></table>`;
+    const fabricationSection = variant === 'atelier'
+      ? `<section class="pdf-sheet pdf-sheet-fabrication pdf-break">
+          <header class="pdf-page-title">
+            <div>
+              <p>A2 MÉTAL · Version atelier</p>
+              <h2>Fabrication escalier</h2>
+            </div>
+            <span>Page 2</span>
+          </header>
+          ${renderFabricationTablesHtml(fabrication)}
+        </section>`
+      : '';
+    return `<!doctype html>
+      <html lang="fr">
+      <head>
+        <meta charset="utf-8">
+        <title>${escSvgText(variant === 'atelier' ? 'PDF atelier escalier' : 'PDF client escalier')}</title>
+        <link rel="stylesheet" href="measurements.css">
+        <style>
+          @page { size: A4 landscape; margin: 8mm; }
+          * { box-sizing: border-box; }
+          html, body { margin: 0; padding: 0; background: #eef2f5; }
+          body { color: #1f2933; font-family: "Segoe UI", Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .pdf-document { width: 100%; }
+          .pdf-sheet {
+            width: 281mm;
+            min-height: 194mm;
+            margin: 0 auto 12px;
+            padding: 7mm;
+            background: #fff;
+            border: 1px solid #d8dee4;
+          }
+          .pdf-header {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 118mm;
+            gap: 8mm;
+            align-items: stretch;
+            margin: 0 0 5mm;
+          }
+          .pdf-title-block {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 28mm;
+            padding: 4mm 0;
+            border-top: 2px solid #1f2933;
+            border-bottom: 1px solid #1f2933;
+          }
+          .pdf-title-block p { margin: 0; color: #64727d; font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+          .pdf-title-block h1 { margin: 2mm 0 0; font-size: 18pt; line-height: 1.05; letter-spacing: -0.02em; }
+          .pdf-version { color: #9a4a00; font-size: 10pt; font-weight: 900; text-transform: uppercase; }
+          .pdf-meta-table {
+            width: 100%;
+            height: 100%;
+            border-collapse: collapse;
+            border: 1px solid #1f2933;
+            font-size: 8.2pt;
+          }
+          .pdf-meta-table th,
+          .pdf-meta-table td {
+            padding: 1.4mm 2mm;
+            border: 1px solid #d8dee4;
+            text-align: left;
+            vertical-align: middle;
+          }
+          .pdf-meta-table th {
+            width: 33%;
+            color: #64727d;
+            background: #f3f6f8;
+            font-size: 7.3pt;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+          }
+          .pdf-svg {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: ${variant === 'atelier' ? '150mm' : '154mm'};
+            border: 1px solid #1f2933;
+            overflow: hidden;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .pdf-svg svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            min-width: 0;
+          }
+          .pdf-page-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8mm;
+            padding-bottom: 4mm;
+            border-bottom: 2px solid #1f2933;
+            margin-bottom: 5mm;
+          }
+          .pdf-page-title p { margin: 0; color: #64727d; font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+          .pdf-page-title h2 { margin: 1mm 0 0; font-size: 17pt; }
+          .pdf-page-title span { color: #64727d; font-size: 9pt; font-weight: 800; }
+          .pdf-break { page-break-before: always; break-before: page; }
+          .fabrication-table-wrap {
+            overflow: visible;
+            margin-top: 4mm;
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          .fabrication-table-wrap h6 { margin: 0 0 2mm; font-size: 9pt; }
+          .fabrication-table {
+            width: 100%;
+            min-width: 0;
+            border-collapse: collapse;
+            font-size: 8pt;
+            page-break-inside: auto;
+          }
+          .fabrication-table thead { display: table-header-group; }
+          .fabrication-table tr { page-break-inside: avoid; break-inside: avoid; }
+          .fabrication-table th,
+          .fabrication-table td {
+            padding: 1.5mm 1.8mm;
+            border: 1px solid #d8dee4;
+            white-space: nowrap;
+          }
+          .fabrication-table th {
+            background: #f3f6f8;
+            color: #64727d;
+            font-size: 7pt;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+          }
+          @media print {
+            html, body { background: #fff; }
+            .pdf-sheet { margin: 0; border: 0; box-shadow: none; page-break-after: always; }
+            .pdf-sheet:last-child { page-break-after: auto; }
+          }
+        </style>
+      </head>
+      <body>
+        <main class="pdf-document">
+          <section class="pdf-sheet">
+            <header class="pdf-header">
+              <div class="pdf-title-block">
+                <div>
+                  <p>A2 MÉTAL · ${variant === 'atelier' ? 'Plan atelier' : 'Plan client'}</p>
+                  <h1>${escSvgText(projectTitle)}</h1>
+                </div>
+                <div class="pdf-version">${variant === 'atelier' ? 'Version atelier · Page 1' : 'Version client'}</div>
+              </div>
+              ${metaTable}
+            </header>
+            <div class="pdf-svg">${renderPdfPlanSvg(model, values, variant)}</div>
+          </section>
+          ${fabricationSection}
+        </main>
+        <script>
+          window.addEventListener('load', () => {
+            window.setTimeout(() => window.print(), 250);
+          });
+        </script>
+      </body>
+      </html>`;
+  }
+
+  function exportStairPdf(variant) {
+    const current = getCurrentPlanModel();
+    if (!current) return;
+    const popup = window.open('', '_blank');
+    if (!popup) {
+      window.alert('Le navigateur a bloqué la fenêtre d’export PDF.');
+      return;
+    }
+    popup.document.open();
+    popup.document.write(buildPdfDocument(current.model, current.values, variant));
+    popup.document.close();
   }
 
   function renderTopPlan(values) {
-    renderSimpleTopPlan(values);
-  }
-
-  function renderSidePlan(values) {
-    renderSimpleSidePlan(values);
+    renderProfessionalStairPlan(values);
   }
 
   function renderPlans() {
     const values = getPlanValues();
-    if (sideViewSvg) renderSidePlan(values);
     if (topViewSvg) renderTopPlan(values);
   }
 
@@ -1004,6 +1885,12 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   loadBtn.addEventListener('click', loadRecord);
   resetBtn.addEventListener('click', resetForm);
   printBtn.addEventListener('click', () => window.print());
+  if (exportClientPdfBtn) {
+    exportClientPdfBtn.addEventListener('click', () => exportStairPdf('client'));
+  }
+  if (exportWorkshopPdfBtn) {
+    exportWorkshopPdfBtn.addEventListener('click', () => exportStairPdf('atelier'));
+  }
   if (proposalBtn) {
     proposalBtn.addEventListener('click', () => {
       configuratorFields.forEach(syncFormFromConfigurator);
@@ -1071,6 +1958,11 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
         }
       }, 80);
     });
+  });
+
+  form.querySelectorAll('input[name="structure"]').forEach((input) => {
+    input.addEventListener('input', renderPlans);
+    input.addEventListener('change', renderPlans);
   });
 
   const tremieTypeControl = form.elements.tremieType;

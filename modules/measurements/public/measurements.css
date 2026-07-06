@@ -609,7 +609,7 @@ textarea:focus {
 .technical-svg {
   display: block;
   width: 100%;
-  aspect-ratio: 760 / 520;
+  aspect-ratio: 1120 / 760;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #ffffff;
@@ -618,14 +618,14 @@ textarea:focus {
 }
 
 .technical-svg-main {
-  aspect-ratio: 760 / 560;
+  aspect-ratio: 1120 / 760;
 }
 
 .technical-svg svg {
   display: block;
   width: 100%;
   height: 100%;
-  min-width: 760px;
+  min-width: 1120px;
 }
 
 .technical-svg .sheet-bg {
@@ -640,7 +640,7 @@ textarea:focus {
 .technical-svg .outline-line {
   fill: none;
   stroke: #1f2933;
-  stroke-width: 2;
+  stroke-width: 1.35;
   vector-effect: non-scaling-stroke;
 }
 
@@ -648,7 +648,7 @@ textarea:focus {
 .technical-svg .view-frame {
   fill: none;
   stroke: #1f2933;
-  stroke-width: 1.2;
+  stroke-width: 1.05;
   vector-effect: non-scaling-stroke;
 }
 
@@ -666,30 +666,65 @@ textarea:focus {
 
 .technical-svg .thin-line {
   fill: none;
-  stroke: #4f6475;
-  stroke-width: 1.1;
+  stroke: #64727d;
+  stroke-width: 0.9;
   vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .step-line {
   fill: none;
-  stroke: #7fa7c7;
-  stroke-width: 1.15;
+  stroke: #8a99a8;
+  stroke-width: 0.85;
   vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .winder-line {
   fill: none;
-  stroke: #6f9fc4;
-  stroke-width: 1.15;
+  stroke: #8a99a8;
+  stroke-width: 0.85;
   vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .walking-line {
   fill: none;
-  stroke: #374957;
-  stroke-width: 1.15;
-  stroke-dasharray: 5 6;
+  stroke: #4a5560;
+  stroke-width: 1;
+  stroke-dasharray: 7 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .central-stringer-line {
+  fill: none;
+  stroke: #0f172a;
+  stroke-width: 4.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.88;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .side-stringer-line {
+  fill: none;
+  stroke: #334155;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.9;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .turn-marker-line {
+  fill: none;
+  stroke: #9a4a00;
+  stroke-width: 0.8;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .turn-marker-dot {
+  fill: #ffffff;
+  stroke: #9a4a00;
+  stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
 }
 
@@ -701,9 +736,25 @@ textarea:focus {
 }
 
 .technical-svg .stair-fill {
-  fill: rgba(232, 242, 249, 0.18);
+  fill: rgba(229, 234, 239, 0.34);
   stroke: #1f2933;
-  stroke-width: 2;
+  stroke-width: 1.35;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .stair-step-fill {
+  fill: rgba(229, 234, 239, 0.42);
+  stroke: #1f2933;
+  stroke-width: 0.75;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .stringer-shadow {
+  fill: none;
+  stroke: #1f2933;
+  stroke-width: 3.1;
+  stroke-linejoin: miter;
+  opacity: 0.8;
   vector-effect: non-scaling-stroke;
 }
 
@@ -715,17 +766,17 @@ textarea:focus {
 }
 
 .technical-svg .tremie-fill {
-  fill: url(#tremieHatch);
+  fill: rgba(255, 122, 0, 0.045);
   stroke: #c65f00;
-  stroke-width: 1.2;
-  stroke-dasharray: 7 5;
+  stroke-width: 1;
+  stroke-dasharray: 8 5;
   vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .dim-line {
   fill: none;
   stroke: #c65f00;
-  stroke-width: 1.05;
+  stroke-width: 0.9;
   vector-effect: non-scaling-stroke;
 }
 
@@ -747,16 +798,47 @@ textarea:focus {
 }
 
 .technical-svg .caption {
-  font-size: 13px;
+  font-size: 12px;
   fill: #5f6b75;
 }
 
 .technical-svg .view-title {
   font-family: "Segoe UI", Arial, sans-serif;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 800;
   fill: #1f2933;
+  letter-spacing: 0.08em;
+}
+
+.technical-svg .cad-brand {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 24px;
+  font-weight: 900;
+  fill: #1f2933;
   letter-spacing: 0.03em;
+}
+
+.technical-svg .cad-sheet-title {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 17px;
+  font-weight: 800;
+  fill: #1f2933;
+}
+
+.technical-svg .cad-tag {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  fill: #4f6475;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.technical-svg .cad-callout {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  fill: #4f6475;
 }
 
 .technical-svg .small-note,
@@ -780,9 +862,16 @@ textarea:focus {
 }
 
 .technical-svg .dim-label {
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 700;
   fill: #9a4a00;
+}
+
+.technical-svg .cad-panel {
+  fill: #ffffff;
+  stroke: #1f2933;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .label-box {
@@ -819,7 +908,7 @@ textarea:focus {
 
 .technical-svg .brand-title {
   font-family: "Segoe UI", Arial, sans-serif;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 900;
   fill: #1f2933;
 }
@@ -851,6 +940,82 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.fabrication-panel {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.fabrication-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.fabrication-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.fabrication-head h5 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.fabrication-table-wrap {
+  margin-top: 14px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.fabrication-table-wrap h6 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.fabrication-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.fabrication-table th,
+.fabrication-table td {
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.fabrication-table th {
+  background: #f3f6f8;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fabrication-table td {
+  color: var(--text);
+  background: #ffffff;
 }
 
 .legend-line,
@@ -1017,7 +1182,7 @@ textarea:focus {
   }
 
   .technical-svg svg {
-    width: 760px;
+    width: 1120px;
     max-width: none;
   }
 
@@ -1034,5 +1199,28 @@ textarea:focus {
   .technical-svg .schedule-value,
   .technical-svg .schedule-title {
     font-size: 12px;
+  }
+
+  .fabrication-panel {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .fabrication-head {
+    display: block;
+  }
+
+  .fabrication-head p {
+    margin-top: 6px;
+  }
+
+  .fabrication-table {
+    min-width: 520px;
+    font-size: 12px;
+  }
+
+  .fabrication-table th,
+  .fabrication-table td {
+    padding: 8px;
   }
 }
