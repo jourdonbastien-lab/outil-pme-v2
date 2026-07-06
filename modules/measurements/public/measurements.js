@@ -98,6 +98,39 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     return values.direction === 'Gauche' ? drawingWidth - x - width : x;
   }
 
+  function getTremieSize(values) {
+    if (values.tremieType === 'l') {
+      return {
+        length: values.tremieLGrandeLongueur.geom,
+        width: values.tremieLGrandeLargeur.geom,
+        returnLength: values.tremieLRetourLongueur.geom,
+        returnWidth: values.tremieLRetourLargeur.geom
+      };
+    }
+    return {
+      length: values.tremieLongueur.geom,
+      width: values.tremieLargeur.geom,
+      returnLength: 0,
+      returnWidth: 0
+    };
+  }
+
+  function createPlanScale(values, options = {}) {
+    const availableWidth = options.availableWidth || 520;
+    const availableHeight = options.availableHeight || 310;
+    const tremie = getTremieSize(values);
+    const planLength = Math.max(values.longueur.geom, values.reculement.geom, tremie.length, 1);
+    const planWidth = Math.max(values.largeur.geom, tremie.width, 1);
+    const pxPerMm = Math.min(availableWidth / planLength, availableHeight / planWidth);
+    return {
+      pxPerMm,
+      mmToPx: (mm) => mm * pxPerMm,
+      planLength,
+      planWidth,
+      tremie
+    };
+  }
+
   function getPlanValues() {
     const hauteur = readMeasure('hauteur', 2800);
     const longueur = readMeasure('longueur', 3200);
@@ -239,15 +272,18 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       <text class="section-marker" x="${x2 + 12}" y="${y2 - 5}">${label}</text>`;
   }
 
-  function renderScaleBar(x, y) {
+  function renderScaleBar(x, y, scale = null) {
+    const segmentMm = 500;
+    const segmentPx = scale ? Math.max(20, scale.mmToPx(segmentMm)) : 55;
+    const totalPx = segmentPx * 2;
     return `<g>
-      <line class="thin-line" x1="${x}" y1="${y}" x2="${x + 110}" y2="${y}"/>
+      <line class="thin-line" x1="${x}" y1="${y}" x2="${x + totalPx}" y2="${y}"/>
       <line class="thin-line" x1="${x}" y1="${y - 5}" x2="${x}" y2="${y + 5}"/>
-      <line class="thin-line" x1="${x + 55}" y1="${y - 5}" x2="${x + 55}" y2="${y + 5}"/>
-      <line class="thin-line" x1="${x + 110}" y1="${y - 5}" x2="${x + 110}" y2="${y + 5}"/>
+      <line class="thin-line" x1="${x + segmentPx}" y1="${y - 5}" x2="${x + segmentPx}" y2="${y + 5}"/>
+      <line class="thin-line" x1="${x + totalPx}" y1="${y - 5}" x2="${x + totalPx}" y2="${y + 5}"/>
       <text class="small-note" x="${x}" y="${y + 18}">0</text>
-      <text class="small-note" x="${x + 55}" y="${y + 18}" text-anchor="middle">500</text>
-      <text class="small-note" x="${x + 110}" y="${y + 18}" text-anchor="end">1000 mm</text>
+      <text class="small-note" x="${x + segmentPx}" y="${y + 18}" text-anchor="middle">500</text>
+      <text class="small-note" x="${x + totalPx}" y="${y + 18}" text-anchor="end">1000 mm</text>
     </g>`;
   }
 
@@ -363,7 +399,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     sideViewSvg.innerHTML = svgShell(width, height, body);
   }
 
-  function renderTremie(values, x, y, width, height) {
+  function renderTremie(values, x, y, width, height, scale = null) {
     if (values.tremieType !== 'l') {
       return `<rect class="tremie-fill" x="${x}" y="${y}" width="${width}" height="${height}"/>
         <text class="caption" x="${x + width / 2}" y="${y + height / 2 + 4}" text-anchor="middle">Trémie</text>
@@ -371,8 +407,12 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
         ${dimV(x + width + 24, y, y + height, `l ${formatMeasure(values.tremieLargeur)}`, 'tremieLargeur', 'right')}`;
     }
 
-    const notchW = clamp(width * (values.tremieLRetourLongueur.geom / Math.max(values.tremieLGrandeLongueur.geom, 1)), 42, width - 28);
-    const notchH = clamp(height * (values.tremieLRetourLargeur.geom / Math.max(values.tremieLGrandeLargeur.geom, 1)), 36, height - 28);
+    const notchW = scale
+      ? Math.min(width - 12, Math.max(12, scale.mmToPx(values.tremieLRetourLongueur.geom)))
+      : clamp(width * (values.tremieLRetourLongueur.geom / Math.max(values.tremieLGrandeLongueur.geom, 1)), 42, width - 28);
+    const notchH = scale
+      ? Math.min(height - 12, Math.max(12, scale.mmToPx(values.tremieLRetourLargeur.geom)))
+      : clamp(height * (values.tremieLRetourLargeur.geom / Math.max(values.tremieLGrandeLargeur.geom, 1)), 36, height - 28);
     const path = `M ${x} ${y} H ${x + width} V ${y + notchH} H ${x + notchW} V ${y + height} H ${x} Z`;
     return `<path class="tremie-fill" d="${path}"/>
       <text class="caption" x="${x + width / 2}" y="${y + 18}" text-anchor="middle">Trémie en L</text>
@@ -391,54 +431,70 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   }
 
   function renderStraightPlan(values) {
-    const x = 100;
-    const y = 184;
-    const width = 560;
-    const depth = 88;
-    const outline = `M ${x} ${y} H ${x + width} V ${y + depth} H ${x} Z`;
-    const tremie = { x: x + width * 0.58, y: y + 14, width: 154, height: depth - 28 };
-    const tremieX = mirrorRectX(tremie.x, tremie.width, values, 760);
     const titleBlockY = 530;
+    const scale = createPlanScale(values, { availableWidth: 520, availableHeight: 240 });
+    const stairWidth = Math.max(34, scale.mmToPx(values.longueur.geom));
+    const stairDepth = Math.max(28, scale.mmToPx(values.largeur.geom));
+    const x = 110;
+    const y = 190;
+    const outline = `M ${x} ${y} H ${x + stairWidth} V ${y + stairDepth} H ${x} Z`;
+    const tremieWidth = Math.max(18, scale.mmToPx(values.tremieType === 'l' ? values.tremieLGrandeLongueur.geom : values.tremieLongueur.geom));
+    const tremieHeight = Math.max(18, scale.mmToPx(values.tremieType === 'l' ? values.tremieLGrandeLargeur.geom : values.tremieLargeur.geom));
+    const tremie = {
+      x: x + Math.max(0, (stairWidth - tremieWidth) / 2),
+      y: y + Math.max(0, (stairDepth - tremieHeight) / 2),
+      width: tremieWidth,
+      height: tremieHeight
+    };
+    const tremieX = mirrorRectX(tremie.x, tremie.width, values, 760);
     const geometry = `
       ${renderStairOutline(outline)}
-      ${renderStepLines({ x, y, width, height: depth, count: values.marchesGeom, orientation: 'h' })}
-      <line class="walking-line" x1="${x + 22}" y1="${y + depth / 2}" x2="${x + width - 34}" y2="${y + depth / 2}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>
-      ${renderCornerMarkers([[x, y], [x + width, y], [x + width, y + depth], [x, y + depth]])}
+      ${renderStepLines({ x, y, width: stairWidth, height: stairDepth, count: values.marchesGeom, orientation: 'h' })}
+      <line class="walking-line" x1="${x + 22}" y1="${y + stairDepth / 2}" x2="${x + stairWidth - 34}" y2="${y + stairDepth / 2}" marker-end="url(#${svgMarkerPrefix}TravelArrow)"/>
+      ${renderCornerMarkers([[x, y], [x + stairWidth, y], [x + stairWidth, y + stairDepth], [x, y + stairDepth]])}
     `;
     return `
       ${renderSheetFrame(760, 680, 'Vue en plan', titleBlockY)}
       ${mirrorPlanForDirection(geometry, values, 760)}
-      ${renderTremie(values, tremieX, tremie.y, tremie.width, tremie.height)}
+      ${renderTremie(values, tremieX, tremie.y, tremie.width, tremie.height, scale)}
       ${renderStepNumbers([
-        { x: x + 60, y: y + depth / 2 + 4, label: '1' },
-        { x: x + width / 2, y: y + depth / 2 + 4, label: `${Math.ceil(values.marchesGeom / 2)}` },
-        { x: x + width - 60, y: y + depth / 2 + 4, label: `${values.marchesGeom}` },
+        { x: x + Math.min(60, stairWidth * 0.2), y: y + stairDepth / 2 + 4, label: '1' },
+        { x: x + stairWidth / 2, y: y + stairDepth / 2 + 4, label: `${Math.ceil(values.marchesGeom / 2)}` },
+        { x: x + stairWidth - Math.min(60, stairWidth * 0.2), y: y + stairDepth / 2 + 4, label: `${values.marchesGeom}` },
       ], values, 760)}
       <text class="caption" x="${x}" y="${y - 22}">Départ</text>
-      <text class="caption" x="${x + width - 54}" y="${y - 22}">Arrivée</text>
-      ${dimH(x, y + depth + 54, x + width, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
-      ${dimV(x - 38, y, y + depth, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}
-      ${renderSectionMarkers(x + 120, y - 34, x + 120, y + depth + 34, 'A-A')}
+      <text class="caption" x="${x + stairWidth - 54}" y="${y - 22}">Arrivée</text>
+      ${dimH(x, y + stairDepth + 54, x + stairWidth, `Longueur ${formatMeasure(values.longueur)}`, 'longueur')}
+      ${dimV(x - 38, y, y + stairDepth, `Largeur ${formatMeasure(values.largeur)}`, 'largeur')}
+      ${renderSectionMarkers(x + Math.min(120, stairWidth * 0.35), y - 34, x + Math.min(120, stairWidth * 0.35), y + stairDepth + 34, 'A-A')}
       ${renderPlanDirectionArrow(520, 82)}
-      ${renderScaleBar(548, 476)}
+      ${renderScaleBar(548, 476, scale)}
       ${renderTitleBlock(values, 76, titleBlockY, 608)}
     `;
   }
 
   function renderQuarterTurnPlan(values) {
+    const titleBlockY = 530;
+    const scale = createPlanScale(values, { availableWidth: 440, availableHeight: 310 });
     const x = 116;
     const y = 72;
-    const flight = 100;
-    const horizontal = 414;
-    const vertical = 306;
+    const flight = Math.max(34, scale.mmToPx(values.largeur.geom));
+    const horizontal = Math.max(flight * 1.8, scale.mmToPx(values.longueur.geom));
+    const vertical = Math.max(flight * 1.8, scale.mmToPx(values.reculement.geom));
     const cornerX = x + horizontal - flight;
     const cornerY = y + vertical - flight;
     const outline = `M ${cornerX} ${y} H ${cornerX + flight} V ${y + vertical} H ${x} V ${cornerY} H ${cornerX} Z`;
     const lowerRun = Math.max(3, Math.round(values.marchesGeom * 0.42));
     const upperRun = Math.max(3, Math.round(values.marchesGeom * 0.36));
-    const tremie = { x: cornerX - 156, y: y + 36, width: 136, height: 142 };
+    const tremieWidth = Math.max(18, scale.mmToPx(values.tremieType === 'l' ? values.tremieLGrandeLongueur.geom : values.tremieLongueur.geom));
+    const tremieHeight = Math.max(18, scale.mmToPx(values.tremieType === 'l' ? values.tremieLGrandeLargeur.geom : values.tremieLargeur.geom));
+    const tremie = {
+      x: x + Math.max(0, (horizontal - tremieWidth) / 2),
+      y: y + Math.max(0, (vertical - tremieHeight) / 2),
+      width: tremieWidth,
+      height: tremieHeight
+    };
     const tremieX = mirrorRectX(tremie.x, tremie.width, values, 760);
-    const titleBlockY = 530;
     const geometry = `
       ${renderStairOutline(outline)}
       ${renderStepLines({ x, y: cornerY, width: horizontal - flight, height: flight, count: lowerRun, orientation: 'h' })}
@@ -452,7 +508,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     return `
       ${renderSheetFrame(760, 680, 'Vue en plan', titleBlockY)}
       ${mirrorPlanForDirection(geometry, values, 760)}
-      ${renderTremie(values, tremieX, tremie.y, tremie.width, tremie.height)}
+      ${renderTremie(values, tremieX, tremie.y, tremie.width, tremie.height, scale)}
       ${renderStepNumbers([
         { x: x + 52, y: cornerY + flight / 2 + 4, label: '1' },
         { x: cornerX + flight / 2, y: cornerY + flight / 2 + 4, label: `${Math.ceil(values.marchesGeom / 2)}` },
@@ -466,25 +522,33 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       ${renderSectionMarkers(x + 84, cornerY - 34, x + 84, cornerY + flight + 34, 'A-A')}
       ${renderSectionMarkers(cornerX - 34, y + 84, cornerX + flight + 34, y + 84, 'B-B')}
       ${renderPlanDirectionArrow(542, 92)}
-      ${renderScaleBar(548, 486)}
+      ${renderScaleBar(548, 486, scale)}
       ${renderTitleBlock(values, 76, titleBlockY, 608)}
     `;
   }
 
   function renderDoubleQuarterTurnPlan(values) {
+    const titleBlockY = 530;
+    const scale = createPlanScale(values, { availableWidth: 440, availableHeight: 310 });
     const x = 116;
     const y = 70;
-    const flight = 92;
-    const horizontal = 414;
-    const vertical = 304;
+    const flight = Math.max(34, scale.mmToPx(values.largeur.geom));
+    const horizontal = Math.max(flight * 2.1, scale.mmToPx(values.longueur.geom));
+    const vertical = Math.max(flight * 2.2, scale.mmToPx(values.reculement.geom));
     const cornerX = x + horizontal - flight;
     const bottomY = y + vertical - flight;
     const outline = `M ${x} ${y} H ${x + horizontal} V ${y + vertical} H ${x} V ${bottomY} H ${cornerX} V ${y + flight} H ${x} Z`;
     const runSteps = Math.max(3, Math.round(values.marchesGeom * 0.28));
     const middleSteps = Math.max(3, Math.round(values.marchesGeom * 0.30));
-    const tremie = { x: x + 28, y: y + flight + 30, width: 172, height: 86 };
+    const tremieWidth = Math.max(18, scale.mmToPx(values.tremieType === 'l' ? values.tremieLGrandeLongueur.geom : values.tremieLongueur.geom));
+    const tremieHeight = Math.max(18, scale.mmToPx(values.tremieType === 'l' ? values.tremieLGrandeLargeur.geom : values.tremieLargeur.geom));
+    const tremie = {
+      x: x + Math.max(0, (horizontal - tremieWidth) / 2),
+      y: y + Math.max(0, (vertical - tremieHeight) / 2),
+      width: tremieWidth,
+      height: tremieHeight
+    };
     const tremieX = mirrorRectX(tremie.x, tremie.width, values, 760);
-    const titleBlockY = 530;
     const geometry = `
       ${renderStairOutline(outline)}
       ${renderStepLines({ x, y, width: horizontal - flight, height: flight, count: runSteps, orientation: 'h' })}
@@ -499,7 +563,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     return `
       ${renderSheetFrame(760, 680, 'Vue en plan', titleBlockY)}
       ${mirrorPlanForDirection(geometry, values, 760)}
-      ${renderTremie(values, tremieX, tremie.y, tremie.width, tremie.height)}
+      ${renderTremie(values, tremieX, tremie.y, tremie.width, tremie.height, scale)}
       ${renderStepNumbers([
         { x: x + 54, y: bottomY + flight / 2 + 4, label: '1' },
         { x: cornerX + flight / 2, y: y + vertical / 2 + 4, label: `${Math.ceil(values.marchesGeom / 2)}` },
@@ -513,7 +577,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       ${renderSectionMarkers(x + 76, bottomY - 34, x + 76, bottomY + flight + 34, 'A-A')}
       ${renderSectionMarkers(cornerX - 34, y + vertical / 2, cornerX + flight + 34, y + vertical / 2, 'B-B')}
       ${renderPlanDirectionArrow(542, 92)}
-      ${renderScaleBar(548, 486)}
+      ${renderScaleBar(548, 486, scale)}
       ${renderTitleBlock(values, 76, titleBlockY, 608)}
     `;
   }
