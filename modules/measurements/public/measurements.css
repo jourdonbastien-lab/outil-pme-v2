@@ -452,15 +452,15 @@ textarea:focus {
 .technical-svg {
   display: block;
   width: 100%;
-  aspect-ratio: 720 / 430;
+  aspect-ratio: 760 / 480;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: #fbfdff;
+  background: #ffffff;
   overflow: hidden;
 }
 
 .technical-svg-main {
-  aspect-ratio: 760 / 520;
+  aspect-ratio: 760 / 560;
 }
 
 .technical-svg svg {
@@ -470,12 +470,11 @@ textarea:focus {
 }
 
 .technical-svg .sheet-bg {
-  fill: #fbfdff;
+  fill: #ffffff;
 }
 
 .technical-svg .grid-line {
-  stroke: rgba(59, 130, 246, 0.055);
-  stroke-width: 1;
+  display: none;
 }
 
 .technical-svg .cut-line,
@@ -496,8 +495,8 @@ textarea:focus {
 
 .technical-svg .thin-line {
   fill: none;
-  stroke: #6787a4;
-  stroke-width: 1.2;
+  stroke: #4f6475;
+  stroke-width: 1.1;
   vector-effect: non-scaling-stroke;
 }
 
@@ -517,9 +516,9 @@ textarea:focus {
 
 .technical-svg .walking-line {
   fill: none;
-  stroke: #4b6073;
-  stroke-width: 1.5;
-  stroke-dasharray: 7 6;
+  stroke: #374957;
+  stroke-width: 1.15;
+  stroke-dasharray: 5 6;
   vector-effect: non-scaling-stroke;
 }
 
@@ -531,7 +530,7 @@ textarea:focus {
 }
 
 .technical-svg .stair-fill {
-  fill: rgba(232, 242, 249, 0.38);
+  fill: rgba(232, 242, 249, 0.18);
   stroke: #1f2933;
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
@@ -545,23 +544,23 @@ textarea:focus {
 }
 
 .technical-svg .tremie-fill {
-  fill: rgba(255, 122, 0, 0.06);
-  stroke: #ff7a00;
-  stroke-width: 1.8;
-  stroke-dasharray: 8 5;
+  fill: none;
+  stroke: #c65f00;
+  stroke-width: 1.2;
+  stroke-dasharray: 7 5;
   vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .dim-line {
   fill: none;
-  stroke: #ff7a00;
-  stroke-width: 1.4;
+  stroke: #c65f00;
+  stroke-width: 1.05;
   vector-effect: non-scaling-stroke;
 }
 
 .technical-svg .dim-line.active,
 .technical-svg .dim-group.active .dim-line {
-  stroke-width: 2.2;
+  stroke-width: 1.55;
 }
 
 .technical-svg .label,
@@ -572,19 +571,19 @@ textarea:focus {
 }
 
 .technical-svg .label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
 }
 
 .technical-svg .caption {
-  font-size: 12px;
+  font-size: 13px;
   fill: #5f6b75;
 }
 
 .technical-svg .dim-label {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
-  fill: #ff7a00;
+  fill: #9a4a00;
 }
 
 .technical-svg .label-box {
@@ -597,6 +596,39 @@ textarea:focus {
 .technical-svg .active .label-box {
   stroke: #ff7a00;
   stroke-width: 1.6;
+}
+
+.technical-svg .schedule-box {
+  fill: #ffffff;
+  stroke: #9aa6af;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .schedule-line {
+  stroke: #d7dde2;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.technical-svg .schedule-title {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  fill: #1f2933;
+}
+
+.technical-svg .schedule-label {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 12px;
+  fill: #64727d;
+}
+
+.technical-svg .schedule-value {
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  fill: #1f2933;
 }
 
 .plan-legend {
@@ -752,11 +784,17 @@ textarea:focus {
   }
 
   .technical-svg .label {
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .technical-svg .dim-label,
   .technical-svg .caption {
-    font-size: 11px;
+    font-size: 12px;
+  }
+
+  .technical-svg .schedule-label,
+  .technical-svg .schedule-value,
+  .technical-svg .schedule-title {
+    font-size: 12px;
   }
 }
