@@ -407,6 +407,22 @@ function createSqliteTables(database) {
       created_at TEXT
     )
   `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS measurements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      module TEXT,
+      record_name TEXT,
+      client TEXT,
+      chantier TEXT,
+      measure_date TEXT,
+      quote_id INTEGER NULL,
+      client_order_id INTEGER NULL,
+      data TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `).run();
 }
 
 function runSqliteMigrations(ensureColumn) {
@@ -449,6 +465,16 @@ function runSqliteMigrations(ensureColumn) {
   ensureColumn('chantiers', 'start_date', 'TEXT');
   ensureColumn('chantiers', 'end_date', 'TEXT');
   ensureColumn('chantiers', 'created_at', 'TEXT');
+  ensureColumn('measurements', 'module', 'TEXT');
+  ensureColumn('measurements', 'record_name', 'TEXT');
+  ensureColumn('measurements', 'client', 'TEXT');
+  ensureColumn('measurements', 'chantier', 'TEXT');
+  ensureColumn('measurements', 'measure_date', 'TEXT');
+  ensureColumn('measurements', 'quote_id', 'INTEGER NULL');
+  ensureColumn('measurements', 'client_order_id', 'INTEGER NULL');
+  ensureColumn('measurements', 'data', 'TEXT');
+  ensureColumn('measurements', 'created_at', 'TEXT');
+  ensureColumn('measurements', 'updated_at', 'TEXT');
 }
 
 function runSqliteNormalizations(database) {
@@ -877,6 +903,56 @@ function formatDateLabel(value) {
   const date = new Date(`${raw}T00:00:00`);
   if (Number.isNaN(date.getTime())) return raw;
   return date.toLocaleDateString('fr-FR');
+}
+
+function parseOptionalId(value) {
+  const id = Number(value || 0);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function normalizeMeasurementLink(quoteIdValue, orderIdValue) {
+  const quoteId = parseOptionalId(quoteIdValue);
+  const orderId = quoteId ? null : parseOptionalId(orderIdValue);
+  return { quoteId, orderId };
+}
+
+function measurementTitle(row) {
+  return row?.record_name || row?.chantier || `Prise de cote #${row?.id}`;
+}
+
+function measurementLinkBadge(row) {
+  const quoteId = parseOptionalId(row?.quote_id);
+  const orderId = parseOptionalId(row?.client_order_id);
+  if (quoteId) {
+    return `<a class="measurement-link-badge linked" href="/devis/${quoteId}">Liée au devis #${quoteId}</a>`;
+  }
+  if (orderId) {
+    const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
+    if (order) {
+      const folderName = safeName(order.description && order.description.trim() !== '' ? order.description : `Commande_${order.id}`);
+      return `<a class="measurement-link-badge linked" href="/pc-folders/${encodeURIComponent(safeName(order.name))}/${encodeURIComponent(folderName)}">Liée à la commande #${orderId}</a>`;
+    }
+    return `<span class="measurement-link-badge linked">Liée à la commande #${orderId}</span>`;
+  }
+  return '<span class="measurement-link-badge">Non rattachée</span>';
+}
+
+function renderMeasurementCards(rows) {
+  if (!rows.length) return '<div class="empty-state">Aucune prise de cote liée.</div>';
+  return `
+    <div class="measurement-linked-grid">
+      ${rows.map((row) => `
+        <article class="measurement-linked-card">
+          <div>
+            <strong>${escHtml(measurementTitle(row))}</strong>
+            <span>${escHtml(row.module || 'Prise de cote')}</span>
+          </div>
+          ${measurementLinkBadge(row)}
+          <a class="btn btn-secondary" href="/outils/prises-cotes/fiche/${row.id}">Ouvrir</a>
+        </article>
+      `).join('')}
+    </div>
+  `;
 }
 
 // Statistiques sidebar
@@ -2123,6 +2199,10 @@ document.getElementById('save-event').onclick = () => {
 /* ===================== PRISES DE COTES ===================== */
 
 app.get('/outils/prises-cotes', requireLogin, (req, res) => {
+  const savedMeasurements = db
+    .prepare('SELECT * FROM measurements ORDER BY updated_at DESC, id DESC LIMIT 12')
+    .all();
+
   const cards = [
     {
       href: '/outils/prises-cotes/escalier',
@@ -2174,6 +2254,109 @@ app.get('/outils/prises-cotes', requireLogin, (req, res) => {
 
       <section class="cards-grid">
         ${cards}
+      </section>
+
+      <section class="panel-soft measurement-linked-section">
+        <h2>Fiches enregistrées</h2>
+        ${savedMeasurements.length ? renderMeasurementCards(savedMeasurements) : '<div class="empty-state">Aucune fiche enregistrée côté serveur.</div>'}
+      </section>
+      `
+    )
+  );
+});
+
+app.get('/api/measurements/link-options', requireLogin, (req, res) => {
+  const quotes = db
+    .prepare('SELECT id, title, client_name, status FROM quotes ORDER BY id DESC')
+    .all()
+    .map((q) => ({
+      id: q.id,
+      label: `#${q.id} - ${q.client_name || 'Client non renseigné'} - ${q.title || 'Sans titre'} - ${normalizeQuoteStatus(q.status)}`
+    }));
+
+  const clientOrders = db
+    .prepare('SELECT id, name, description, status FROM client_orders ORDER BY id DESC')
+    .all()
+    .map((o) => ({
+      id: o.id,
+      label: `#${o.id} - ${o.name || 'Client'} - ${o.description || 'Commande'} - ${o.status || 'En cours'}`
+    }));
+
+  res.json({ quotes, clientOrders });
+});
+
+app.post('/api/measurements', requireLogin, (req, res) => {
+  const body = req.body || {};
+  const fields = body.fields && typeof body.fields === 'object' ? body.fields : {};
+  const { quoteId, orderId } = normalizeMeasurementLink(body.quote_id ?? fields.quote_id, body.client_order_id ?? fields.client_order_id);
+  const id = parseOptionalId(body.server_id || body.id);
+  const moduleName = String(body.module || body.moduleLabel || fields.module || 'Prise de cote').trim();
+  const recordName = String(body.recordName || '').trim() || `Fiche ${moduleName.toLowerCase()} ${formatDateLabel(isoDate())}`;
+  const client = String(fields.client || '').trim() || null;
+  const chantier = String(fields.chantier || '').trim() || null;
+  const measureDate = String(fields.date || '').trim() || null;
+  const now = new Date().toISOString();
+  const data = JSON.stringify(body);
+
+  if (id) {
+    const existing = db.prepare('SELECT id FROM measurements WHERE id = ?').get(id);
+    if (existing) {
+      db.prepare(`
+        UPDATE measurements
+        SET module = ?, record_name = ?, client = ?, chantier = ?, measure_date = ?,
+            quote_id = ?, client_order_id = ?, data = ?, updated_at = ?
+        WHERE id = ?
+      `).run(moduleName, recordName, client, chantier, measureDate, quoteId, orderId, data, now, id);
+      return res.json({ ok: true, id });
+    }
+  }
+
+  const byName = db.prepare('SELECT id FROM measurements WHERE module = ? AND record_name = ?').get(moduleName, recordName);
+  if (byName) {
+    db.prepare(`
+      UPDATE measurements
+      SET client = ?, chantier = ?, measure_date = ?, quote_id = ?, client_order_id = ?, data = ?, updated_at = ?
+      WHERE id = ?
+    `).run(client, chantier, measureDate, quoteId, orderId, data, now, byName.id);
+    return res.json({ ok: true, id: byName.id });
+  }
+
+  const info = db.prepare(`
+    INSERT INTO measurements
+      (module, record_name, client, chantier, measure_date, quote_id, client_order_id, data, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(moduleName, recordName, client, chantier, measureDate, quoteId, orderId, data, now, now);
+
+  res.json({ ok: true, id: info.lastInsertRowid });
+});
+
+app.get('/outils/prises-cotes/fiche/:id', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  if (!id) return res.status(400).send('ID prise de cote invalide');
+
+  const measurement = db.prepare('SELECT * FROM measurements WHERE id = ?').get(id);
+  if (!measurement) return res.status(404).send('Prise de cote introuvable');
+
+  res.send(
+    pageTemplate(
+      req,
+      measurementTitle(measurement),
+      `
+      <div class="page-head">
+        <h1>${escHtml(measurementTitle(measurement))}</h1>
+      </div>
+
+      <section class="panel-soft measurement-detail">
+        ${measurementLinkBadge(measurement)}
+        <div class="measurement-detail-grid">
+          <div><span>Module</span><strong>${escHtml(measurement.module || '—')}</strong></div>
+          <div><span>Client</span><strong>${escHtml(measurement.client || '—')}</strong></div>
+          <div><span>Chantier</span><strong>${escHtml(measurement.chantier || '—')}</strong></div>
+          <div><span>Date</span><strong>${escHtml(formatDateLabel(measurement.measure_date))}</strong></div>
+        </div>
+        <div class="nav-actions">
+          <a class="btn btn-secondary" href="/outils/prises-cotes">Retour prises de cotes</a>
+        </div>
       </section>
       `
     )
@@ -3475,6 +3658,18 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
     `
   ).join('');
 
+  const orderDb = db
+    .prepare('SELECT * FROM client_orders ORDER BY id DESC')
+    .all()
+    .find((row) => {
+      const folderName = safeName(row.description && row.description.trim() !== '' ? row.description : `Commande_${row.id}`);
+      return safeName(row.name) === client && folderName === order;
+    });
+
+  const linkedMeasurements = orderDb
+    ? db.prepare('SELECT * FROM measurements WHERE client_order_id = ? ORDER BY updated_at DESC, id DESC').all(orderDb.id)
+    : [];
+
   const content = `
     <div class="page-head">
       <h1>${escHtml(order)}</h1>
@@ -3489,6 +3684,11 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
     )}
 
     ${gridCards(cards)}
+
+    <section class="panel-soft measurement-linked-section">
+      <h2>Prises de cotes liées</h2>
+      ${renderMeasurementCards(linkedMeasurements)}
+    </section>
   `;
 
   res.send(pageTemplate(req, `Commande : ${order}`, content));
@@ -4375,6 +4575,9 @@ const photosHtml = photos.map(photo => `
   const tva = round2(total * 0.2);
   const totalTtc = round2(total + tva);
   const quoteStatus = normalizeQuoteStatus(quote.status);
+  const linkedMeasurements = db
+    .prepare('SELECT * FROM measurements WHERE quote_id = ? ORDER BY updated_at DESC, id DESC')
+    .all(id);
 
   res.send(
     pageTemplate(
@@ -4430,6 +4633,12 @@ const photosHtml = photos.map(photo => `
     </form>
   </div>
 </section>
+
+<section class="panel-soft measurement-linked-section">
+  <h2>Prises de cotes liées</h2>
+  ${renderMeasurementCards(linkedMeasurements)}
+</section>
+
 <div class="quote-top-grid">
 
   <div class="panel-soft">

@@ -3064,6 +3064,101 @@ button:hover {
   font-size:12px;
 }
 
+/* =========================
+   Prises de cotes liées
+   ========================= */
+
+.measurement-linked-section{
+  margin-top:16px;
+}
+
+.measurement-linked-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+}
+
+.measurement-linked-card{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-width:0;
+  padding:14px;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 5px 14px rgba(15,23,42,.06);
+}
+
+.measurement-linked-card strong,
+.measurement-linked-card span{
+  display:block;
+  overflow-wrap:anywhere;
+}
+
+.measurement-linked-card strong{
+  color:#111827;
+  font-size:16px;
+}
+
+.measurement-linked-card span{
+  margin-top:3px;
+  color:#6b7280;
+  font-size:13px;
+  font-weight:700;
+}
+
+.measurement-link-badge{
+  display:inline-flex;
+  align-items:center;
+  width:max-content;
+  max-width:100%;
+  min-height:28px;
+  padding:5px 9px;
+  border-radius:999px;
+  background:#f3f4f6;
+  color:#374151;
+  font-size:12px;
+  font-weight:900;
+  text-decoration:none;
+}
+
+.measurement-link-badge.linked{
+  background:#fff1e4;
+  color:#9a4a00;
+}
+
+.measurement-detail{
+  display:grid;
+  gap:14px;
+}
+
+.measurement-detail-grid{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:10px;
+}
+
+.measurement-detail-grid div{
+  padding:12px;
+  border-radius:10px;
+  background:#f9fafb;
+}
+
+.measurement-detail-grid span{
+  display:block;
+  color:#6b7280;
+  font-size:12px;
+  font-weight:800;
+}
+
+.measurement-detail-grid strong{
+  display:block;
+  margin-top:4px;
+  color:#111827;
+  overflow-wrap:anywhere;
+}
+
 @media (max-width:1100px){
   .quote-list-grid{
     grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -3071,6 +3166,11 @@ button:hover {
 
   .quote-hero{
     grid-template-columns:1fr;
+  }
+
+  .measurement-linked-grid,
+  .measurement-detail-grid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -3116,6 +3216,11 @@ button:hover {
   .quote-card h3{
     font-size:18px;
     line-height:1.2;
+  }
+
+  .measurement-linked-grid,
+  .measurement-detail-grid{
+    grid-template-columns:1fr;
   }
 }
 

@@ -26,6 +26,7 @@ const PLAN_THEME = {
 
   let photos = [];
   let currentRecordName = '';
+  let currentServerId = null;
 
   function setDefaultValues() {
     const dateField = form.elements.date;
@@ -533,8 +534,12 @@ const PLAN_THEME = {
       fields[field.name] = field.value;
     });
     return {
+      server_id: currentServerId,
+      module: 'Escalier',
       recordName: recordNameField.value.trim(),
       fields,
+      quote_id: fields.quote_id || '',
+      client_order_id: fields.quote_id ? '' : (fields.client_order_id || ''),
       typeEscalier: getCheckboxValues('typeEscalier'),
       structure: getCheckboxValues('structure'),
       finitions: getCheckboxValues('finitions'),
@@ -553,6 +558,7 @@ const PLAN_THEME = {
       }
     });
     recordNameField.value = record.recordName || '';
+    currentServerId = record.server_id || record.id || null;
     setCheckboxValues('typeEscalier', record.typeEscalier);
     setCheckboxValues('structure', record.structure);
     setCheckboxValues('finitions', record.finitions);
@@ -580,7 +586,49 @@ const PLAN_THEME = {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
   }
 
-  function saveRecord() {
+  function buildOption(value, label) {
+    const option = document.createElement('option');
+    option.value = value ? String(value) : '';
+    option.textContent = label;
+    return option;
+  }
+
+  async function initServerLinks() {
+    const firstBlock = form.querySelector('.block');
+    if (!firstBlock || document.getElementById('measurementQuoteLink')) return;
+
+    const section = document.createElement('section');
+    section.className = 'block measurement-link-block';
+    section.innerHTML = [
+      '<div class="block-title">',
+      '<h3>Rattachement</h3>',
+      '</div>',
+      '<div class="grid grid-2">',
+      '<label class="field"><span>Rattacher à un devis</span><select id="measurementQuoteLink" name="quote_id"><option value="">Aucun devis</option></select></label>',
+      '<label class="field"><span>Rattacher à une commande client</span><select id="measurementOrderLink" name="client_order_id"><option value="">Aucune commande</option></select></label>',
+      '</div>'
+    ].join('');
+    firstBlock.parentNode.insertBefore(section, firstBlock.nextSibling);
+
+    const quoteSelect = section.querySelector('#measurementQuoteLink');
+    const orderSelect = section.querySelector('#measurementOrderLink');
+    quoteSelect.addEventListener('change', () => {
+      if (quoteSelect.value) orderSelect.value = '';
+    });
+    orderSelect.addEventListener('change', () => {
+      if (orderSelect.value) quoteSelect.value = '';
+    });
+
+    try {
+      const response = await fetch('/api/measurements/link-options');
+      if (!response.ok) return;
+      const data = await response.json();
+      (data.quotes || []).forEach((quote) => quoteSelect.appendChild(buildOption(quote.id, quote.label)));
+      (data.clientOrders || []).forEach((order) => orderSelect.appendChild(buildOption(order.id, order.label)));
+    } catch {}
+  }
+
+  async function saveRecord() {
     const payload = collectFormData();
     const recordName = payload.recordName || `Fiche escalier ${new Date().toLocaleDateString('fr-FR')}`;
     payload.recordName = recordName;
@@ -596,6 +644,26 @@ const PLAN_THEME = {
     saveStoredRecords(records);
     currentRecordName = recordName;
     saveStatus.textContent = `Enregistré localement - ${new Date(payload.updatedAt).toLocaleString('fr-FR')}`;
+
+    try {
+      const serverPayload = Object.assign({}, payload, { photos: [] });
+      const response = await fetch('/api/measurements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serverPayload)
+      });
+      if (!response.ok) throw new Error('server-save-failed');
+      const result = await response.json();
+      currentServerId = result.id || currentServerId;
+      payload.server_id = currentServerId;
+      const refreshed = getStoredRecords();
+      const refreshedIndex = refreshed.findIndex((entry) => entry.recordName === recordName);
+      if (refreshedIndex >= 0) refreshed[refreshedIndex] = payload;
+      saveStoredRecords(refreshed);
+      saveStatus.textContent = `Enregistré - ${new Date(payload.updatedAt).toLocaleString('fr-FR')}`;
+    } catch {
+      saveStatus.textContent = 'Enregistré localement - serveur indisponible';
+    }
   }
 
   function loadRecord() {
@@ -631,6 +699,7 @@ const PLAN_THEME = {
     syncTremieGroups();
     drawTopView();
     currentRecordName = '';
+    currentServerId = null;
     saveStatus.textContent = 'Nouvelle fiche prête';
     setDefaultValues();
   }
@@ -672,6 +741,7 @@ const PLAN_THEME = {
   });
 
   setDefaultValues();
+  initServerLinks();
   syncTremieGroups();
   drawTopView();
   saveStatus.textContent = getStoredRecords().length
