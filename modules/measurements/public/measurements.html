@@ -184,6 +184,9 @@
               <label class="field"><span>Reculement (mm)</span><input name="reculement" type="number" min="0" step="1" /></label>
               <label class="field"><span>Échappée (mm)</span><input name="echappee" type="number" min="0" step="1" /></label>
               <label class="field"><span>Nez de marche (mm)</span><input name="nezDeMarche" type="number" min="0" step="1" /></label>
+              <label class="field"><span>Hauteur marche (mm)</span><input name="hauteurMarche" type="number" min="0" step="0.1" /></label>
+              <label class="field"><span>Giron (mm)</span><input name="giron" type="number" min="0" step="0.1" /></label>
+              <label class="field"><span>Pente (°)</span><input name="pente" type="number" min="0" step="0.1" /></label>
             </div>
 
             <div class="tremie-fields">
@@ -206,19 +209,55 @@
               </div>
             </div>
 
-            <section class="proposal-panel" aria-live="polite">
+            <section class="proposal-panel stair-configurator" aria-live="polite">
               <div class="proposal-head">
                 <div>
-                  <h4>Proposition automatique</h4>
-                  <p>Aide de préconception basée sur Blondel et les dimensions saisies.</p>
+                  <h4>Configurateur escalier</h4>
+                  <p>Pré-dimensionnement indicatif à valider selon contraintes chantier et normes applicables.</p>
                 </div>
                 <div class="proposal-actions">
-                  <button id="proposalBtn" type="button" class="primary">Proposer un escalier</button>
-                  <button id="applyProposalBtn" type="button" hidden>Appliquer cette proposition</button>
+                  <button id="proposalBtn" type="button" class="primary">Calculer les solutions</button>
                 </div>
               </div>
+              <div class="configurator-grid">
+                <label class="field"><span>Hauteur sol à sol (mm)</span><input id="configHauteur" type="number" min="0" step="1" data-sync-field="hauteur" /></label>
+                <label class="field"><span>Largeur souhaitée (mm)</span><input id="configLargeur" type="number" min="0" step="1" data-sync-field="largeur" /></label>
+                <label class="field"><span>Trémie longueur (mm)</span><input id="configTremieLongueur" type="number" min="0" step="1" data-sync-field="tremieLongueur" /></label>
+                <label class="field"><span>Trémie largeur (mm)</span><input id="configTremieLargeur" type="number" min="0" step="1" data-sync-field="tremieLargeur" /></label>
+                <label class="field">
+                  <span>Type de trémie</span>
+                  <select id="configTremieType" data-sync-field="tremieType">
+                    <option value="rectangle">Rectangle</option>
+                    <option value="l">En L</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Type souhaité</span>
+                  <select id="configType">
+                    <option value="auto">Auto</option>
+                    <option value="straight">Droit</option>
+                    <option value="quarter">1/4 tournant</option>
+                    <option value="double-quarter">2/4 tournants</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Sens montée</span>
+                  <select id="configSens" data-sync-field="sensMontee">
+                    <option value="Droite">Droite</option>
+                    <option value="Gauche">Gauche</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Confort souhaité</span>
+                  <select id="configComfort">
+                    <option value="comfort">Confort</option>
+                    <option value="standard" selected>Standard</option>
+                    <option value="compact">Gain de place</option>
+                  </select>
+                </label>
+              </div>
               <div id="proposalResult" class="proposal-result">
-                Renseignez au minimum la hauteur sol à sol et les dimensions disponibles, puis lancez une proposition.
+                Renseignez la trémie, la hauteur, la largeur et le sens de montée, puis calculez les solutions.
               </div>
             </section>
 

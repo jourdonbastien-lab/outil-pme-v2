@@ -8,8 +8,10 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   const resetBtn = document.getElementById('resetBtn');
   const printBtn = document.getElementById('printBtn');
   const proposalBtn = document.getElementById('proposalBtn');
-  const applyProposalBtn = document.getElementById('applyProposalBtn');
   const proposalResult = document.getElementById('proposalResult');
+  const configuratorFields = Array.from(document.querySelectorAll('[data-sync-field]'));
+  const configType = document.getElementById('configType');
+  const configComfort = document.getElementById('configComfort');
   const saveStatus = document.getElementById('saveStatus');
   const recordNameField = document.getElementById('recordName');
   const photoTemplate = document.getElementById('photoItemTemplate');
@@ -22,7 +24,8 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   let currentServerId = null;
   let activeMeasure = '';
   let svgMarkerPrefix = 'plan';
-  let currentProposal = null;
+  let currentSolutions = [];
+  let currentSelectedSolution = null;
 
   function setDefaultValues() {
     const dateField = form.elements.date;
@@ -50,6 +53,33 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   function getStairDirection() {
     const directionField = form.elements.sensMontee;
     return directionField && directionField.value === 'Gauche' ? 'Gauche' : 'Droite';
+  }
+
+  function syncConfiguratorFromForm() {
+    configuratorFields.forEach((field) => {
+      const linkedName = field.dataset.syncField;
+      const linked = field.id === 'configTremieLongueur' && getTremieType() === 'l'
+        ? form.elements.tremieLGrandeLongueur
+        : field.id === 'configTremieLargeur' && getTremieType() === 'l'
+          ? form.elements.tremieLGrandeLargeur
+          : form.elements[linkedName];
+      if (linked) field.value = linked.value || '';
+    });
+  }
+
+  function syncFormFromConfigurator(field) {
+    const linkedName = field.dataset.syncField;
+    const linked = form.elements[linkedName];
+    if (!linked) return;
+    linked.value = field.value;
+    if (field.id === 'configTremieLongueur' && form.elements.tremieLGrandeLongueur) {
+      form.elements.tremieLGrandeLongueur.value = field.value;
+    }
+    if (field.id === 'configTremieLargeur' && form.elements.tremieLGrandeLargeur) {
+      form.elements.tremieLGrandeLargeur.value = field.value;
+    }
+    linked.dispatchEvent(new Event('input', { bubbles: true }));
+    linked.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   function syncTremieGroups() {
@@ -140,126 +170,276 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     return Math.round(value * factor) / factor;
   }
 
-  function scoreStairSolution(solution) {
-    const heightPenalty = Math.abs(solution.riser - 180) * 1.1;
-    const goingPenalty = Math.abs(solution.going - 260);
-    const blondelPenalty = Math.abs(solution.blondel - 620) * 0.8;
-    const slopePenalty = solution.slope < 30
-      ? (30 - solution.slope) * 6
-      : solution.slope > 40
-        ? (solution.slope - 40) * 6
-        : 0;
-    const fitPenalty = solution.fitsStraight ? 0 : solution.fitsQuarter ? 45 : solution.fitsDoubleQuarter ? 90 : 150;
-    return heightPenalty + goingPenalty + blondelPenalty + slopePenalty + fitPenalty;
+  function getTypeLabel(type) {
+    if (type === 'quarter') return '1/4 tournant';
+    if (type === 'double-quarter') return '2/4 tournants';
+    return 'Droit';
   }
 
-  function calculateStairProposal() {
+  function getDesiredTypes() {
+    const requested = configType ? configType.value : 'auto';
+    if (requested === 'straight') return ['straight'];
+    if (requested === 'quarter') return ['quarter'];
+    if (requested === 'double-quarter') return ['double-quarter'];
+    return ['straight', 'quarter', 'double-quarter'];
+  }
+
+  function getComfortProfile() {
+    const mode = configComfort ? configComfort.value : 'standard';
+    if (mode === 'comfort') {
+      return { targetRiser: 175, targetGoing: 270, targetBlondel: 620, minGoing: 250, maxGoing: 300, label: 'Confort' };
+    }
+    if (mode === 'compact') {
+      return { targetRiser: 188, targetGoing: 240, targetBlondel: 615, minGoing: 220, maxGoing: 265, label: 'Gain de place' };
+    }
+    return { targetRiser: 180, targetGoing: 260, targetBlondel: 620, minGoing: 235, maxGoing: 285, label: 'Standard' };
+  }
+
+  function getConfiguratorValue(id, fallbackName) {
+    const field = document.getElementById(id);
+    const rawValue = field && field.value ? String(field.value).replace(',', '.').trim() : '';
+    const numeric = Number(rawValue);
+    if (rawValue !== '' && Number.isFinite(numeric) && numeric > 0) return numeric;
+    const fallback = fallbackName ? readMeasure(fallbackName, 0).value : null;
+    return fallback || null;
+  }
+
+  function getConfiguratorInputs() {
+    const preview = currentSelectedSolution;
+    currentSelectedSolution = null;
     const values = getPlanValues();
-    const height = values.hauteur.value;
-    if (!height) {
-      return { error: 'Renseignez au minimum la hauteur sol à sol pour calculer une proposition.' };
-    }
-
-    const tremie = getTremieSize(values);
-    const availableLength = values.longueur.value || values.reculement.value || tremie.length || values.longueur.geom;
-    const availableWidth = values.largeur.value || tremie.width || values.largeur.geom;
-    const candidates = [];
-
-    for (let steps = 8; steps <= 20; steps += 1) {
-      const riser = height / steps;
-      if (riser < 145 || riser > 220) continue;
-      const going = clamp(620 - 2 * riser, 220, 300);
-      const run = going * steps;
-      const slope = Math.atan(height / Math.max(run, 1)) * 180 / Math.PI;
-      const blondel = 2 * riser + going;
-      const fitsStraight = run <= availableLength;
-      const quarterRun = Math.ceil(run * 0.62);
-      const quarterReturn = Math.ceil(run * 0.48);
-      const fitsQuarter = quarterRun <= availableLength && quarterReturn <= Math.max(tremie.width, availableWidth);
-      const doubleRun = Math.ceil(run * 0.52);
-      const doubleReturn = Math.ceil(run * 0.58);
-      const fitsDoubleQuarter = doubleRun <= availableLength && doubleReturn <= Math.max(tremie.width, availableWidth) * 1.35;
-      const type = fitsStraight ? 'straight' : fitsQuarter ? 'quarter' : 'double-quarter';
-      const footprintLength = type === 'straight' ? run : type === 'quarter' ? quarterRun : doubleRun;
-      const footprintReculement = type === 'straight' ? run : type === 'quarter' ? quarterReturn : doubleReturn;
-      const solution = {
-        steps,
-        riser,
-        going,
-        run,
-        footprintLength,
-        footprintReculement,
-        slope,
-        blondel,
-        fitsStraight,
-        fitsQuarter,
-        fitsDoubleQuarter,
-        type
-      };
-      solution.score = scoreStairSolution(solution);
-      candidates.push(solution);
-    }
-
-    if (!candidates.length) {
-      return { error: 'Aucune proposition cohérente trouvée avec les dimensions saisies. Vérifiez la hauteur ou les dimensions disponibles.' };
-    }
-
-    const best = candidates.sort((a, b) => a.score - b.score)[0];
-    const comfort = best.riser >= 170 && best.riser <= 190 && best.going >= 240 && best.going <= 280 && best.blondel >= 600 && best.blondel <= 640 && best.slope >= 30 && best.slope <= 40
-      ? 'Bon'
-      : best.riser >= 160 && best.riser <= 200 && best.going >= 225 && best.going <= 295 && best.blondel >= 580 && best.blondel <= 660
-        ? 'Moyen'
-        : 'À vérifier';
-    const typeLabel = best.type === 'straight' ? 'Droit' : best.type === 'quarter' ? 'Quart tournant' : 'Deux quarts tournants';
-    const explanation = best.type === 'straight'
-      ? `L'escalier droit passe dans la longueur disponible estimée (${Math.round(availableLength)} mm).`
-      : best.type === 'quarter'
-        ? `Le droit dépasse la longueur disponible ; un quart tournant répartit le reculement sur deux volées.`
-        : `Le droit et le quart tournant sont contraints ; deux quarts tournants permettent de compacter l'implantation.`;
-
+    currentSelectedSolution = preview;
     return {
-      type: best.type,
-      typeLabel,
-      steps: best.steps,
-      riser: roundTo(best.riser, 1),
-      going: roundTo(best.going, 1),
-      run: Math.round(best.run),
-      footprintLength: Math.round(best.footprintLength),
-      footprintReculement: Math.round(best.footprintReculement),
-      slope: roundTo(best.slope, 1),
-      blondel: roundTo(best.blondel, 1),
-      comfort,
-      explanation,
-      direction: values.direction
+      values,
+      height: getConfiguratorValue('configHauteur', 'hauteur') || values.hauteur.value,
+      width: getConfiguratorValue('configLargeur', 'largeur') || values.largeur.value || values.largeur.geom,
+      tremieLength: getConfiguratorValue('configTremieLongueur', values.tremieType === 'l' ? 'tremieLGrandeLongueur' : 'tremieLongueur') || getTremieSize(values).length,
+      tremieWidth: getConfiguratorValue('configTremieLargeur', values.tremieType === 'l' ? 'tremieLGrandeLargeur' : 'tremieLargeur') || getTremieSize(values).width,
+      direction: values.direction,
+      desiredTypes: getDesiredTypes(),
+      comfort: getComfortProfile(),
+      echappee: values.echappee.value
     };
   }
 
-  function renderProposal(proposal) {
-    if (!proposalResult || !applyProposalBtn) return;
-    if (proposal.error) {
-      proposalResult.textContent = proposal.error;
-      applyProposalBtn.hidden = true;
-      currentProposal = null;
+  function getStairFootprint(type, run, width, steps) {
+    if (type === 'straight') {
+      return {
+        length: run,
+        reculement: run,
+        turns: 0,
+        distribution: `${steps} marches en volée droite`
+      };
+    }
+    if (type === 'quarter') {
+      const turnSteps = clamp(Math.round(steps * 0.24), 3, 5);
+      const firstFlight = Math.max(2, Math.floor((steps - turnSteps) * 0.55));
+      const secondFlight = Math.max(2, steps - turnSteps - firstFlight);
+      return {
+        length: Math.max(width * 1.9, run * 0.62),
+        reculement: Math.max(width * 1.35, run * 0.46),
+        turns: 1,
+        distribution: `${firstFlight} + ${turnSteps} balancées + ${secondFlight}`
+      };
+    }
+    const turnSteps = clamp(Math.round(steps * 0.18), 3, 5);
+    const middleFlight = Math.max(2, Math.round(steps * 0.28));
+    const endFlights = Math.max(2, Math.floor((steps - middleFlight - turnSteps * 2) / 2));
+    return {
+      length: Math.max(width * 2.15, run * 0.52),
+      reculement: Math.max(width * 2.05, run * 0.56),
+      turns: 2,
+      distribution: `${endFlights} + ${turnSteps} balancées + ${middleFlight} + ${turnSteps} balancées + ${endFlights}`
+    };
+  }
+
+  function scoreStairSolution(solution) {
+    const profile = solution.profile;
+    const heightPenalty = Math.abs(solution.riser - profile.targetRiser) * 1.15;
+    const goingPenalty = Math.abs(solution.going - profile.targetGoing) * 1.05;
+    const blondelPenalty = Math.abs(solution.blondel - profile.targetBlondel) * 0.9;
+    const slopePenalty = solution.slope < 30
+      ? (30 - solution.slope) * 7
+      : solution.slope > 40
+        ? (solution.slope - 40) * 7
+        : 0;
+    const fitPenalty = solution.fitsTremie ? 0 : 160 + solution.overflow * 0.08;
+    const headroomPenalty = solution.headroomStatus === 'À vérifier' ? 35 : 0;
+    const typePenalty = solution.type === 'straight' ? 0 : solution.type === 'quarter' ? 12 : 24;
+    const compactBonus = solution.profile.label === 'Gain de place' ? -Math.min(35, solution.compactness * 0.015) : 0;
+    return heightPenalty + goingPenalty + blondelPenalty + slopePenalty + fitPenalty + headroomPenalty + typePenalty + compactBonus;
+  }
+
+  function classifyStairSolution(solution, index) {
+    if (index === 0 && solution.fitsTremie && solution.comfortScore >= 70) return 'Recommandé';
+    if (solution.fitsTremie && solution.comfortScore >= 55) return 'Possible';
+    if (solution.fitsTremie || solution.comfortScore >= 35) return 'Serré';
+    return 'Déconseillé';
+  }
+
+  function buildSolutionExplanation(solution) {
+    if (!solution.fitsTremie) {
+      return `Encombrement supérieur à la trémie disponible de ${Math.round(solution.overflow)} mm environ.`;
+    }
+    if (solution.status === 'Recommandé') {
+      return `Bon compromis Blondel, pente et encombrement dans la trémie. Répartition : ${solution.distribution}.`;
+    }
+    if (solution.status === 'Serré') {
+      return `Solution compacte à vérifier sur chantier, surtout échappée et confort. Répartition : ${solution.distribution}.`;
+    }
+    return `Solution exploitable dans les dimensions saisies. Répartition : ${solution.distribution}.`;
+  }
+
+  function generateStairSolutions() {
+    const inputs = getConfiguratorInputs();
+    if (!inputs.height) {
+      return { error: 'Renseignez au minimum la hauteur sol à sol pour générer les solutions.' };
+    }
+
+    const candidates = [];
+    const goingCandidates = [];
+    for (let going = inputs.comfort.minGoing; going <= inputs.comfort.maxGoing; going += 5) {
+      goingCandidates.push(going);
+    }
+
+    for (let steps = 8; steps <= 22; steps += 1) {
+      const riser = inputs.height / steps;
+      if (riser < 145 || riser > 220) continue;
+
+      goingCandidates.forEach((going) => {
+        const blondel = 2 * riser + going;
+        if (blondel < 560 || blondel > 680) return;
+        const run = going * steps;
+        const slope = Math.atan(inputs.height / Math.max(run, 1)) * 180 / Math.PI;
+
+        inputs.desiredTypes.forEach((type) => {
+          const footprint = getStairFootprint(type, run, inputs.width, steps);
+          const overflowLength = Math.max(0, footprint.length - inputs.tremieLength);
+          const overflowWidth = Math.max(0, Math.max(footprint.reculement, inputs.width) - inputs.tremieWidth);
+          const overflow = overflowLength + overflowWidth;
+          const fitsTremie = overflow === 0;
+          const headroomStatus = inputs.echappee && inputs.echappee < 1900 ? 'À vérifier' : 'OK';
+          const compactness = Math.max(0, inputs.tremieLength * inputs.tremieWidth - footprint.length * Math.max(inputs.width, footprint.reculement));
+          const solution = {
+            id: `solution-${candidates.length}`,
+            type,
+            typeLabel: getTypeLabel(type),
+            direction: inputs.direction,
+            steps,
+            riser,
+            going,
+            blondel,
+            run,
+            slope,
+            footprintLength: footprint.length,
+            footprintReculement: footprint.reculement,
+            width: inputs.width,
+            tremieLength: inputs.tremieLength,
+            tremieWidth: inputs.tremieWidth,
+            fitsTremie,
+            overflow,
+            overflowLength,
+            overflowWidth,
+            headroomStatus,
+            compactness,
+            distribution: footprint.distribution,
+            profile: inputs.comfort
+          };
+          solution.score = scoreStairSolution(solution);
+          candidates.push(solution);
+        });
+      });
+    }
+
+    if (!candidates.length) {
+      return { error: 'Aucune solution cohérente trouvée. Vérifiez la hauteur ou élargissez les plages de dimensions.' };
+    }
+
+    const unique = [];
+    const seen = new Set();
+    candidates
+      .sort((a, b) => a.score - b.score)
+      .forEach((solution) => {
+        const key = `${solution.type}-${solution.steps}-${Math.round(solution.going)}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        unique.push(solution);
+      });
+
+    const solutions = unique.slice(0, 8).map((solution, index) => {
+      const normalized = Object.assign({}, solution, {
+        rawScore: solution.score,
+        comfortScore: Math.max(0, Math.round(100 - solution.score / 2)),
+        riser: roundTo(solution.riser, 1),
+        going: roundTo(solution.going, 1),
+        blondel: roundTo(solution.blondel, 1),
+        slope: roundTo(solution.slope, 1),
+        footprintLength: Math.round(solution.footprintLength),
+        footprintReculement: Math.round(solution.footprintReculement),
+        width: Math.round(solution.width),
+        tremieLength: Math.round(solution.tremieLength),
+        tremieWidth: Math.round(solution.tremieWidth)
+      });
+      normalized.status = classifyStairSolution(normalized, index);
+      normalized.explanation = buildSolutionExplanation(normalized);
+      return normalized;
+    });
+
+    return { solutions };
+  }
+
+  function renderSolutionCard(solution, index) {
+    const statusClass = solution.status === 'Recommandé'
+      ? 'recommended'
+      : solution.status === 'Possible'
+        ? 'possible'
+        : solution.status === 'Serré'
+          ? 'tight'
+          : 'discouraged';
+    const title = index === 0 ? 'Solution recommandée' : 'Solution alternative';
+    return `<article class="solution-card ${statusClass}" data-solution-id="${solution.id}">
+      <div class="solution-card-head">
+        <div>
+          <span class="solution-label">${title}</span>
+          <h5>${escSvgText(solution.typeLabel)} - ${escSvgText(solution.direction)}</h5>
+        </div>
+        <span class="solution-status">${escSvgText(solution.status)}</span>
+      </div>
+      <div class="solution-metrics">
+        <span><b>${solution.steps}</b> marches</span>
+        <span><b>${solution.riser}</b> mm h.</span>
+        <span><b>${solution.going}</b> mm giron</span>
+        <span><b>${solution.slope}</b>° pente</span>
+        <span><b>${solution.footprintReculement}</b> mm rec.</span>
+        <span><b>${solution.footprintLength}</b> mm long.</span>
+        <span><b>${solution.comfortScore}</b>/100 confort</span>
+        <span><b>${solution.width}</b> mm largeur</span>
+      </div>
+      <p>${escSvgText(solution.explanation)}</p>
+      <div class="solution-actions">
+        <button type="button" data-apply-solution="${solution.id}" class="primary">Appliquer cette solution</button>
+        <button type="button" data-view-solution="${solution.id}">Voir le plan</button>
+      </div>
+    </article>`;
+  }
+
+  function renderStairSolutions(result) {
+    if (!proposalResult) return;
+    if (result.error) {
+      proposalResult.textContent = result.error;
+      currentSolutions = [];
+      currentSelectedSolution = null;
       return;
     }
-    const comfortClass = proposal.comfort === 'Bon' ? 'good' : proposal.comfort === 'Moyen' ? 'medium' : 'check';
+    currentSolutions = result.solutions;
+    currentSelectedSolution = currentSolutions[0] || null;
     proposalResult.innerHTML = `
-      <div class="proposal-summary">
-        <div class="proposal-metric"><span>Type proposé</span><strong>${escSvgText(proposal.typeLabel)}</strong></div>
-        <div class="proposal-metric"><span>Marches</span><strong>${proposal.steps}</strong></div>
-        <div class="proposal-metric"><span>Hauteur marche</span><strong>${proposal.riser} mm</strong></div>
-        <div class="proposal-metric"><span>Giron</span><strong>${proposal.going} mm</strong></div>
-        <div class="proposal-metric"><span>Longueur estimée</span><strong>${proposal.footprintLength} mm</strong></div>
-        <div class="proposal-metric"><span>Reculement estimé</span><strong>${proposal.footprintReculement} mm</strong></div>
-        <div class="proposal-metric"><span>Pente</span><strong>${proposal.slope}°</strong></div>
-        <div class="proposal-metric"><span>Blondel</span><strong>${proposal.blondel} mm</strong></div>
-        <div class="proposal-metric"><span>Sens conservé</span><strong>${escSvgText(proposal.direction)}</strong></div>
+      <div class="solutions-layout">
+        ${currentSolutions.map(renderSolutionCard).join('')}
       </div>
-      <span class="comfort-badge ${comfortClass}">${proposal.comfort}</span>
-      <p class="proposal-explanation">${escSvgText(proposal.explanation)}</p>
+      <p class="proposal-note">Pré-dimensionnement indicatif à valider selon contraintes chantier et normes applicables.</p>
     `;
-    applyProposalBtn.hidden = false;
-    currentProposal = proposal;
+    renderPlans();
   }
 
   function setStairTypeFromProposal(type) {
@@ -274,12 +454,27 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     });
   }
 
-  function applyStairProposal() {
-    if (!currentProposal) return;
-    setStairTypeFromProposal(currentProposal.type);
-    if (form.elements.marchesNombre) form.elements.marchesNombre.value = currentProposal.steps;
-    if (form.elements.reculement) form.elements.reculement.value = currentProposal.footprintReculement;
-    if (form.elements.longueur) form.elements.longueur.value = currentProposal.footprintLength;
+  function applyStairSolution(solution) {
+    if (!solution) return;
+    setStairTypeFromProposal(solution.type);
+    if (form.elements.sensMontee) form.elements.sensMontee.value = solution.direction;
+    if (form.elements.marchesNombre) form.elements.marchesNombre.value = solution.steps;
+    if (form.elements.largeur) form.elements.largeur.value = solution.width;
+    if (form.elements.reculement) form.elements.reculement.value = solution.footprintReculement;
+    if (form.elements.longueur) form.elements.longueur.value = solution.footprintLength;
+    if (form.elements.hauteurMarche) form.elements.hauteurMarche.value = solution.riser;
+    if (form.elements.giron) form.elements.giron.value = solution.going;
+    if (form.elements.pente) form.elements.pente.value = solution.slope;
+    if (form.elements.tremieLongueur && solution.tremieLength) form.elements.tremieLongueur.value = solution.tremieLength;
+    if (form.elements.tremieLargeur && solution.tremieWidth) form.elements.tremieLargeur.value = solution.tremieWidth;
+    if (form.elements.tremieLGrandeLongueur && solution.tremieLength) form.elements.tremieLGrandeLongueur.value = solution.tremieLength;
+    if (form.elements.tremieLGrandeLargeur && solution.tremieWidth) form.elements.tremieLGrandeLargeur.value = solution.tremieWidth;
+    syncConfiguratorFromForm();
+    renderSelectedStairPlan(solution);
+  }
+
+  function renderSelectedStairPlan(solution) {
+    currentSelectedSolution = solution || currentSelectedSolution;
     renderPlans();
   }
 
@@ -292,13 +487,22 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     const echappee = readMeasure('echappee', 2000);
     const marchesNombre = readMeasure('marchesNombre', Math.max(10, Math.round(hauteur.geom / 175)));
     const marchesGeom = clamp(Math.round(marchesNombre.geom), 3, 22);
-    const giron = longueur.value !== null && marchesNombre.value !== null
-      ? { value: longueur.value / Math.max(1, marchesNombre.value), geom: longueur.value / Math.max(1, marchesNombre.value) }
-      : { value: null, geom: longueur.geom / Math.max(1, marchesGeom) };
-    const hauteurMarche = hauteur.value !== null && marchesNombre.value !== null
-      ? { value: hauteur.value / Math.max(1, marchesNombre.value), geom: hauteur.value / Math.max(1, marchesNombre.value) }
-      : { value: null, geom: hauteur.geom / Math.max(1, marchesGeom) };
-    return {
+    const savedGiron = readMeasure('giron', longueur.geom / Math.max(1, marchesGeom));
+    const savedHauteurMarche = readMeasure('hauteurMarche', hauteur.geom / Math.max(1, marchesGeom));
+    const savedPente = readMeasure('pente', 0);
+    const computedGiron = longueur.value !== null && marchesNombre.value !== null
+      ? longueur.value / Math.max(1, marchesNombre.value)
+      : longueur.geom / Math.max(1, marchesGeom);
+    const computedHauteurMarche = hauteur.value !== null && marchesNombre.value !== null
+      ? hauteur.value / Math.max(1, marchesNombre.value)
+      : hauteur.geom / Math.max(1, marchesGeom);
+    const giron = savedGiron.value !== null
+      ? savedGiron
+      : { value: longueur.value !== null && marchesNombre.value !== null ? computedGiron : null, geom: computedGiron };
+    const hauteurMarche = savedHauteurMarche.value !== null
+      ? savedHauteurMarche
+      : { value: hauteur.value !== null && marchesNombre.value !== null ? computedHauteurMarche : null, geom: computedHauteurMarche };
+    const planValues = {
       stairType: getSelectedStairType(),
       stairTypeLabel: getSelectedStairType() === 'double-quarter'
         ? 'Deux quarts tournants'
@@ -320,6 +524,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       marchesGeom,
       giron,
       hauteurMarche,
+      pente: savedPente,
       tremieLongueur: readMeasure('tremieLongueur', tremie.geom),
       tremieLargeur: readMeasure('tremieLargeur', Math.max(900, Math.round(tremie.geom * 0.72))),
       tremieLGrandeLongueur: readMeasure('tremieLGrandeLongueur', tremie.geom),
@@ -327,6 +532,23 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       tremieLRetourLongueur: readMeasure('tremieLRetourLongueur', Math.max(700, Math.round(tremie.geom * 0.46))),
       tremieLRetourLargeur: readMeasure('tremieLRetourLargeur', Math.max(700, Math.round(tremie.geom * 0.46)))
     };
+
+    if (currentSelectedSolution) {
+      const measure = (value) => ({ value, geom: value });
+      planValues.stairType = currentSelectedSolution.type;
+      planValues.stairTypeLabel = currentSelectedSolution.typeLabel;
+      planValues.direction = currentSelectedSolution.direction;
+      planValues.longueur = measure(currentSelectedSolution.footprintLength);
+      planValues.reculement = measure(currentSelectedSolution.footprintReculement);
+      planValues.largeur = measure(currentSelectedSolution.width);
+      planValues.marchesNombre = measure(currentSelectedSolution.steps);
+      planValues.marchesGeom = clamp(Math.round(currentSelectedSolution.steps), 3, 22);
+      planValues.giron = measure(currentSelectedSolution.going);
+      planValues.hauteurMarche = measure(currentSelectedSolution.riser);
+      planValues.pente = measure(currentSelectedSolution.slope);
+    }
+
+    return planValues;
   }
 
   function renderDimensionLine(options) {
@@ -829,6 +1051,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     photos = Array.isArray(record.photos) ? record.photos.slice() : [];
     renderPhotos();
     syncTremieGroups();
+    syncConfiguratorFromForm();
     renderPlans();
     currentRecordName = record.recordName || '';
     saveStatus.textContent = record.updatedAt
@@ -956,21 +1179,20 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
 
   function resetForm() {
     form.reset();
+    currentSolutions = [];
+    currentSelectedSolution = null;
     photos = [];
     renderPhotos();
     syncTremieGroups();
     renderPlans();
-    currentProposal = null;
     if (proposalResult) {
-      proposalResult.textContent = 'Renseignez au minimum la hauteur sol à sol et les dimensions disponibles, puis lancez une proposition.';
-    }
-    if (applyProposalBtn) {
-      applyProposalBtn.hidden = true;
+      proposalResult.textContent = 'Renseignez la trémie, la hauteur, la largeur et le sens de montée, puis calculez les solutions.';
     }
     currentRecordName = '';
     currentServerId = null;
     saveStatus.textContent = 'Nouvelle fiche prête';
     setDefaultValues();
+    syncConfiguratorFromForm();
   }
 
   photoInput.addEventListener('change', async (event) => {
@@ -993,11 +1215,26 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   printBtn.addEventListener('click', () => window.print());
   if (proposalBtn) {
     proposalBtn.addEventListener('click', () => {
-      renderProposal(calculateStairProposal());
+      configuratorFields.forEach(syncFormFromConfigurator);
+      renderStairSolutions(generateStairSolutions());
     });
   }
-  if (applyProposalBtn) {
-    applyProposalBtn.addEventListener('click', applyStairProposal);
+  if (proposalResult) {
+    proposalResult.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      const applyButton = target.closest('[data-apply-solution]');
+      const viewButton = target.closest('[data-view-solution]');
+      const solutionId = applyButton ? applyButton.dataset.applySolution : viewButton ? viewButton.dataset.viewSolution : '';
+      if (!solutionId) return;
+      const solution = currentSolutions.find((entry) => entry.id === solutionId);
+      if (!solution) return;
+      if (applyButton) {
+        applyStairSolution(solution);
+      } else {
+        renderSelectedStairPlan(solution);
+      }
+    });
   }
 
   const planFieldNames = [
@@ -1012,6 +1249,9 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     'tremie',
     'reculement',
     'echappee',
+    'hauteurMarche',
+    'giron',
+    'pente',
     'marchesNombre',
     'tremieType',
     'tremieLongueur',
@@ -1026,6 +1266,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   form.querySelectorAll(planSelector).forEach((input) => {
     const updateActivePlan = () => {
       activeMeasure = input.name;
+      currentSelectedSolution = null;
       renderPlans();
     };
     input.addEventListener('focus', updateActivePlan);
@@ -1053,7 +1294,13 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     renderPlans();
   });
 
+  configuratorFields.forEach((field) => {
+    field.addEventListener('input', () => syncFormFromConfigurator(field));
+    field.addEventListener('change', () => syncFormFromConfigurator(field));
+  });
+
   setDefaultValues();
+  syncConfiguratorFromForm();
   initServerLinks();
   syncTremieGroups();
   renderPlans();

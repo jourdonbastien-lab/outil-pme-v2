@@ -447,6 +447,13 @@ textarea:focus {
   justify-content: end;
 }
 
+.configurator-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
 .proposal-result {
   margin-top: 16px;
   color: var(--muted);
@@ -454,20 +461,52 @@ textarea:focus {
   line-height: 1.5;
 }
 
-.proposal-summary {
+.solutions-layout {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.proposal-metric {
-  padding: 12px;
+.solution-card {
+  padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 16px;
   background: #fafafa;
 }
 
-.proposal-metric span {
+.solution-card.recommended {
+  border-color: rgba(255, 122, 0, 0.55);
+  background: #fffaf4;
+  box-shadow: 0 10px 28px rgba(255, 122, 0, 0.1);
+}
+
+.solution-card.possible {
+  border-color: rgba(54, 138, 92, 0.3);
+}
+
+.solution-card.tight {
+  border-color: rgba(240, 180, 90, 0.55);
+}
+
+.solution-card.discouraged {
+  opacity: 0.82;
+}
+
+.solution-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: start;
+}
+
+.solution-card h5 {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 17px;
+}
+
+.solution-label,
+.solution-status {
   display: block;
   color: var(--muted);
   font-size: 12px;
@@ -476,42 +515,55 @@ textarea:focus {
   letter-spacing: 0.04em;
 }
 
-.proposal-metric strong {
-  display: block;
-  margin-top: 5px;
-  color: var(--text);
-  font-size: 18px;
-}
-
-.comfort-badge {
-  display: inline-flex;
-  align-items: center;
-  margin-top: 12px;
-  padding: 7px 10px;
+.solution-status {
+  white-space: nowrap;
+  padding: 5px 8px;
   border-radius: 999px;
+  background: #ffffff;
   border: 1px solid var(--line);
-  color: #111111;
-  font-weight: 800;
+  color: #1f2933;
 }
 
-.comfort-badge.good {
-  border-color: #6bbf7a;
-  background: #eaf8ed;
+.solution-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
 }
 
-.comfort-badge.medium {
-  border-color: #f0b45a;
-  background: #fff3df;
+.solution-metrics span {
+  min-width: 0;
+  padding: 8px;
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 13px;
 }
 
-.comfort-badge.check {
-  border-color: #d66a5f;
-  background: #fff0ee;
+.solution-metrics b {
+  color: var(--text);
 }
 
-.proposal-explanation {
+.solution-card p {
   margin: 12px 0 0;
   color: var(--text);
+}
+
+.solution-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.solution-actions button {
+  flex: 1 1 150px;
+}
+
+.proposal-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .plan-panel {
@@ -927,8 +979,22 @@ textarea:focus {
     width: 100%;
   }
 
-  .proposal-summary {
+  .configurator-grid,
+  .solutions-layout,
+  .solution-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .solution-card {
+    padding: 12px;
+  }
+
+  .solution-card-head {
+    flex-direction: column;
+  }
+
+  .solution-actions button {
+    flex-basis: 100%;
   }
 
   .plan-svg-grid {
