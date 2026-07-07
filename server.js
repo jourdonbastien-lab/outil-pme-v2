@@ -215,6 +215,7 @@ const CLIENT_ORDER_FILES_DIR = resolveStoragePath(
   path.join(STORAGE_DIR, 'client_orders_files')
 );
 const QUOTE_PHOTO_DIR = resolveStoragePath(process.env.OUTIL_PME_QUOTE_PHOTO_DIR, path.join(STORAGE_DIR, 'quote_photos'));
+const SKETCHES_DIR = resolveStoragePath(process.env.OUTIL_PME_SKETCHES_DIR, path.join(STORAGE_DIR, 'sketches'));
 const PDF_STORAGE_DIR = resolveStoragePath(process.env.OUTIL_PME_PDF_DIR, path.join(STORAGE_DIR, 'pdf'));
 
 ensureDir(STORAGE_DIR);
@@ -223,6 +224,7 @@ ensureDir(path.dirname(DB_PATH));
 ensureDir(CLIENT_PC_DIR);
 ensureDir(CLIENT_ORDER_FILES_DIR);
 ensureDir(QUOTE_PHOTO_DIR);
+ensureDir(SKETCHES_DIR);
 ensureDir(PDF_STORAGE_DIR);
 
 const MEASUREMENTS_PUBLIC_DIR = path.join(__dirname, 'modules', 'measurements', 'public');
@@ -232,7 +234,7 @@ const MEASUREMENT_SHEETS = {
   portail: 'portail.html',
   cloture: 'cloture.html',
 };
-const MEASUREMENTS_ASSETS = new Set(['measurements.css', 'measurements.js', 'module-sheet.js']);
+const MEASUREMENTS_ASSETS = new Set(['measurements.css', 'measurements.js', 'module-sheet.js', 'sketchpad.js']);
 const CHANTIER_STATUSES = ['À préparer', 'En fabrication', 'En pose', 'En attente', 'Terminé', 'Facturé'];
 const QUOTE_STATUSES = ['Brouillon', 'Envoyé', 'Accepté', 'Refusé', 'Facturé'];
 
@@ -647,7 +649,7 @@ const quotePhotoUpload =
 /* ===================== MIDDLEWARES ===================== */
 
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
   name: 'outil-pme.sid',
@@ -1001,6 +1003,71 @@ function renderMeasurementCards(rows) {
         </article>
       `).join('')}
     </div>
+  `;
+}
+
+function sketchPath(scope, id) {
+  return safeResolveInside(SKETCHES_DIR, scope, `${id}.png`);
+}
+
+function saveSketchPng(scope, id, dataUrl) {
+  const cleanId = Number(id);
+  if (!Number.isFinite(cleanId) || cleanId <= 0) {
+    const error = new Error('ID invalide');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const match = String(dataUrl || '').match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) {
+    const error = new Error('Image PNG invalide');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const buffer = Buffer.from(match[1], 'base64');
+  if (!buffer.length || buffer.length > 10 * 1024 * 1024) {
+    const error = new Error('Croquis trop volumineux');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const dir = safeResolveInside(SKETCHES_DIR, scope);
+  ensureDir(dir);
+  const filePath = sketchPath(scope, cleanId);
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+}
+
+function sendSketch(scope, id, res) {
+  const cleanId = Number(id);
+  if (!Number.isFinite(cleanId) || cleanId <= 0) return res.status(400).send('ID invalide');
+  const filePath = sketchPath(scope, cleanId);
+  if (!fs.existsSync(filePath)) return res.status(404).send('Croquis introuvable');
+  return res.sendFile(filePath);
+}
+
+function renderSketchBlock({ scope, id, className = 'quote-work-card' }) {
+  const cleanId = Number(id);
+  const baseUrl = scope === 'quotes' ? `/sketches/quotes/${cleanId}.png` : `/sketches/measurements/${cleanId}.png`;
+  return `
+    <section class="${className} sketchpad-card" data-sketchpad data-sketch-scope="${escHtml(scope)}" data-sketch-id="${cleanId}" data-sketch-image-url="${baseUrl}">
+      <div class="modern-section-title sketchpad-title">
+        ${clientPageIcon('measurements', 'clients-title-icon')}
+        <div>
+          <h2>Croquis / notes manuscrites</h2>
+          <p>Dessinez au doigt, au stylet ou à la souris.</p>
+        </div>
+      </div>
+      <div class="sketchpad-surface">
+        <canvas class="sketchpad-canvas" width="1100" height="420" aria-label="Zone de dessin manuscrit"></canvas>
+      </div>
+      <div class="sketchpad-actions">
+        <button type="button" class="modern-secondary-btn" data-sketch-clear>Effacer</button>
+        <button type="button" class="clients-submit-btn" data-sketch-save>Enregistrer</button>
+        <span class="sketchpad-status" data-sketch-status></span>
+      </div>
+    </section>
   `;
 }
 
@@ -2838,6 +2905,26 @@ app.post('/api/measurements', requireLogin, (req, res) => {
   res.json({ ok: true, id: info.lastInsertRowid });
 });
 
+app.get('/sketches/measurements/:id.png', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  const measurement = id ? db.prepare('SELECT id FROM measurements WHERE id = ?').get(id) : null;
+  if (!measurement) return res.status(404).send('Prise de cote introuvable');
+  return sendSketch('measurements', id, res);
+});
+
+app.post('/api/measurements/:id/sketch', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  const measurement = id ? db.prepare('SELECT id FROM measurements WHERE id = ?').get(id) : null;
+  if (!measurement) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
+
+  try {
+    const filePath = saveSketchPng('measurements', id, req.body?.image);
+    return res.json({ ok: true, path: filePath });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, error: error.message || 'Erreur sauvegarde croquis' });
+  }
+});
+
 app.get('/outils/prises-cotes/fiche/:id', requireLogin, (req, res) => {
   const id = parseOptionalId(req.params.id);
   if (!id) return res.status(400).send('ID prise de cote invalide');
@@ -2866,6 +2953,20 @@ app.get('/outils/prises-cotes/fiche/:id', requireLogin, (req, res) => {
           <a class="btn btn-secondary" href="/outils/prises-cotes">Retour prises de cotes</a>
         </div>
       </section>
+
+      ${renderSketchBlock({ scope: 'measurements', id, className: 'panel-soft' })}
+      <script src="/sketchpad.js"></script>
+      <script>
+      window.initSketchPad && window.initSketchPad({
+        root: document.querySelector('[data-sketchpad][data-sketch-scope="measurements"]'),
+        getSaveUrl: function (root) {
+          return '/api/measurements/' + root.dataset.sketchId + '/sketch';
+        },
+        getImageUrl: function (root) {
+          return root.dataset.sketchImageUrl;
+        }
+      });
+      </script>
       `
     )
   );
@@ -5241,6 +5342,31 @@ app.post('/devis/:id/photo', requireLogin, (req, res) => {
     res.redirect('/devis/' + quoteId);
   });
 });
+
+app.get('/sketches/quotes/:id.png', requireLogin, (req, res) => {
+  const quoteId = Number(req.params.id);
+  const quote = Number.isFinite(quoteId) && quoteId > 0
+    ? db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)
+    : null;
+  if (!quote) return res.status(404).send('Devis introuvable');
+  return sendSketch('quotes', quoteId, res);
+});
+
+app.post('/api/devis/:id/sketch', requireLogin, (req, res) => {
+  const quoteId = Number(req.params.id);
+  const quote = Number.isFinite(quoteId) && quoteId > 0
+    ? db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)
+    : null;
+  if (!quote) return res.status(404).json({ ok: false, error: 'Devis introuvable' });
+
+  try {
+    const filePath = saveSketchPng('quotes', quoteId, req.body?.image);
+    return res.json({ ok: true, path: filePath });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ ok: false, error: error.message || 'Erreur sauvegarde croquis' });
+  }
+});
+
 app.get('/devis/:id', requireLogin, (req, res) => {
   const id = Number(req.params.id);
 
@@ -6262,6 +6388,8 @@ ${lines.length ? lines.map(l => `
       ${photosHtml || '<div class="empty-state">Aucune photo.</div>'}
     </div>
   </article>
+
+  ${renderSketchBlock({ scope: 'quotes', id, className: 'quote-work-card' })}
 </section>
 
 <div class="quote-lightbox" data-quote-lightbox hidden>
@@ -6315,6 +6443,18 @@ ${lines.length ? lines.map(l => `
     if (event.key === 'Escape' && !lightbox.hidden) closeLightbox();
   });
 })();
+</script>
+<script src="/sketchpad.js"></script>
+<script>
+window.initSketchPad && window.initSketchPad({
+  root: document.querySelector('[data-sketchpad][data-sketch-scope="quotes"]'),
+  getSaveUrl: function (root) {
+    return '/api/devis/' + root.dataset.sketchId + '/sketch';
+  },
+  getImageUrl: function (root) {
+    return root.dataset.sketchImageUrl;
+  }
+});
 </script>
 
 </div>

@@ -26,6 +26,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   let svgMarkerPrefix = 'plan';
   let currentSolutions = [];
   let currentSelectedSolution = null;
+  let sketchRoot = null;
 
   function setDefaultValues() {
     const dateField = form.elements.date;
@@ -1679,6 +1680,8 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     syncTremieGroups();
     syncConfiguratorFromForm();
     renderPlans();
+    updateSketchOwner();
+    if (sketchRoot && typeof sketchRoot.sketchpadLoad === 'function') sketchRoot.sketchpadLoad();
     currentRecordName = record.recordName || '';
     saveStatus.textContent = record.updatedAt
       ? `Fiche chargée - dernière sauvegarde le ${new Date(record.updatedAt).toLocaleString('fr-FR')}`
@@ -1739,6 +1742,56 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     } catch {}
   }
 
+  function updateSketchOwner() {
+    if (!sketchRoot || !currentServerId) return;
+    sketchRoot.dataset.sketchId = String(currentServerId);
+    sketchRoot.dataset.sketchImageUrl = `/sketches/measurements/${currentServerId}.png`;
+  }
+
+  function initHandwrittenSketch() {
+    if (!window.initSketchPad || document.getElementById('measurementSketchpad')) return;
+
+    const section = document.createElement('section');
+    section.id = 'measurementSketchpad';
+    section.className = 'block sketchpad-card measurement-sketchpad-card';
+    section.dataset.sketchpad = '';
+    section.dataset.sketchScope = 'measurements';
+    section.innerHTML = [
+      '<div class="block-title">',
+      '<h3>Croquis / notes manuscrites</h3>',
+      '<p>Dessinez au doigt, au stylet ou à la souris.</p>',
+      '</div>',
+      '<div class="sketchpad-surface">',
+      '<canvas class="sketchpad-canvas" width="1100" height="420" aria-label="Zone de dessin manuscrit"></canvas>',
+      '</div>',
+      '<div class="sketchpad-actions">',
+      '<button type="button" class="secondary" data-sketch-clear>Effacer</button>',
+      '<button type="button" class="primary" data-sketch-save>Enregistrer</button>',
+      '<span class="sketchpad-status" data-sketch-status></span>',
+      '</div>'
+    ].join('');
+
+    form.appendChild(section);
+    sketchRoot = section;
+
+    window.initSketchPad({
+      root: sketchRoot,
+      beforeSave: async function () {
+        if (!currentServerId) await saveRecord();
+        updateSketchOwner();
+        if (!currentServerId) throw new Error('Fiche non enregistrée');
+      },
+      getSaveUrl: function () {
+        updateSketchOwner();
+        return currentServerId ? `/api/measurements/${currentServerId}/sketch` : '';
+      },
+      getImageUrl: function () {
+        updateSketchOwner();
+        return currentServerId ? `/sketches/measurements/${currentServerId}.png` : '';
+      }
+    });
+  }
+
   async function saveRecord() {
     const payload = collectFormData();
     const recordName = payload.recordName || `Fiche escalier ${new Date().toLocaleDateString('fr-FR')}`;
@@ -1766,14 +1819,17 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       if (!response.ok) throw new Error('server-save-failed');
       const result = await response.json();
       currentServerId = result.id || currentServerId;
+      updateSketchOwner();
       payload.server_id = currentServerId;
       const refreshed = getStoredRecords();
       const refreshedIndex = refreshed.findIndex((entry) => entry.recordName === recordName);
       if (refreshedIndex >= 0) refreshed[refreshedIndex] = payload;
       saveStoredRecords(refreshed);
       saveStatus.textContent = `Enregistré - ${new Date(payload.updatedAt).toLocaleString('fr-FR')}`;
+      return currentServerId;
     } catch {
       saveStatus.textContent = 'Enregistré localement - serveur indisponible';
+      return currentServerId;
     }
   }
 
@@ -1816,6 +1872,11 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     }
     currentRecordName = '';
     currentServerId = null;
+    if (sketchRoot) {
+      delete sketchRoot.dataset.sketchId;
+      delete sketchRoot.dataset.sketchImageUrl;
+      if (typeof sketchRoot.sketchpadClear === 'function') sketchRoot.sketchpadClear();
+    }
     saveStatus.textContent = 'Nouvelle fiche prête';
     setDefaultValues();
     syncConfiguratorFromForm();
@@ -1936,6 +1997,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   setDefaultValues();
   syncConfiguratorFromForm();
   initServerLinks();
+  initHandwrittenSketch();
   syncTremieGroups();
   renderPlans();
   saveStatus.textContent = getStoredRecords().length

@@ -6404,6 +6404,47 @@ body.quote-lightbox-open{
   overflow:hidden;
 }
 
+/* Croquis / notes manuscrites */
+.sketchpad-card{
+  overflow:hidden;
+}
+
+.sketchpad-surface{
+  width:100%;
+  padding:10px;
+  border:1px solid #e5e7eb;
+  border-radius:18px;
+  background:#f8fafc;
+}
+
+.sketchpad-canvas{
+  display:block;
+  width:100%;
+  height:320px;
+  border:1px solid #d7dde7;
+  border-radius:14px;
+  background:#fff;
+  touch-action:none;
+  cursor:crosshair;
+}
+
+.sketchpad-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+
+.sketchpad-status{
+  color:#64748b;
+  font-size:13px;
+}
+
+body.sketchpad-drawing{
+  overscroll-behavior:none;
+}
+
 @media (max-width:768px){
   .quote-lightbox{
     padding:18px 12px calc(18px + env(safe-area-inset-bottom));
@@ -6420,6 +6461,14 @@ body.quote-lightbox-open{
     width:42px;
     height:42px;
     font-size:28px;
+  }
+
+  .sketchpad-canvas{
+    height:260px;
+  }
+
+  .sketchpad-actions button{
+    flex:1 1 120px;
   }
 }
 
