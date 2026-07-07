@@ -5530,15 +5530,20 @@ const photosHtml = photos.map(photo => {
           </article>
         </section>
 
-        <section class="quote-work-card quote-add-line-card">
-          <div class="modern-section-title">
-            ${clientPageIcon('add', 'clients-title-icon')}
-            <div>
-              <h2>Ajouter une ligne</h2>
-              <p>Matière, main-d'œuvre et coûts associés au devis.</p>
-            </div>
-          </div>
-
+        <section class="quote-collapsible-section" id="quote-section-add-line" data-quote-collapsible>
+          <button type="button" class="quote-collapsible-toggle" aria-expanded="false" aria-controls="quote-section-add-line-panel" data-quote-collapsible-toggle>
+            <span class="quote-collapsible-title">
+              ${clientPageIcon('add', 'quote-collapsible-icon')}
+              <span>
+                <strong>Ajouter une ligne / prestation</strong>
+                <small>Matière, main-d'œuvre et calculateurs</small>
+              </span>
+            </span>
+            <span class="quote-collapsible-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
+          <div class="quote-collapsible-panel" id="quote-section-add-line-panel" hidden data-quote-collapsible-panel>
+            <div class="quote-collapsible-content">
+              <section class="quote-work-card quote-add-line-card quote-collapsible-inner-card">
           <div class="quote-add-grid">
             <article class="quote-cost-section">
               <header>
@@ -6210,6 +6215,9 @@ function printPlan() {
   </form>
             </article>
           </div>
+              </section>
+            </div>
+          </div>
         </section>
 <script>
 (function () {
@@ -6341,26 +6349,41 @@ ${lines.length ? lines.map(l => `
   </div>
 </section>
 
-<section class="quote-work-card measurement-linked-section">
-  <div class="modern-section-title">
-    ${clientPageIcon('folder', 'clients-title-icon')}
-    <div>
-      <h2>Prises de cotes liées</h2>
-      <p>Documents rattachés à ce devis.</p>
-    </div>
-  </div>
-  ${renderMeasurementCards(linkedMeasurements)}
-</section>
-
-<section class="quote-secondary-grid">
-  <article class="quote-work-card">
-    <div class="modern-section-title">
-      ${clientPageIcon('postal', 'clients-title-icon')}
-      <div>
-        <h2>Relevé de cotes / Notes chantier</h2>
-        <p>Notes internes conservées avec le devis.</p>
+<section class="quote-collapsible-stack" aria-label="Sections secondaires du devis">
+  <section class="quote-collapsible-section" id="quote-section-measurements" data-quote-collapsible>
+    <button type="button" class="quote-collapsible-toggle" aria-expanded="false" aria-controls="quote-section-measurements-panel" data-quote-collapsible-toggle>
+      <span class="quote-collapsible-title">
+        ${clientPageIcon('measurements', 'quote-collapsible-icon')}
+        <span>
+          <strong>Prises de cotes</strong>
+          <small>${linkedMeasurements.length} liée${linkedMeasurements.length > 1 ? 's' : ''}</small>
+        </span>
+      </span>
+      <span class="quote-collapsible-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
+    </button>
+    <div class="quote-collapsible-panel" id="quote-section-measurements-panel" hidden data-quote-collapsible-panel>
+      <div class="quote-collapsible-content">
+        <section class="quote-work-card measurement-linked-section quote-collapsible-inner-card">
+          ${renderMeasurementCards(linkedMeasurements)}
+        </section>
       </div>
     </div>
+  </section>
+
+  <section class="quote-collapsible-section" id="quote-section-notes" data-quote-collapsible>
+    <button type="button" class="quote-collapsible-toggle" aria-expanded="false" aria-controls="quote-section-notes-panel" data-quote-collapsible-toggle>
+      <span class="quote-collapsible-title">
+        ${clientPageIcon('postal', 'quote-collapsible-icon')}
+        <span>
+          <strong>Notes chantier</strong>
+          <small>${quote.notes ? 'Notes renseignées' : 'Aucune note'}</small>
+        </span>
+      </span>
+      <span class="quote-collapsible-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
+    </button>
+    <div class="quote-collapsible-panel" id="quote-section-notes-panel" hidden data-quote-collapsible-panel>
+      <div class="quote-collapsible-content">
+        <article class="quote-work-card quote-collapsible-inner-card">
 
     <form method="POST" action="/devis/${id}/notes" class="quote-notes-form">
       <textarea name="notes" rows="8">${escHtml(quote.notes || '')}</textarea>
@@ -6368,16 +6391,25 @@ ${lines.length ? lines.map(l => `
         <button type="submit" class="clients-submit-btn"><span>${clientPageIcon('add', 'clients-submit-icon')}</span>Enregistrer</button>
       </div>
     </form>
-  </article>
-
-  <article class="quote-work-card">
-    <div class="modern-section-title">
-      ${clientPageIcon('folder', 'clients-title-icon')}
-      <div>
-        <h2>Photos chantier</h2>
-        <p>Ajoutez ou consultez les fichiers photo du devis.</p>
+        </article>
       </div>
     </div>
+  </section>
+
+  <section class="quote-collapsible-section" id="quote-section-photos" data-quote-collapsible>
+    <button type="button" class="quote-collapsible-toggle" aria-expanded="false" aria-controls="quote-section-photos-panel" data-quote-collapsible-toggle>
+      <span class="quote-collapsible-title">
+        ${clientPageIcon('folder', 'quote-collapsible-icon')}
+        <span>
+          <strong>Photos et fichiers</strong>
+          <small>Photos · ${photos.length}</small>
+        </span>
+      </span>
+      <span class="quote-collapsible-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
+    </button>
+    <div class="quote-collapsible-panel" id="quote-section-photos-panel" hidden data-quote-collapsible-panel>
+      <div class="quote-collapsible-content">
+        <article class="quote-work-card quote-collapsible-inner-card">
 
     <form method="POST" action="/devis/${id}/photo" enctype="multipart/form-data" class="quote-photo-form">
       <input type="file" name="photo" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" required>
@@ -6387,9 +6419,28 @@ ${lines.length ? lines.map(l => `
     <div class="photo-grid quote-photo-grid">
       ${photosHtml || '<div class="empty-state">Aucune photo.</div>'}
     </div>
-  </article>
+        </article>
+      </div>
+    </div>
+  </section>
 
-  ${renderSketchBlock({ scope: 'quotes', id, className: 'quote-work-card' })}
+  <section class="quote-collapsible-section" id="quote-section-sketch" data-quote-collapsible>
+    <button type="button" class="quote-collapsible-toggle" aria-expanded="false" aria-controls="quote-section-sketch-panel" data-quote-collapsible-toggle>
+      <span class="quote-collapsible-title">
+        ${clientPageIcon('measurements', 'quote-collapsible-icon')}
+        <span>
+          <strong>Croquis / notes manuscrites</strong>
+          <small>Dessin au doigt, stylet ou souris</small>
+        </span>
+      </span>
+      <span class="quote-collapsible-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
+    </button>
+    <div class="quote-collapsible-panel" id="quote-section-sketch-panel" hidden data-quote-collapsible-panel>
+      <div class="quote-collapsible-content">
+        ${renderSketchBlock({ scope: 'quotes', id, className: 'quote-work-card quote-collapsible-inner-card' })}
+      </div>
+    </div>
+  </section>
 </section>
 
 <div class="quote-lightbox" data-quote-lightbox hidden>
@@ -6400,6 +6451,61 @@ ${lines.length ? lines.map(l => `
     <p class="quote-lightbox-title" data-quote-lightbox-title></p>
   </div>
 </div>
+
+<script>
+(function () {
+  const sections = Array.from(document.querySelectorAll('[data-quote-collapsible]'));
+  if (!sections.length) return;
+
+  function setSection(section, open) {
+    const toggle = section.querySelector('[data-quote-collapsible-toggle]');
+    const panel = section.querySelector('[data-quote-collapsible-panel]');
+    if (!toggle || !panel) return;
+    section.classList.toggle('is-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    if (open) {
+      panel.hidden = false;
+      window.requestAnimationFrame(function () {
+        panel.style.maxHeight = panel.scrollHeight + 'px';
+      });
+    } else {
+      panel.style.maxHeight = panel.scrollHeight + 'px';
+      window.requestAnimationFrame(function () {
+        panel.style.maxHeight = '0px';
+      });
+      window.setTimeout(function () {
+        if (toggle.getAttribute('aria-expanded') !== 'true') panel.hidden = true;
+      }, 220);
+    }
+  }
+
+  sections.forEach(function (section) {
+    const toggle = section.querySelector('[data-quote-collapsible-toggle]');
+    const panel = section.querySelector('[data-quote-collapsible-panel]');
+    if (!toggle || !panel) return;
+    panel.style.maxHeight = '0px';
+    toggle.addEventListener('click', function () {
+      const shouldOpen = toggle.getAttribute('aria-expanded') !== 'true';
+      if (shouldOpen && window.matchMedia('(max-width: 768px)').matches) {
+        sections.forEach(function (other) {
+          if (other !== section) setSection(other, false);
+        });
+      }
+      setSection(section, shouldOpen);
+    });
+  });
+
+  window.addEventListener('resize', function () {
+    sections.forEach(function (section) {
+      const toggle = section.querySelector('[data-quote-collapsible-toggle]');
+      const panel = section.querySelector('[data-quote-collapsible-panel]');
+      if (toggle && panel && toggle.getAttribute('aria-expanded') === 'true') {
+        panel.style.maxHeight = panel.scrollHeight + 'px';
+      }
+    });
+  });
+})();
+</script>
 
 <script>
 (function () {
