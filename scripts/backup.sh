@@ -4,26 +4,11 @@ set -Eeuo pipefail
 APP_DIR="${APP_DIR:-/opt/outil-pme-v2}"
 STORAGE_DIR="${STORAGE_DIR:-$APP_DIR/storage}"
 BACKUP_DIR="${BACKUP_DIR:-$APP_DIR/backups}"
-KEEP_BACKUPS="${KEEP_BACKUPS:-30}"
 
 DB_PATH="$STORAGE_DIR/data/app.db"
-UPLOADS_DIR="$STORAGE_DIR/uploads"
-CLIENTS_DIR="$STORAGE_DIR/clients"
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
-}
-
-copy_if_exists() {
-  local source="$1"
-  local target="$2"
-
-  if [ -e "$source" ]; then
-    mkdir -p "$(dirname "$target")"
-    cp -a "$source" "$target"
-  else
-    log "Ignore, introuvable: $source"
-  fi
 }
 
 backup_sqlite() {
@@ -43,18 +28,23 @@ backup_sqlite() {
   fi
 }
 
-cleanup_old_backups() {
-  local count
+backup_storage() {
+  local target="$1"
 
-  count="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'outil-pme-backup-*.tar.gz' | wc -l | tr -d ' ')"
-  if [ "$count" -le "$KEEP_BACKUPS" ]; then
-    return
+  if [ ! -d "$STORAGE_DIR" ]; then
+    log "Dossier storage introuvable: $STORAGE_DIR"
+    exit 1
   fi
 
-  find "$BACKUP_DIR" -maxdepth 1 -type f -name 'outil-pme-backup-*.tar.gz' -print \
-    | sort \
-    | head -n "$((count - KEEP_BACKUPS))" \
-    | xargs -r rm -f
+  mkdir -p "$target"
+
+  tar \
+    --exclude='./backups' \
+    --exclude='./backups/*' \
+    --exclude='./data/app.db' \
+    -cf - \
+    -C "$STORAGE_DIR" . \
+    | tar -xf - -C "$target"
 }
 
 main() {
@@ -68,20 +58,17 @@ main() {
 
   mkdir -p "$BACKUP_DIR" "$work_dir"
 
-  log "Sauvegarde SQLite: $DB_PATH"
-  backup_sqlite "$work_dir/storage/data/app.db"
+  log "Sauvegarde complete du dossier storage: $STORAGE_DIR"
+  backup_storage "$work_dir/storage"
 
-  log "Sauvegarde fichiers"
-  copy_if_exists "$UPLOADS_DIR" "$work_dir/storage/uploads"
-  copy_if_exists "$CLIENTS_DIR" "$work_dir/storage/clients"
+  log "Sauvegarde SQLite coherente: $DB_PATH"
+  backup_sqlite "$work_dir/storage/data/app.db"
 
   log "Creation archive: $archive"
   tar -czf "$archive" -C "$work_dir" .
   rm -rf "$work_dir"
 
-  cleanup_old_backups
-
-  log "Sauvegarde terminee: $archive"
+  log "Fichier backup cree: $archive"
 }
 
 main "$@"
