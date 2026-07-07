@@ -3496,7 +3496,7 @@ for (const folder of pcFolders) {
 <div class="client-card-modern">
 
   <a class="client-card-link"
-     href="/clients/${encodeURIComponent(c.folder)}">
+     href="/pc-folders/${encodeURIComponent(c.folder)}">
 
     <div class="client-header">
       <div class="client-name">
@@ -3685,72 +3685,7 @@ const existing = db
 // Fiche client (route basée sur le dossier PC)
 app.get('/clients/:client', requireLogin, (req, res) => {
   const clientFolder = safeName(req.params.client);
-  const clientDir = path.join(CLIENT_PC_DIR, clientFolder);
-  ensureDir(clientDir);
-
-  // On tente de récupérer le client DB en comparant sur name normalisé
-  const allClients = db.prepare('SELECT * FROM clients').all();
-  const clientDb = allClients.find((c) => safeName(c.name) === clientFolder) || null;
-
-  // Commandes DB du client (par name exact si possible)
-  const orders = clientDb
-    ? db.prepare('SELECT * FROM client_orders WHERE name = ? ORDER BY date DESC, id DESC').all(clientDb.name)
-    : [];
-
-  // Commandes PC
-  let pcOrders = [];
-  try {
-    pcOrders = fs
-      .readdirSync(clientDir, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name)
-      .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
-  } catch {}
-
-  const totalAmount = orders.filter((o) => o.status !== 'Terminée').reduce((sum, o) => sum + (o.price || 0), 0);
-
-  const cards = pcOrders.length
-    ? pcOrders
-        .map(
-          (orderName) => `
-        <a class="card" href="/pc-folders/${encodeURIComponent(clientFolder)}/${encodeURIComponent(orderName)}">
-          <div class="card-icon">📦</div>
-          <div class="card-main">
-            <div class="card-title">${escHtml(orderName)}</div>
-            <div class="card-sub">Commande</div>
-          </div>
-          <div class="card-cta">Ouvrir</div>
-        </a>
-      `
-        )
-        .join('')
-    : `<div class="empty-state">Aucune commande trouvée dans le dossier PC</div>`;
-
-  res.send(
-    pageTemplate(
-      req,
-      `Client : ${clientFolder}`,
-      `
-      <div class="page-head">
-        <h1>${escHtml(clientFolder)}</h1>
-      </div>
-
-      ${infoBar(
-        `
-          <div class="kpi"><div class="kpi-label">Commandes PC</div><div class="kpi-value">${pcOrders.length}</div></div>
-          <div class="kpi"><div class="kpi-label">Total commandes DB</div><div class="kpi-value">${totalAmount.toFixed(2)} €</div></div>
-        `,
-        `
-          <a class="btn btn-primary" href="/orders/clients?client=${encodeURIComponent(clientFolder)}">➕ Nouvelle commande</a>
-          <a class="btn btn-secondary" href="/clients">← Retour clients</a>
-        `
-      )}
-
-      <h2>Commandes (dossiers PC)</h2>
-      <section class="cards-grid">${cards}</section>
-      `
-    )
-  );
+  res.redirect(`/pc-folders/${encodeURIComponent(clientFolder)}`);
 });
 app.post('/clients/delete', requireLogin, (req, res) => {
 
@@ -4306,7 +4241,7 @@ app.get('/pc-folders/:client', requireLogin, (req, res) => {
           <h1>${escHtml(client)}</h1>
           <p>${orders.length} commande${orders.length > 1 ? 's' : ''}</p>
         </div>
-        <a class="modern-cancel-link" href="/clients/${encodeURIComponent(client)}">Retour client</a>
+        <a class="modern-cancel-link" href="/clients">Retour clients</a>
       </section>
 
       <section class="pc-modern-grid">
@@ -4397,7 +4332,7 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
         <div class="pc-modern-actions pc-order-hero-actions">
           ${chantierHeroControl}
           <div class="pc-order-hero-links">
-            <a class="pc-order-hero-link" href="/clients/${encodeURIComponent(client)}">
+            <a class="pc-order-hero-link" href="/pc-folders/${encodeURIComponent(client)}">
               ${clientPageIcon('clients', 'pc-order-hero-link-icon')}
               Client
             </a>
@@ -4533,7 +4468,7 @@ const list = files.length
           <p>${files.length} fichier${files.length > 1 ? 's' : ''}</p>
         </div>
         <div class="pc-modern-actions">
-          <a class="modern-cancel-link" href="/clients/${encodeURIComponent(client)}">Client</a>
+          <a class="modern-cancel-link" href="/pc-folders/${encodeURIComponent(client)}">Client</a>
           <a class="clients-submit-btn" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">Retour commande</a>
         </div>
       </section>
@@ -4778,7 +4713,7 @@ const isOver =
           </div>
           <div class="pc-modern-actions">
             <a class="modern-cancel-link" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">Retour commande</a>
-            <a class="modern-cancel-link" href="/clients/${encodeURIComponent(client)}">Retour client</a>
+            <a class="modern-cancel-link" href="/pc-folders/${encodeURIComponent(client)}">Retour client</a>
             <a class="clients-submit-btn" href="/chantier-hours/export.csv?client=${encodeURIComponent(client)}&order=${encodeURIComponent(order)}">Export CSV</a>
           </div>
         </section>
