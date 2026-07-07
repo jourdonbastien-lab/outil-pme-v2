@@ -2522,32 +2522,23 @@ button:hover {
 
 .dashboard-prototype{
   position:relative;
-  gap:12px;
+  gap:0;
   padding-bottom:10px;
   isolation:isolate;
 }
 
 .dashboard-prototype::before{
-  content:"";
-  position:absolute;
-  z-index:-1;
-  top:0;
-  left:-2px;
-  right:-2px;
-  height:330px;
-  border-radius:0 0 10px 10px;
-  background:
-    radial-gradient(circle at 18% 0%, rgba(255,122,0,.10), transparent 34%),
-    linear-gradient(155deg, #0b1220 0%, #111827 45%, #172033 100%);
-  box-shadow:0 18px 42px rgba(15,23,42,.08);
+  content:none;
 }
 
 .prototype-hero{
   position:relative;
-  padding:20px;
-  border:1px solid transparent;
-  border-radius:20px;
-  background:transparent;
+  padding:20px 20px 12px;
+  border:0;
+  border-radius:24px 24px 0 0;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(255,122,0,.13), transparent 32%),
+    linear-gradient(150deg, #0b1220 0%, #111827 48%, #172033 100%);
   box-shadow:none;
 }
 
@@ -2578,6 +2569,12 @@ button:hover {
   display:grid;
   grid-template-columns:repeat(3, minmax(0, 1fr));
   gap:12px;
+  padding:0 20px 20px;
+  border-radius:0 0 24px 24px;
+  background:
+    radial-gradient(circle at 82% 100%, rgba(255,122,0,.08), transparent 34%),
+    linear-gradient(150deg, #0b1220 0%, #111827 48%, #172033 100%);
+  box-shadow:0 16px 36px rgba(15,23,42,.16);
 }
 
 .prototype-kpi-card{
@@ -2655,6 +2652,7 @@ button:hover {
   grid-template-columns:minmax(0, 1.55fr) minmax(330px, .58fr);
   gap:12px;
   align-items:start;
+  margin-top:12px;
 }
 
 .prototype-side-stack{
@@ -3124,7 +3122,7 @@ button:hover {
   }
 
   .dashboard-prototype::before{
-    height:430px;
+    content:none;
   }
 
   .dash-quick-grid,
@@ -3145,8 +3143,7 @@ button:hover {
   }
 
   .dashboard-prototype::before{
-    height:458px;
-    border-radius:0 0 8px 8px;
+    content:none;
   }
 
   .dash-today{
@@ -3211,8 +3208,8 @@ button:hover {
   }
 
   .prototype-hero{
-    padding:16px;
-    border-radius:12px;
+    padding:16px 16px 10px;
+    border-radius:20px 20px 0 0;
   }
 
   .prototype-hero h1{
@@ -3231,6 +3228,8 @@ button:hover {
   .prototype-kpi-grid{
     grid-template-columns:repeat(2, minmax(0, 1fr));
     gap:10px;
+    padding:0 16px 16px;
+    border-radius:0 0 20px 20px;
   }
 
   .prototype-kpi-card{
@@ -5769,9 +5768,9 @@ button:hover {
 
   .mobile-sheet-links a span:last-child{
     min-width:0;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    white-space:nowrap;
+    overflow:visible;
+    white-space:normal;
+    line-height:1.2;
   }
 
   .mobile-sheet-cancel{

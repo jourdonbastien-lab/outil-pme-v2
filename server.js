@@ -1171,13 +1171,13 @@ function pageTemplate(req, title, content) {
       ];
   const mobileNewLinks = isAtelier
     ? [
-        { href: '/outils/prises-cotes', label: 'Nouvelle prise de cote' }
+        { href: '/outils/prises-cotes', label: 'Nouvelle prise de cote', icon: 'measurements' }
       ]
     : [
-        { href: '/clients', label: 'Nouveau client' },
-        { href: '/devis/new', label: 'Nouveau devis' },
-        { href: '/orders/clients', label: 'Nouvelle commande / chantier' },
-        { href: '/outils/prises-cotes', label: 'Nouvelle prise de cote' }
+        { href: '/clients', label: 'Nouveau client', icon: 'clients' },
+        { href: '/devis/new', label: 'Nouveau devis', icon: 'quotes' },
+        { href: '/orders/clients', label: 'Nouvelle commande / chantier', icon: 'clientOrders' },
+        { href: '/outils/prises-cotes', label: 'Nouvelle prise de cote', icon: 'measurements' }
       ];
   const mobileMoreLinks = isAtelier
     ? [
