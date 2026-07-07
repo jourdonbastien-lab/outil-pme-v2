@@ -620,6 +620,233 @@ button {
 .pc-file-icon {
   font-size: 1.1rem;
 }
+
+/* =========================
+   Dossiers commande modernes
+   ========================= */
+
+.pc-modern-page{
+  display:grid;
+  gap:16px;
+}
+
+.pc-modern-hero,
+.pc-modern-panel{
+  border:1px solid #e5e7eb;
+  border-radius:24px;
+  background:#fff;
+  box-shadow:0 10px 30px rgba(15,23,42,.07);
+}
+
+.pc-modern-hero{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+  padding:20px;
+}
+
+.pc-modern-hero span{
+  display:block;
+  color:#f97316;
+  font-size:12px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+
+.pc-modern-hero h1{
+  margin:4px 0 0;
+  color:#101827;
+  font-size:clamp(28px, 4vw, 42px);
+  line-height:1.05;
+  overflow-wrap:anywhere;
+}
+
+.pc-modern-hero p{
+  margin:8px 0 0;
+  color:#667085;
+  font-weight:800;
+}
+
+.pc-modern-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.pc-modern-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+}
+
+.pc-modern-file-grid{
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+}
+
+.pc-modern-card{
+  position:relative;
+  display:grid;
+  grid-template-columns:46px minmax(0, 1fr) auto;
+  gap:12px;
+  align-items:center;
+  min-width:0;
+  padding:14px;
+  border:1px solid #e5e7eb;
+  border-radius:18px;
+  background:#fff;
+  box-shadow:0 8px 20px rgba(15,23,42,.06);
+}
+
+.pc-modern-card-link{
+  position:absolute;
+  inset:0;
+  z-index:1;
+  border-radius:18px;
+}
+
+.pc-modern-card > *:not(.pc-modern-card-link){
+  position:relative;
+  z-index:2;
+}
+
+.pc-modern-icon{
+  display:grid;
+  place-items:center;
+  width:46px;
+  height:46px;
+  border-radius:15px;
+  background:#fff1e4;
+  color:#f97316;
+}
+
+.pc-modern-icon svg{
+  width:23px;
+  height:23px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.pc-modern-main{
+  min-width:0;
+}
+
+.pc-modern-main strong{
+  display:block;
+  color:#101827;
+  font-size:16px;
+  line-height:1.2;
+  overflow-wrap:anywhere;
+}
+
+.pc-modern-main span{
+  display:block;
+  margin-top:4px;
+  color:#667085;
+  font-size:12px;
+  font-weight:900;
+}
+
+.pc-modern-open{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:38px;
+  padding:0 13px;
+  border:0;
+  border-radius:999px;
+  background:#fff1e4;
+  color:#c75f00;
+  font-size:13px;
+  font-weight:900;
+  text-decoration:none;
+}
+
+.pc-modern-panel{
+  padding:18px;
+}
+
+.pc-modern-upload-form,
+.pc-modern-planned-form{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin:12px 0 0;
+}
+
+.pc-modern-upload-form input[type="file"],
+.pc-modern-planned-form input{
+  min-height:46px;
+  border:1px solid #d9dee7;
+  border-radius:14px;
+  background:#f9fafb;
+  color:#101827;
+  font-size:16px;
+  padding:10px 12px;
+}
+
+.pc-modern-planned-form label{
+  color:#374151;
+  font-size:13px;
+  font-weight:900;
+}
+
+.pc-modern-hours-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+
+.pc-modern-hour-card{
+  display:grid;
+  gap:10px;
+  min-width:0;
+  padding:14px;
+  border:1px solid #e5e7eb;
+  border-radius:16px;
+  background:#fff;
+  box-shadow:0 6px 16px rgba(15,23,42,.05);
+}
+
+.pc-modern-hour-card header,
+.pc-modern-hour-meta{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.pc-modern-hour-card header strong{
+  color:#101827;
+}
+
+.pc-modern-hour-card header span{
+  color:#f97316;
+  font-weight:900;
+}
+
+.pc-modern-hour-meta span{
+  color:#667085;
+  font-size:12px;
+  font-weight:800;
+}
+
+.pc-modern-hour-meta strong{
+  color:#101827;
+}
+
+.pc-modern-hour-card p{
+  margin:0;
+  color:#374151;
+  overflow-wrap:anywhere;
+}
 /* ===== Commandes clients – formulaire ===== */
 
 .orders-form {
@@ -5710,6 +5937,65 @@ button:hover {
   }
 
   .modern-client-order-actions form{
+    width:100%;
+  }
+
+  .pc-modern-hero{
+    display:grid;
+    gap:12px;
+    padding:16px;
+    border-radius:20px;
+  }
+
+  .pc-modern-actions{
+    display:grid;
+    grid-template-columns:1fr;
+    justify-content:stretch;
+  }
+
+  .pc-modern-actions a,
+  .pc-modern-upload-form .clients-submit-btn,
+  .pc-modern-planned-form .clients-submit-btn{
+    width:100%;
+  }
+
+  .pc-modern-grid,
+  .pc-modern-file-grid,
+  .pc-modern-hours-grid{
+    grid-template-columns:1fr;
+  }
+
+  .pc-modern-card{
+    grid-template-columns:42px minmax(0, 1fr) auto;
+    gap:10px;
+    padding:12px;
+    border-radius:16px;
+  }
+
+  .pc-modern-icon{
+    width:42px;
+    height:42px;
+    border-radius:13px;
+  }
+
+  .pc-modern-open{
+    min-height:36px;
+    padding:0 11px;
+  }
+
+  .pc-modern-panel{
+    padding:14px;
+    border-radius:18px;
+  }
+
+  .pc-modern-upload-form,
+  .pc-modern-planned-form{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+
+  .pc-modern-upload-form input[type="file"],
+  .pc-modern-planned-form input{
     width:100%;
   }
 }

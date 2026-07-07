@@ -1151,6 +1151,31 @@ function clientPageIcon(name, className = 'clients-ui-icon') {
   return `<span class="${className}" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false">${svg}</svg></span>`;
 }
 
+function pcFolderIcon(name, className = 'pc-modern-icon') {
+  const icons = {
+    Devis: '<path d="M7 3h7l4 4v14H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h4M9 12h6M9 16h6"/>',
+    Plans: '<path d="M4 17 17 4l3 3L7 20z"/><path d="m14 7 3 3M11 10l2 2M8 13l3 3"/>',
+    Factures: '<path d="M7 3h10v18l-2-1-2 1-2-1-2 1-2-1z"/><path d="M10 8h4M10 12h4M10 16h3"/>',
+    Photos: '<path d="M4 7h4l1.5-2h5L16 7h4v12H4z"/><path d="M12 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>',
+    Commandes: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h8M8 15h5"/>',
+    'Heure chantier': '<path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/><path d="M12 7v5l3 2"/>',
+    file: '<path d="M7 3h7l4 4v14H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h4"/>',
+    image: '<path d="M4 5h16v14H4z"/><path d="m7 15 3-3 3 3 2-2 3 3"/><path d="M8.5 9.5h.01"/>',
+    dxf: '<path d="M4 17 17 4l3 3L7 20z"/><path d="m14 7 3 3M11 10l2 2M8 13l3 3"/>',
+    pdf: '<path d="M7 3h7l4 4v14H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h4M9 13h6M9 17h4"/>',
+  };
+  const svg = icons[name] || icons.file;
+  return `<span class="${className}" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false">${svg}</svg></span>`;
+}
+
+function pcFileIconName(filename) {
+  const ext = path.extname(String(filename || '')).toLowerCase();
+  if (ext === '.dxf') return 'dxf';
+  if (ext === '.pdf') return 'pdf';
+  if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) return 'image';
+  return 'file';
+}
+
 function pageTemplate(req, title, content) {
   const stats = req.navStats || { tasksTodo: 0, eventsToday: 0, clientOrders: 0, supplierOrders: 0 };
 
@@ -4142,30 +4167,35 @@ app.get('/pc-folders/:client', requireLogin, (req, res) => {
     ? orders
         .map(
           (orderName) => `
-        <a class="card" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(orderName)}">
-          <div class="card-icon">📦</div>
-          <div class="card-main">
-            <div class="card-title">${escHtml(orderName)}</div>
-            <div class="card-sub">Commande</div>
+        <article class="pc-modern-card">
+          <a class="pc-modern-card-link" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(orderName)}" aria-label="Ouvrir ${escHtml(orderName)}"></a>
+          ${pcFolderIcon('Commandes')}
+          <div class="pc-modern-main">
+            <strong>${escHtml(orderName)}</strong>
+            <span>Commande</span>
           </div>
-          <div class="card-cta">Ouvrir</div>
-        </a>
+          <span class="pc-modern-open">Ouvrir</span>
+        </article>
       `
         )
         .join('')
     : `<div class="empty-state">Aucune commande trouvée.</div>`;
 
   const content = `
-    <div class="page-head">
-      <h1>${escHtml(client)}</h1>
+    <div class="pc-modern-page">
+      <section class="pc-modern-hero">
+        <div>
+          <span>Client</span>
+          <h1>${escHtml(client)}</h1>
+          <p>${orders.length} commande${orders.length > 1 ? 's' : ''}</p>
+        </div>
+        <a class="modern-cancel-link" href="/clients/${encodeURIComponent(client)}">Retour client</a>
+      </section>
+
+      <section class="pc-modern-grid">
+        ${cards}
+      </section>
     </div>
-
-    ${infoBar(
-      `<div class="kpi"><div class="kpi-label">Commandes</div><div class="kpi-value">${orders.length}</div></div>`,
-      `<a class="btn btn-secondary" href="/clients/${encodeURIComponent(client)}">← Retour client</a>`
-    )}
-
-    ${gridCards(cards)}
   `;
 
   res.send(pageTemplate(req, `Client : ${client}`, content));
@@ -4201,14 +4231,15 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
   const cards = foldersToShow.map(
 
     (type) => `
-      <a class="card" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}">
-        <div class="card-icon">📂</div>
-        <div class="card-main">
-          <div class="card-title">${escHtml(type)}</div>
-          <div class="card-sub">Dossier</div>
+      <article class="pc-modern-card">
+        <a class="pc-modern-card-link" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}" aria-label="Ouvrir ${escHtml(type)}"></a>
+        ${pcFolderIcon(type)}
+        <div class="pc-modern-main">
+          <strong>${escHtml(type)}</strong>
+          <span>Dossier</span>
         </div>
-        <div class="card-cta">Ouvrir</div>
-      </a>
+        <span class="pc-modern-open">Ouvrir</span>
+      </article>
     `
   ).join('');
 
@@ -4240,8 +4271,13 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
           : chantierProgress(done, planned);
         const status = normalizeChantierStatus(orderDb.chantier_status);
         return `
-          <section class="panel-soft chantier-detail-panel">
-            <h2>Suivi chantier</h2>
+          <section class="pc-modern-panel chantier-detail-panel">
+            <div class="modern-section-title">
+              ${pcFolderIcon('Heure chantier', 'clients-title-icon')}
+              <div>
+                <h2>Suivi chantier</h2>
+              </div>
+            </div>
             <div class="chantier-hours-grid">
               <div><span>Statut</span><strong>${escHtml(status)}</strong></div>
               <div><span>Heures prévues</span><strong>${formatHours(planned)}</strong></div>
@@ -4265,7 +4301,7 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
                 <label class="chantiers-form-wide"><span>Notes chantier</span><textarea name="chantier_notes" rows="3">${escHtml(orderDb.chantier_notes || '')}</textarea></label>
               </div>
               <div class="chantiers-form-actions">
-                <button class="btn btn-primary" type="submit">Enregistrer le suivi chantier</button>
+                <button class="clients-submit-btn" type="submit">Enregistrer le suivi chantier</button>
               </div>
             </form>
           </section>
@@ -4274,26 +4310,35 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
     : '';
 
   const content = `
-    <div class="page-head">
-      <h1>${escHtml(order)}</h1>
+    <div class="pc-modern-page">
+      <section class="pc-modern-hero">
+        <div>
+          <span>Commande</span>
+          <h1>${escHtml(order)}</h1>
+          <p>${foldersToShow.length} dossier${foldersToShow.length > 1 ? 's' : ''}</p>
+        </div>
+        <div class="pc-modern-actions">
+          <a class="modern-cancel-link" href="/clients/${encodeURIComponent(client)}">Retour client</a>
+          <a class="clients-submit-btn" href="/pc-folders/${encodeURIComponent(client)}">Retour commandes</a>
+        </div>
+      </section>
+
+      <section class="pc-modern-grid">
+        ${cards}
+      </section>
+
+      ${chantierSection}
+
+      <section class="pc-modern-panel measurement-linked-section">
+        <div class="modern-section-title">
+          ${pcFolderIcon('Plans', 'clients-title-icon')}
+          <div>
+            <h2>Prises de cotes liées</h2>
+          </div>
+        </div>
+        ${renderMeasurementCards(linkedMeasurements)}
+      </section>
     </div>
-
-    ${infoBar(
-      `<div class="kpi"><div class="kpi-label">Dossiers</div><div class="kpi-value">${foldersToShow.length}</div></div>`,
-      `
-        <a class="btn btn-secondary" href="/clients/${encodeURIComponent(client)}">← Retour client</a>
-        <a class="btn btn-primary" href="/pc-folders/${encodeURIComponent(client)}">← Retour commandes</a>
-      `
-    )}
-
-	    ${gridCards(cards)}
-	
-	    ${chantierSection}
-	
-	    <section class="panel-soft measurement-linked-section">
-      <h2>Prises de cotes liées</h2>
-      ${renderMeasurementCards(linkedMeasurements)}
-    </section>
   `;
 
   res.send(pageTemplate(req, `Commande : ${order}`, content));
@@ -4359,38 +4404,22 @@ app.get('/pc-folders/:client/:order/:type', requireLogin, (req, res) => {
 
 const list = files.length
   ? `
-    <div class="files-grid">
+    <div class="pc-modern-grid pc-modern-file-grid">
       ${files.map(f => {
-
-        const ext = path.extname(f).toLowerCase();
-
-        let icon = '📄';
-
-        if (ext === '.dxf') icon = '📐';
-        else if (ext === '.pdf') icon = '📄';
-        else if (['.jpg','.jpeg','.png','.webp'].includes(ext)) icon = '🖼️';
-
         return `
-          <div class="file-card">
-
-            <div class="file-icon">
-              ${icon}
+          <article class="pc-modern-card pc-modern-file-card">
+            ${pcFolderIcon(pcFileIconName(f))}
+            <div class="pc-modern-main">
+              <strong>${escHtml(f)}</strong>
+              <span>Fichier</span>
             </div>
-
-            <div class="file-name">
-              ${escHtml(f)}
-            </div>
-
             <a
-              class="btn btn-primary"
+              class="pc-modern-open"
               href="/pc-file/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}/${encodeURIComponent(f)}"
               target="_blank">
-
               Ouvrir
-
             </a>
-
-          </div>
+          </article>
         `;
 
       }).join('')}
@@ -4400,36 +4429,44 @@ const list = files.length
     
 
   const content = `
-    <div class="page-head">
-      <h1>${escHtml(type)}</h1>
-    </div>
+    <div class="pc-modern-page">
+      <section class="pc-modern-hero">
+        <div>
+          <span>Dossier</span>
+          <h1>${escHtml(type)}</h1>
+          <p>${files.length} fichier${files.length > 1 ? 's' : ''}</p>
+        </div>
+        <div class="pc-modern-actions">
+          <a class="modern-cancel-link" href="/clients/${encodeURIComponent(client)}">Client</a>
+          <a class="clients-submit-btn" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">Retour commande</a>
+        </div>
+      </section>
 
-    <div class="panel-soft">
-      <h2>Ajouter un fichier</h2>
-      <form method="POST"
-            action="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}/upload"
-            enctype="multipart/form-data"
-            class="upload-form">
-        <input type="file" name="file" required />
-        <button type="submit">Ajouter</button>
-      </form>
-    </div>
+      <section class="pc-modern-panel">
+        <div class="modern-section-title">
+          ${pcFolderIcon(type, 'clients-title-icon')}
+          <div>
+            <h2>Ajouter un fichier</h2>
+          </div>
+        </div>
+        <form method="POST"
+              action="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}/upload"
+              enctype="multipart/form-data"
+              class="pc-modern-upload-form">
+          <input type="file" name="file" required />
+          <button class="clients-submit-btn" type="submit">Ajouter</button>
+        </form>
+      </section>
 
-    <div class="panel-soft" style="margin-top:14px">
-      <h2>Fichiers</h2>
-      <div class="back-command-btn">
-  <a
-    class="btn btn-primary"
-    href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">
-    ← Retour commande
-  </a>
-</div>
-      ${list}
-    </div>
-
-    <div class="nav-actions" style="margin-top:14px">
-      <a class="btn btn-secondary" href="/clients/${encodeURIComponent(client)}">← Client</a>
-      <a class="btn btn-primary" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">← Commande</a>
+      <section class="pc-modern-panel">
+        <div class="modern-section-title">
+          ${pcFolderIcon('file', 'clients-title-icon')}
+          <div>
+            <h2>Fichiers</h2>
+          </div>
+        </div>
+        ${list}
+      </section>
     </div>
   `;
 
@@ -4474,13 +4511,14 @@ html,body{
 }
 
 .close-btn{
-  width:50px;
-  height:50px;
+  min-width:96px;
+  height:44px;
+  padding:0 18px;
   border:none;
-  border-radius:50%;
+  border-radius:999px;
   background:#ff7a00;
   color:#fff;
-  font-size:28px;
+  font-size:15px;
   font-weight:bold;
   box-shadow:0 4px 12px rgba(0,0,0,.25);
 }
@@ -4496,7 +4534,7 @@ iframe{
 <body>
 
 <div class="topbar">
-  <button class="close-btn" onclick="history.back()">✕</button>
+  <button class="close-btn" onclick="history.back()">Retour</button>
 </div>
 
 ${file.toLowerCase().endsWith('.pdf')
@@ -4601,43 +4639,32 @@ const isOver =
 
   const listHtml = rows.length
     ? `
-      <table class="table-pro">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Début</th>
-            <th>Fin</th>
-            <th>Pause</th>
-            <th>Total</th>
-            <th>Note</th>
-            <th style="width:72px"></th>
-          </tr>
-        </thead>
-        <tbody>
+      <div class="pc-modern-hours-grid">
           ${rows
             .map(
               (r) => `
-            <tr>
-              <td>${escHtml(r.work_date)}</td>
-              <td>${escHtml(r.start_time || '—')}</td>
-              <td>${escHtml(r.end_time || '—')}</td>
-              <td>${Number(r.break_minutes || 0)} min</td>
-              <td><strong>${fmtMinutes(r.minutes_total || 0)}</strong></td>
-              <td>${escHtml(r.note || '')}</td>
-              <td style="text-align:right">
+            <article class="pc-modern-hour-card">
+              <header>
+                <strong>${escHtml(r.work_date)}</strong>
+                <span>${fmtMinutes(r.minutes_total || 0)}</span>
+              </header>
+              <div class="pc-modern-hour-meta">
+                <span>Début <strong>${escHtml(r.start_time || '—')}</strong></span>
+                <span>Fin <strong>${escHtml(r.end_time || '—')}</strong></span>
+                <span>Pause <strong>${Number(r.break_minutes || 0)} min</strong></span>
+              </div>
+              ${r.note ? `<p>${escHtml(r.note)}</p>` : ''}
                 <form method="POST" action="/chantier-hours/delete" onsubmit="return confirm('Supprimer cette ligne ?');" style="margin:0">
                   <input type="hidden" name="id" value="${r.id}">
                   <input type="hidden" name="client" value="${escHtml(client)}">
                   <input type="hidden" name="order" value="${escHtml(order)}">
-                  <button class="icon-btn" title="Supprimer">🗑️</button>
+                  <button class="modern-danger-btn" title="Supprimer">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
                 </form>
-              </td>
-            </tr>
+            </article>
           `
             )
             .join('')}
-        </tbody>
-      </table>
+      </div>
     `
     : `<div class="empty-state">Aucune heure saisie pour ce chantier.</div>`;
 
@@ -4646,83 +4673,53 @@ const isOver =
       req,
       `Heures chantier - ${order}`,
       `
-      <div class="page-head">
-        <h1>Heures chantier</h1>
-      </div>
-
-  ${infoBar(
-  `
-    <div class="kpi">
-      <div class="kpi-label">Total chantier</div>
-      <div class="kpi-value">
-        ${fmtMinutes(totalMinutes)}
-      </div>
-    </div>
-
-    <div class="kpi">
-      <div class="kpi-label">7 derniers jours</div>
-      <div class="kpi-value">
-        ${fmtMinutes(last7)}
-      </div>
-    </div>
-
-    ${
-      req.session?.user?.role !== 'atelier'
-        ? `
-        <div class="kpi">
-          <div class="kpi-label">Heures prévues</div>
-          <div class="kpi-value">
-            ${plannedHours.toFixed(1)} h
-            <form method="POST" action="/chantier-hours/planned-hours">
-  <input
-    type="hidden"
-    name="client"
-    value="${escHtml(client)}">
-
-  <input
-    type="hidden"
-    name="order"
-    value="${escHtml(order)}">
-
-  <input
-    type="number"
-    step="0.5"
-    name="planned_hours"
-    value="${plannedHours}">
-
-  <button type="submit">
-    Enregistrer
-  </button>
-</form>
+      <div class="pc-modern-page">
+        <section class="pc-modern-hero">
+          <div>
+            <span>Dossier</span>
+            <h1>Heures chantier</h1>
+            <p>${escHtml(order)}</p>
           </div>
-        </div>
-
-        <div class="kpi">
-          <div class="kpi-label">Écart</div>
-          <div
-            class="kpi-value"
-            style="
-              color:${isOver ? '#d32f2f' : '#2e7d32'};
-              font-weight:bold;
-            "
-          >
-            ${diffHours >= 0 ? '+' : ''}
-            ${diffHours.toFixed(1)} h
+          <div class="pc-modern-actions">
+            <a class="modern-cancel-link" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">Retour commande</a>
+            <a class="modern-cancel-link" href="/clients/${encodeURIComponent(client)}">Retour client</a>
+            <a class="clients-submit-btn" href="/chantier-hours/export.csv?client=${encodeURIComponent(client)}&order=${encodeURIComponent(order)}">Export CSV</a>
           </div>
-        </div>
-        `
-        : ''
-    }
-  `,
-        `
-          <a class="btn btn-secondary" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">← Retour commande</a>
-          <a class="btn btn-primary" href="/clients/${encodeURIComponent(client)}">← Retour client</a>
-          <a class="btn" href="/chantier-hours/export.csv?client=${encodeURIComponent(client)}&order=${encodeURIComponent(order)}">Export CSV</a>
-        `
-      )}
+        </section>
 
-      <section class="panel-soft">
-        <h2>Ajouter une ligne</h2>
+        <section class="pc-modern-panel">
+          <div class="chantier-hours-grid">
+            <div><span>Total chantier</span><strong>${fmtMinutes(totalMinutes)}</strong></div>
+            <div><span>7 derniers jours</span><strong>${fmtMinutes(last7)}</strong></div>
+            ${
+              req.session?.user?.role !== 'atelier'
+                ? `
+                <div><span>Heures prévues</span><strong>${plannedHours.toFixed(1)} h</strong></div>
+                <div><span>Écart</span><strong class="${isOver ? 'chantier-over' : ''}">${diffHours >= 0 ? '+' : ''}${diffHours.toFixed(1)} h</strong></div>
+                `
+                : ''
+            }
+          </div>
+          ${
+            req.session?.user?.role !== 'atelier'
+              ? `
+              <form method="POST" action="/chantier-hours/planned-hours" class="pc-modern-planned-form">
+                <input type="hidden" name="client" value="${escHtml(client)}">
+                <input type="hidden" name="order" value="${escHtml(order)}">
+                <label>Heures prévues</label>
+                <input type="number" step="0.5" name="planned_hours" value="${plannedHours}">
+                <button class="clients-submit-btn" type="submit">Enregistrer</button>
+              </form>
+              `
+              : ''
+          }
+        </section>
+
+      <section class="pc-modern-panel">
+        <div class="modern-section-title">
+          ${pcFolderIcon('Heure chantier', 'clients-title-icon')}
+          <div><h2>Ajouter une ligne</h2></div>
+        </div>
         <form method="POST" action="/chantier-hours/add" class="hours-form">
           <input type="hidden" name="client" value="${escHtml(client)}">
           <input type="hidden" name="order" value="${escHtml(order)}">
@@ -4754,16 +4751,20 @@ const isOver =
             </div>
 
             <div class="actions">
-              <button type="submit">Ajouter</button>
+              <button class="clients-submit-btn" type="submit">Ajouter</button>
             </div>
           </div>
         </form>
       </section>
 
-      <section class="panel-soft" style="margin-top:14px">
-        <h2>Historique</h2>
+      <section class="pc-modern-panel">
+        <div class="modern-section-title">
+          ${pcFolderIcon('file', 'clients-title-icon')}
+          <div><h2>Historique</h2></div>
+        </div>
         ${listHtml}
       </section>
+      </div>
       `
     )
   );
