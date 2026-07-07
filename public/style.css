@@ -2583,7 +2583,7 @@ button:hover {
 
 .prototype-order-card header{
   display:grid;
-  grid-template-columns:42px minmax(0, 1fr) auto auto 22px;
+  grid-template-columns:52px minmax(0, 1fr) auto auto 22px;
   align-items:center;
   gap:10px;
 }
@@ -2596,13 +2596,14 @@ button:hover {
   display:flex;
   align-items:center;
   justify-content:center;
-  width:42px;
-  height:42px;
-  border-radius:13px;
+  width:52px;
+  height:52px;
+  border-radius:16px;
   background:#fff3e6;
   color:#c75f00;
-  font-size:13px;
+  font-size:22px;
   font-weight:900;
+  line-height:1;
 }
 
 .prototype-order-card header small{
@@ -3018,15 +3019,16 @@ button:hover {
   }
 
   .prototype-order-card header{
-    grid-template-columns:36px minmax(0, 1fr) auto auto 18px;
+    grid-template-columns:46px minmax(0, 1fr) auto auto 18px;
     gap:8px;
     align-items:center;
   }
 
   .prototype-order-icon{
-    width:36px;
-    height:36px;
-    border-radius:11px;
+    width:46px;
+    height:46px;
+    border-radius:14px;
+    font-size:19px;
   }
 
   .prototype-order-card header strong{

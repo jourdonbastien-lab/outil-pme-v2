@@ -2025,6 +2025,18 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
     if (Number.isNaN(date.getTime())) return raw;
     return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
+  const orderIconFor = (order) => {
+    const label = `${order.description || ''} ${order.name || ''}`
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    if (label.includes('escalier')) return '▟';
+    if (label.includes('garde-corps') || label.includes('garde corps') || label.includes('barriere')) return '▥';
+    if (label.includes('portail')) return '╬';
+    if (label.includes('pergola')) return '⌂';
+    if (label.includes('verriere') || label.includes('fenetre')) return '▦';
+    return '▣';
+  };
 
   const kpis = [
     { icon: 'C', label: 'Commandes en cours', value: openClientOrders, href: '/orders/clients' },
@@ -2081,7 +2093,7 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
           return `
         <article class="prototype-order-card">
           <header>
-            <span class="prototype-order-icon">C</span>
+            <span class="prototype-order-icon">${escHtml(orderIconFor(order))}</span>
             <div>
               <strong>${escHtml(order.description || `Commande #${order.id}`)}</strong>
               <small>${escHtml(order.name || 'Client')}</small>
