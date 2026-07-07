@@ -4336,7 +4336,7 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
               ${clientPageIcon('clients', 'pc-order-hero-link-icon')}
               Client
             </a>
-            <a class="pc-order-hero-link" href="/pc-folders/${encodeURIComponent(client)}">
+            <a class="pc-order-hero-link" href="/orders/clients">
               ${clientPageIcon('folder', 'pc-order-hero-link-icon')}
               Commandes
             </a>
