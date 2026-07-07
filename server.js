@@ -1146,6 +1146,8 @@ function clientPageIcon(name, className = 'clients-ui-icon') {
     phone: '<path d="M8 4h3l1.5 4-2 1.2a10 10 0 0 0 4.3 4.3l1.2-2 4 1.5v3a3 3 0 0 1-3.3 3A15 15 0 0 1 5 7.3 3 3 0 0 1 8 4z"/>',
     search: '<path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z"/><path d="m20 20-4-4"/>',
     database: '<path d="M5 6c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3z"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>',
+    materials: '<path d="M4 8 12 4l8 4-8 4z"/><path d="m4 12 8 4 8-4"/><path d="m4 16 8 4 8-4"/>',
+    logibarre: '<path d="M4 14h16"/><path d="M6 10h12"/><path d="M8 18h8"/><path d="M5 14v3M19 11v3"/>',
     folder: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   };
@@ -1877,29 +1879,6 @@ function renderDashboardPrototype(req, res) {
     `)
     .get().c;
 
-  const priorityTasks = db
-    .prepare(`
-      SELECT title, status, created_at
-      FROM tasks
-      WHERE status != 'Terminée'
-      ORDER BY created_at DESC, id DESC
-      LIMIT 5
-    `)
-    .all();
-
-  const overdueOrders = db
-    .prepare(`
-      SELECT id, name, description, chantier_end_date, status, chantier_status
-      FROM client_orders
-      WHERE status != 'Terminée'
-        AND chantier_end_date IS NOT NULL
-        AND TRIM(chantier_end_date) != ''
-        AND chantier_end_date < ?
-      ORDER BY chantier_end_date ASC, id DESC
-      LIMIT 5
-    `)
-    .all(todayIso);
-
   const todayEvents = db
     .prepare(`
       SELECT title, start_date, end_date, type
@@ -1909,6 +1888,16 @@ function renderDashboardPrototype(req, res) {
       LIMIT 6
     `)
     .all(`${todayIso}%`);
+
+  const upcomingEvents = db
+    .prepare(`
+      SELECT title, start_date, end_date, type
+      FROM events
+      WHERE datetime(start_date) >= datetime('now', 'localtime')
+      ORDER BY datetime(start_date) ASC
+      LIMIT 5
+    `)
+    .all();
 
   const orderChantiers = db
     .prepare(`
@@ -1988,21 +1977,35 @@ function renderDashboardPrototype(req, res) {
     )
     .join('');
 
-  const todaySummary = [
-    { icon: 'P', label: 'Planning du jour', value: todayEvents.length },
-    { icon: 'T', label: 'Tâches ouvertes', value: openTasks },
-    { icon: 'R', label: 'En retard', value: overdueOrders.length },
-  ]
-    .map(
-      (item) => `
-      <article class="prototype-today-stat">
-        <span>${escHtml(item.icon)}</span>
-        <strong>${escHtml(item.label)}</strong>
-        <small>${escHtml(item.value)}</small>
-      </article>
-    `
-    )
-    .join('');
+  const formatEventDate = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: 'short' });
+  };
+  const formatEventTime = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  };
+  const upcomingEventsHtml = upcomingEvents.length
+    ? upcomingEvents
+        .map((event) => {
+          const startTime = formatEventTime(event.start_date);
+          const endTime = formatEventTime(event.end_date);
+          const timeLabel = [startTime, endTime].filter(Boolean).join(' - ') || 'Horaire à préciser';
+          const location = event.location || event.place || event.lieu || '';
+          return `
+            <article class="prototype-appointment-card">
+              <div>
+                <strong>${escHtml(event.title || 'Rendez-vous')}</strong>
+                <span>${escHtml(formatEventDate(event.start_date))} · ${escHtml(timeLabel)}</span>
+                ${location ? `<small>${escHtml(location)}</small>` : ''}
+              </div>
+            </article>
+          `;
+        })
+        .join('')
+    : '<p class="prototype-empty">Aucun rendez-vous à venir.</p>';
 
   const orderChantiersHtml = orderChantiers.length
     ? orderChantiers
@@ -2075,12 +2078,13 @@ function renderDashboardPrototype(req, res) {
           </article>
 
           <aside class="prototype-side-stack">
-            <article class="prototype-panel prototype-today-panel">
+            <article class="prototype-panel prototype-appointments-panel">
               <div class="prototype-panel-head">
-                <h2>À faire aujourd’hui</h2>
+                <h2>Prochains rendez-vous</h2>
+                <a href="/agenda">Voir agenda ›</a>
               </div>
-              <div class="prototype-today-grid">
-                ${todaySummary}
+              <div class="prototype-appointments-list">
+                ${upcomingEventsHtml}
               </div>
             </article>
 
@@ -2231,7 +2235,7 @@ app.get('/api/weather', requireLogin, async (req, res) => {
 });
 
 
-/* ===================== KS ===================== */
+/* ===================== TASKS ===================== */
 
 app.get('/tasks', requireLogin, (req, res) => {
   const tasks = db
@@ -2316,8 +2320,8 @@ app.get('/tasks', requireLogin, (req, res) => {
                 ${clientPageIcon('add')}
                 <select name="status">
                   <option>À faire</option>
-                  <option>En cours</option>
-                  <option>Terminée</option>
+              
+                  <option>À facturer</option>
                 </select>
               </div>
             </label>
@@ -6577,6 +6581,7 @@ app.post('/devis/:id/delete', requireLogin, (req, res) => {
 /* ===================== MATIÈRES ===================== */
 app.get('/materials', requireLogin, (req, res) => {
   const q = String(req.query.q || '').trim();
+  const totalMaterials = db.prepare('SELECT COUNT(*) AS c FROM materials').get().c;
   const materials = q
     ? db.prepare(`
         SELECT *
@@ -6592,51 +6597,72 @@ app.get('/materials', requireLogin, (req, res) => {
   const saved = req.query.saved === '1';
   const added = Number(req.query.added || 0);
 
-  const rows = materials.length
-    ? materials
-        .map((m) => {
-          const priceValue = Number(m.price || 0).toFixed(2);
+  const groupedMaterials = materials.reduce((groups, material) => {
+    const type = String(material.type || 'Sans type').trim() || 'Sans type';
+    if (!groups[type]) groups[type] = [];
+    groups[type].push(material);
+    return groups;
+  }, {});
+
+  const materialGroups = Object.keys(groupedMaterials).length
+    ? Object.keys(groupedMaterials)
+        .sort((a, b) => a.localeCompare(b, 'fr'))
+        .map((type) => {
+          const cards = groupedMaterials[type]
+            .map((m) => {
+              const priceValue = Number(m.price || 0).toFixed(2);
+              return (
+                '<article class="material-list-card">' +
+                  '<div class="material-list-card-main">' +
+                    '<span class="material-type-badge">' + escHtml(type) + '</span>' +
+                    '<strong>' + escHtml(String(m.name || 'Matière')) + '</strong>' +
+                  '</div>' +
+                  '<div class="material-list-meta">' +
+                    '<span><b>Unité</b>' + escHtml(String(m.unit || '—')) + '</span>' +
+                    '<span><b>Prix</b>' + priceValue + ' €</span>' +
+                  '</div>' +
+                  '<a class="material-open-btn" href="/materials/' + m.id + '">' +
+                    clientPageIcon('folder', 'material-open-icon') +
+                    '<span>Ouvrir</span>' +
+                    '<b aria-hidden="true">›</b>' +
+                  '</a>' +
+                '</article>'
+              );
+            })
+            .join('');
           return (
-            '<tr>' +
-              '<td>' + escHtml(String(m.type || '').toUpperCase()) + '</td>' +
-              '<td>' + escHtml(String(m.name || '')) + '</td>' +
-              '<td>' + escHtml(String(m.unit || '')) + '</td>' +
-              '<td style="text-align:right">' + priceValue + ' €</td>' +
-              '<td style="text-align:center">' +
-                '<a class="btn btn-secondary material-open-btn" href="/materials/' + m.id + '">Ouvrir</a>' +
-                '<form method="POST" action="/materials/delete" onsubmit="return confirm(\'Supprimer cette matière ?\')" style="margin:0">' +
-                  '<input type="hidden" name="id" value="' + m.id + '">' +
-                  '<button class="btn-icon danger">🗑️</button>' +
-                '</form>' +
-              '</td>' +
-            '</tr>'
+            '<section class="materials-category">' +
+              '<header>' +
+                '<h2>' + escHtml(type) + '</h2>' +
+                '<span>' + groupedMaterials[type].length + ' matière(s)</span>' +
+              '</header>' +
+              '<div class="materials-category-grid">' + cards + '</div>' +
+            '</section>'
           );
         })
         .join('')
-    : '<tr><td colspan="5">' + (q ? 'Aucune matière trouvée.' : 'Aucune matière enregistrée') + '</td></tr>';
-
-  const cards = materials.length
-    ? materials.map((m) => {
-        const priceValue = Number(m.price || 0).toFixed(2);
-        return (
-          '<article class="material-list-card">' +
-            '<a class="material-list-link" href="/materials/' + m.id + '" aria-label="Ouvrir ' + escHtml(String(m.name || 'matière')) + '"></a>' +
-            '<header>' +
-              '<span>' + escHtml(String(m.type || '').toUpperCase()) + '</span>' +
-              '<strong>' + escHtml(String(m.name || '')) + '</strong>' +
-            '</header>' +
-            '<div class="material-list-meta">' +
-              '<span>Unité : ' + escHtml(String(m.unit || '—')) + '</span>' +
-              '<strong>' + priceValue + ' €</strong>' +
-            '</div>' +
-            '<span class="dash-card-button">Ouvrir</span>' +
-          '</article>'
-        );
-      }).join('')
-    : '<div class="empty-state">' + (q ? 'Aucune matière trouvée.' : 'Aucune matière enregistrée') + '</div>';
+    : '<div class="empty-state material-empty-state">' + (q ? 'Aucune matière trouvée.' : 'Aucune matière enregistrée') + '</div>';
 
   const html =
-    '<h1>Bibliothèque matière</h1>' +
+    '<div class="materials-page modern-page">' +
+      '<section class="materials-hero">' +
+        '<div class="clients-create-head">' +
+          clientPageIcon('database', 'clients-create-icon') +
+          '<div>' +
+            '<span>Stock matière</span>' +
+            '<h1>Bibliothèque matière</h1>' +
+          '</div>' +
+        '</div>' +
+        '<div class="materials-hero-actions">' +
+          '<span class="materials-count">' + totalMaterials + ' matière(s)</span>' +
+          (isAdmin
+            ? '<form method="POST" action="/materials/seed" class="materials-seed-form">' +
+                '<button type="submit" class="materials-seed-button">Préremplir la bibliothèque</button>' +
+                (seeded ? '<span>' + added + ' matière(s) ajoutée(s)</span>' : '') +
+              '</form>'
+            : '') +
+        '</div>' +
+      '</section>' +
 
     (seeded
       ? '<div class="success-message">Bibliothèque matière préremplie. Vous pouvez maintenant renseigner vos tarifs.</div>'
@@ -6645,87 +6671,16 @@ app.get('/materials', requireLogin, (req, res) => {
       ? '<div class="success-message">Matière enregistrée.</div>'
       : '') +
 
-    (isAdmin
-      ? '<form method="POST" action="/materials/seed" class="materials-seed-form">' +
-          '<button type="submit" class="btn btn-primary">Préremplir la bibliothèque</button>' +
-          (seeded ? '<span>' + added + ' matière(s) ajoutée(s) au dernier import.</span>' : '') +
-        '</form>'
-      : '') +
-
-    '<form method="POST" action="/materials" class="orders-form">' +
-      '<h2>Ajouter une matière</h2>' +
-
-      '<div class="orders-form-row">' +
-        '<div class="orders-form-field">' +
-          '<label>Type</label>' +
-          '<select name="type" required>' +
-            '<option value="tube">Tube</option>' +
-            '<option value="beam">Profilé</option>' +
-            '<option value="sheet">Tôle</option>' +
-          '</select>' +
-        '</div>' +
-
-        '<div class="orders-form-field">' +
-          '<label>Nom</label>' +
-          '<input name="name" required placeholder="Ex: Tube 40x40x2 S235" />' +
-        '</div>' +
-      '</div>' +
-
-      '<div class="orders-form-row">' +
-        '<div class="orders-form-field">' +
-          '<label>Unité</label>' +
-          '<select name="unit">' +
-            '<option value="m">m</option>' +
-            '<option value="kg">kg</option>' +
-          '</select>' +
-        '</div>' +
-
-        '<div class="orders-form-field">' +
-          '<label>Prix (€)</label>' +
-          '<input name="price" type="number" step="0.01" required />' +
-        '</div>' +
-      '</div>' +
-
-      '<div class="orders-form-row">' +
-        '<div class="orders-form-field">' +
-          '<label>kg / m (profilés)</label>' +
-          '<input name="kg_per_m" type="number" step="0.01" />' +
-        '</div>' +
-
-        '<div class="orders-form-field">' +
-          '<label>Densité (tôles)</label>' +
-          '<input name="density" type="number" step="0.01" placeholder="7.85" />' +
-        '</div>' +
-      '</div>' +
-
-      '<div class="orders-form-actions">' +
-        '<button type="submit">Ajouter</button>' +
-      '</div>' +
-    '</form>' +
-
-    '<h2 style="margin-top:24px">Matières enregistrées</h2>' +
-
     '<form method="GET" action="/materials" class="materials-search-form">' +
-      '<input name="q" value="' + escHtml(q) + '" placeholder="Rechercher par type, nom ou unité..." autocomplete="off" />' +
-      '<button type="submit" class="btn btn-primary">Rechercher</button>' +
-      (q ? '<a class="btn btn-secondary" href="/materials">Réinitialiser</a>' : '') +
+      '<div class="materials-search-shell">' +
+        clientPageIcon('search', 'materials-search-icon') +
+        '<input name="q" value="' + escHtml(q) + '" placeholder="Rechercher par type, nom ou unité..." autocomplete="off" />' +
+      '</div>' +
+      '<button type="submit" class="clients-submit-btn materials-search-btn">Rechercher</button>' +
+      (q ? '<a class="materials-reset-btn" href="/materials">Réinitialiser</a>' : '') +
     '</form>' +
 
-    '<div class="materials-edit-cards">' + cards + '</div>' +
-
-    '<div class="table-responsive materials-edit-table">' +
-      '<table>' +
-      '<thead>' +
-        '<tr>' +
-          '<th>Type</th>' +
-          '<th>Nom</th>' +
-          '<th>Unité</th>' +
-          '<th>Prix</th>' +
-          '<th></th>' +
-        '</tr>' +
-      '</thead>' +
-      '<tbody>' + rows + '</tbody>' +
-    '</table>' +
+    '<div class="materials-groups">' + materialGroups + '</div>' +
     '</div>';
 
   res.send(pageTemplate(req, 'Bibliothèque matière', html));
@@ -6798,10 +6753,17 @@ app.get('/materials/:id', requireLogin, (req, res) => {
   const createdLabel = material.created_at ? formatDateLabel(material.created_at) : '—';
 
   const html =
-    '<div class="page-head material-detail-head">' +
-      '<h1>' + escHtml(String(material.name || 'Matière')) + '</h1>' +
-      '<a class="btn btn-secondary" href="/materials">Retour matières</a>' +
-    '</div>' +
+    '<div class="materials-page material-detail-page modern-page">' +
+    '<section class="materials-hero material-detail-hero">' +
+      '<div class="clients-create-head">' +
+        clientPageIcon('database', 'clients-create-icon') +
+        '<div>' +
+          '<span>' + escHtml(String(material.type || 'Matière')) + '</span>' +
+          '<h1>' + escHtml(String(material.name || 'Matière')) + '</h1>' +
+        '</div>' +
+      '</div>' +
+      '<a class="materials-reset-btn" href="/materials">Retour matières</a>' +
+    '</section>' +
 
     (saved ? '<div class="success-message">Matière enregistrée.</div>' : '') +
 
@@ -6819,32 +6781,52 @@ app.get('/materials/:id', requireLogin, (req, res) => {
       '</div>' +
     '</section>' +
 
-    '<form method="POST" action="/materials/' + id + '" class="orders-form material-detail-form">' +
-      '<h2>Modifier les informations tarifaires</h2>' +
-      '<div class="orders-form-row">' +
-        '<div class="orders-form-field">' +
-          '<label>Unité</label>' +
-          '<input name="unit" value="' + escHtml(String(material.unit || '')) + '">' +
-        '</div>' +
-        '<div class="orders-form-field">' +
-          '<label>Prix (€)</label>' +
-          '<input name="price" value="' + priceValue + '" inputmode="decimal">' +
+    '<form method="POST" action="/materials/' + id + '" class="clients-create-card material-detail-form">' +
+      '<div class="clients-create-head">' +
+        clientPageIcon('postal', 'clients-create-icon') +
+        '<div>' +
+          '<span>Tarifs</span>' +
+          '<h2>Modifier les informations</h2>' +
         '</div>' +
       '</div>' +
-      '<div class="orders-form-row">' +
-        '<div class="orders-form-field">' +
-          '<label>kg / m</label>' +
-          '<input name="kg_per_m" value="' + kgValue + '" inputmode="decimal">' +
-        '</div>' +
-        '<div class="orders-form-field">' +
-          '<label>Densité</label>' +
-          '<input name="density" value="' + densityValue + '" inputmode="decimal">' +
-        '</div>' +
+      '<div class="clients-form-grid">' +
+        '<label class="clients-field">' +
+          '<span>Unité</span>' +
+          '<div class="clients-input-shell">' +
+            clientPageIcon('materials') +
+            '<input name="unit" value="' + escHtml(String(material.unit || '')) + '">' +
+          '</div>' +
+        '</label>' +
+        '<label class="clients-field">' +
+          '<span>Prix (€)</span>' +
+          '<div class="clients-input-shell">' +
+            clientPageIcon('postal') +
+            '<input name="price" value="' + priceValue + '" inputmode="decimal">' +
+          '</div>' +
+        '</label>' +
+        '<label class="clients-field">' +
+          '<span>kg / m</span>' +
+          '<div class="clients-input-shell">' +
+            clientPageIcon('logibarre') +
+            '<input name="kg_per_m" value="' + kgValue + '" inputmode="decimal">' +
+          '</div>' +
+        '</label>' +
+        '<label class="clients-field">' +
+          '<span>Densité</span>' +
+          '<div class="clients-input-shell">' +
+            clientPageIcon('database') +
+            '<input name="density" value="' + densityValue + '" inputmode="decimal">' +
+          '</div>' +
+        '</label>' +
       '</div>' +
-      '<div class="orders-form-actions">' +
-        '<button type="submit" class="btn btn-primary">Enregistrer</button>' +
+      '<div class="clients-submit-row">' +
+        '<button type="submit" class="clients-submit-btn">' +
+          clientPageIcon('check', 'clients-submit-icon') +
+          'Enregistrer' +
+        '</button>' +
       '</div>' +
-    '</form>';
+    '</form>' +
+    '</div>';
 
   res.send(pageTemplate(req, material.name || 'Matière', html));
 });
