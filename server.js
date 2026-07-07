@@ -1137,7 +1137,9 @@ function clientPageIcon(name, className = 'clients-ui-icon') {
   const icons = {
     add: '<path d="M12 5v14M5 12h14"/>',
     check: '<path d="M5 12.5 10 17l9-10"/>',
+    tasks: '<path d="M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="m8 12 2.5 2.5L16 9"/>',
     user: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><path d="M4 20a8 8 0 0 1 16 0"/>',
+    clients: '<path d="M16 19v-1.5A3.5 3.5 0 0 0 12.5 14h-5A3.5 3.5 0 0 0 4 17.5V19"/><path d="M10 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M20 19v-1.2a3 3 0 0 0-2.4-2.9"/><path d="M15.5 5.3a3 3 0 0 1 0 5.4"/>',
     mail: '<path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>',
     calendar: '<path d="M7 3v4M17 3v4M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h3M8 16h5"/>',
     location: '<path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11z"/><path d="M12 11.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
@@ -1146,8 +1148,12 @@ function clientPageIcon(name, className = 'clients-ui-icon') {
     phone: '<path d="M8 4h3l1.5 4-2 1.2a10 10 0 0 0 4.3 4.3l1.2-2 4 1.5v3a3 3 0 0 1-3.3 3A15 15 0 0 1 5 7.3 3 3 0 0 1 8 4z"/>',
     search: '<path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z"/><path d="m20 20-4-4"/>',
     database: '<path d="M5 6c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3z"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>',
+    quotes: '<path d="M7 3h7l4 4v14H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h4M9 12h6M9 16h6"/>',
+    measurements: '<path d="M4 17 17 4l3 3L7 20z"/><path d="m14 7 3 3M11 10l2 2M8 13l3 3"/>',
     materials: '<path d="M4 8 12 4l8 4-8 4z"/><path d="m4 12 8 4 8-4"/><path d="m4 16 8 4 8-4"/>',
     logibarre: '<path d="M4 14h16"/><path d="M6 10h12"/><path d="M8 18h8"/><path d="M5 14v3M19 11v3"/>',
+    logitole: '<path d="M5 5h14v14H5z"/><path d="M8 8h8v8H8z"/><path d="M5 12h3M16 12h3"/>',
+    barreaudage: '<path d="M5 4v16M19 4v16"/><path d="M8 7v10M11 7v10M14 7v10M17 7v10"/><path d="M4 7h16M4 17h16"/>',
     supplierOrders: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><path d="M6.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
     folder: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
@@ -2251,7 +2257,7 @@ app.get('/tasks', requireLogin, (req, res) => {
           return `
         <article class="modern-task-card">
           <div class="modern-task-main">
-            ${clientPageIcon('postal', 'modern-page-icon')}
+            ${clientPageIcon('tasks', 'modern-page-icon')}
             <div>
               <h2>${escHtml(t.title)}</h2>
               <span class="modern-status-badge ${statusClass}">${escHtml(status)}</span>
@@ -2302,7 +2308,7 @@ app.get('/tasks', requireLogin, (req, res) => {
       <div class="modern-page">
         <form method="POST" action="/tasks" class="clients-create-card modern-form-card">
           <div class="clients-create-head">
-            ${clientPageIcon('postal', 'clients-title-icon')}
+            ${clientPageIcon('tasks', 'clients-title-icon')}
             <h1>Tâches</h1>
           </div>
 
@@ -3543,7 +3549,7 @@ for (const folder of pcFolders) {
       <div class="clients-page-modern">
         <form method="POST" action="/clients" class="clients-create-card">
           <div class="clients-create-head">
-            ${clientPageIcon('user', 'clients-title-icon')}
+            ${clientPageIcon('clients', 'clients-title-icon')}
             <h1>Ajouter un client</h1>
           </div>
 
@@ -5089,7 +5095,7 @@ app.get('/devis/new', requireLogin, (req, res) => {
       <div class="modern-page">
         <form method="POST" action="/devis" class="clients-create-card modern-form-card quote-create-form" id="quoteForm">
           <div class="clients-create-head">
-            ${clientPageIcon('postal', 'clients-title-icon')}
+            ${clientPageIcon('quotes', 'clients-title-icon')}
             <h1>Nouveau devis</h1>
           </div>
 
@@ -5389,12 +5395,17 @@ const photosHtml = photos.map(photo => `
       <div class="quote-work-page">
         <section class="quote-work-hero">
           <div class="quote-work-title">
-            <span class="quote-work-kicker">Devis #${id}</span>
-            <h1>${escHtml(quote.title || 'Sans titre')}</h1>
-            <div class="quote-work-meta">
-              <span>${clientPageIcon('user', 'quote-work-meta-icon')}${escHtml(quote.client_name || 'Client non renseigné')}</span>
-              <span>${clientPageIcon('calendar', 'quote-work-meta-icon')}${escHtml(formatDateLabel(quote.created_at))}</span>
-              <span class="quote-status-badge ${quoteStatusClass(quoteStatus)}">${escHtml(quoteStatus)}</span>
+            <div class="quote-work-title-head">
+              ${clientPageIcon('quotes', 'clients-title-icon')}
+              <div>
+                <span class="quote-work-kicker">Devis #${id}</span>
+                <h1>${escHtml(quote.title || 'Sans titre')}</h1>
+                <div class="quote-work-meta">
+                  <span>${clientPageIcon('user', 'quote-work-meta-icon')}${escHtml(quote.client_name || 'Client non renseigné')}</span>
+                  <span>${clientPageIcon('calendar', 'quote-work-meta-icon')}${escHtml(formatDateLabel(quote.created_at))}</span>
+                  <span class="quote-status-badge ${quoteStatusClass(quoteStatus)}">${escHtml(quoteStatus)}</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -6737,7 +6748,7 @@ app.get('/materials', requireLogin, (req, res) => {
     '<div class="materials-page modern-page">' +
       '<section class="materials-hero">' +
         '<div class="clients-create-head">' +
-          clientPageIcon('database', 'clients-create-icon') +
+          clientPageIcon('materials', 'clients-create-icon') +
           '<div>' +
             
             '<h1>Bibliothèque matière</h1>' +
@@ -6931,7 +6942,7 @@ app.get('/materials/:id', requireLogin, (req, res) => {
     '<div class="materials-page material-detail-page modern-page">' +
     '<section class="materials-hero material-detail-hero">' +
       '<div class="clients-create-head">' +
-        clientPageIcon('database', 'clients-create-icon') +
+        clientPageIcon('materials', 'clients-create-icon') +
         '<div>' +
           '<span>' + escHtml(String(material.type || 'Matière')) + '</span>' +
           '<h1>' + escHtml(String(material.name || 'Matière')) + '</h1>' +

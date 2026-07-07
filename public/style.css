@@ -4565,6 +4565,8 @@ button:hover {
 .materials-hero,
 .material-detail-hero,
 .quote-hero,
+.quote-work-hero,
+.pc-modern-hero,
 .workshop-calc-panel > .app-dark-tool-head{
   border:1px solid rgba(255,255,255,.08);
   border-radius:24px;
@@ -4594,6 +4596,8 @@ button:hover {
 .materials-hero h1,
 .material-detail-hero h1,
 .quote-hero h2,
+.quote-work-title h1,
+.pc-modern-hero h1,
 .workshop-calc-panel > .app-dark-tool-head h2{
   color:#fff;
 }
@@ -4605,6 +4609,9 @@ button:hover {
 .materials-hero .clients-create-head span,
 .material-detail-hero .clients-create-head span,
 .quote-hero .quote-hero-meta,
+.quote-work-meta,
+.pc-modern-hero span,
+.pc-modern-hero p,
 .workshop-calc-panel > .app-dark-tool-head span{
   color:#9ca7b8;
 }
@@ -4614,6 +4621,7 @@ button:hover {
 .modern-page > form.clients-create-card.modern-form-card:first-child .clients-title-icon,
 .materials-hero .clients-create-icon,
 .material-detail-hero .clients-create-icon,
+.quote-work-title-head .clients-title-icon,
 .workshop-calc-panel > .app-dark-tool-head .clients-title-icon{
   display:flex;
   align-items:center;
@@ -4627,6 +4635,7 @@ button:hover {
 .modern-page > form.clients-create-card.modern-form-card:first-child .clients-title-icon svg,
 .materials-hero .clients-create-icon svg,
 .material-detail-hero .clients-create-icon svg,
+.quote-work-title-head .clients-title-icon svg,
 .workshop-calc-panel > .app-dark-tool-head .clients-title-icon svg{
   display:block;
   margin:0;
@@ -4751,7 +4760,8 @@ button:hover {
   line-height:1.15;
 }
 
-.clients-title-icon{
+.clients-title-icon,
+.clients-create-icon{
   display:grid;
   place-items:center;
   flex:0 0 44px;
@@ -4763,6 +4773,7 @@ button:hover {
 }
 
 .clients-title-icon svg,
+.clients-create-icon svg,
 .clients-ui-icon svg,
 .client-info-icon svg,
 .client-source-icon svg,
@@ -5875,6 +5886,17 @@ a.mobile-bottom-item:visited,
   stroke-linejoin:round;
 }
 
+.quote-work-title-head{
+  display:flex;
+  align-items:flex-start;
+  gap:14px;
+  min-width:0;
+}
+
+.quote-work-title-head > div{
+  min-width:0;
+}
+
 .quote-work-actions{
   display:flex;
   justify-content:flex-end;
@@ -6713,7 +6735,8 @@ a.mobile-bottom-item:visited,
 .materials-hero,
 .material-detail-hero,
 .quote-hero,
-.quote-work-hero{
+.quote-work-hero,
+.pc-modern-hero{
   border-color:rgba(255,255,255,.08);
   border-radius:24px;
   background:
@@ -6725,19 +6748,23 @@ a.mobile-bottom-item:visited,
 .materials-hero h1,
 .material-detail-hero h1,
 .quote-hero h2,
-.quote-work-title h1{
+.quote-work-title h1,
+.pc-modern-hero h1{
   color:#fff;
 }
 
 .materials-hero .clients-create-head span,
 .material-detail-hero .clients-create-head span,
 .quote-hero .quote-hero-meta,
-.quote-work-meta{
+.quote-work-meta,
+.pc-modern-hero span,
+.pc-modern-hero p{
   color:#9ca7b8;
 }
 
 .materials-hero .clients-create-icon,
-.material-detail-hero .clients-create-icon{
+.material-detail-hero .clients-create-icon,
+.quote-work-title-head .clients-title-icon{
   background:rgba(255,122,0,.12);
   color:#f97316;
 }
@@ -6784,6 +6811,72 @@ a.mobile-bottom-item:visited,
 .modern-page > form.clients-create-card.modern-form-card:first-child .clients-input-shell{
   border-color:#d9dee7;
   background:#f9fafb;
+}
+
+.app-dark-page-head h1,
+.app-dark-page-head h2,
+.modern-list-head.modern-client-orders-head h1,
+.modern-list-head.modern-client-orders-head h2,
+.clients-create-card.modern-client-order-form .modern-client-order-add-title,
+.clients-create-card.modern-client-order-form .modern-client-order-add-title h2,
+.clients-page-modern > form.clients-create-card:first-child h1,
+.modern-page > form.clients-create-card.modern-form-card:first-child h1,
+.modern-page > form.clients-create-card.modern-form-card:first-child h2,
+.materials-hero h1,
+.material-detail-hero h1,
+.quote-hero h2,
+.quote-work-title h1,
+.pc-modern-hero h1,
+.workshop-calc-panel > .app-dark-tool-head h2{
+  color:#fff;
+}
+
+.app-dark-page-head p,
+.app-dark-page-head .clients-create-head span,
+.modern-list-head.modern-client-orders-head .clients-create-head span,
+.clients-page-modern > form.clients-create-card:first-child .clients-create-head span,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-create-head span,
+.materials-hero .clients-create-head span,
+.material-detail-hero .clients-create-head span,
+.quote-hero .quote-hero-meta,
+.quote-work-meta,
+.pc-modern-hero p,
+.pc-modern-hero span,
+.workshop-calc-panel > .app-dark-tool-head span{
+  color:#9ca7b8;
+}
+
+.app-dark-page-head .clients-title-icon,
+.modern-list-head.modern-client-orders-head .clients-title-icon,
+.clients-create-card.modern-client-order-form .clients-title-icon,
+.clients-page-modern > form.clients-create-card:first-child .clients-title-icon,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-title-icon,
+.materials-hero .clients-create-icon,
+.material-detail-hero .clients-create-icon,
+.quote-work-title-head .clients-title-icon,
+.workshop-calc-panel > .app-dark-tool-head .clients-title-icon{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(255,122,0,.12);
+  color:#f97316;
+}
+
+.app-dark-page-head .clients-title-icon svg,
+.modern-list-head.modern-client-orders-head .clients-title-icon svg,
+.clients-create-card.modern-client-order-form .clients-title-icon svg,
+.clients-page-modern > form.clients-create-card:first-child .clients-title-icon svg,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-title-icon svg,
+.materials-hero .clients-create-icon svg,
+.material-detail-hero .clients-create-icon svg,
+.quote-work-title-head .clients-title-icon svg,
+.workshop-calc-panel > .app-dark-tool-head .clients-title-icon svg{
+  display:block;
+  width:20px;
+  height:20px;
+  margin:0;
+  flex:0 0 auto;
+  stroke:currentColor;
 }
 
 @media (max-width:1100px){
