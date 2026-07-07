@@ -3689,6 +3689,14 @@ button:hover {
   box-shadow:0 16px 36px rgba(15,23,42,.16);
 }
 
+.modern-list-head.modern-client-orders-head .clients-title-icon{
+  color:#f97316;
+}
+
+.modern-list-head.modern-client-orders-head .clients-title-icon svg{
+  stroke:currentColor;
+}
+
 .modern-list-head.modern-client-orders-head h1{
   margin:0;
   color:#fff;
@@ -3778,6 +3786,13 @@ button:hover {
   font-weight:900;
 }
 
+.modern-client-order-add-title h2{
+  margin:0;
+  color:#fff;
+  font-size:18px;
+  line-height:1.2;
+}
+
 .modern-client-order-add-title .clients-title-icon{
   color:#f97316;
 }
@@ -3843,6 +3858,39 @@ button:hover {
   min-height:0;
   overflow:hidden;
   padding:0 20px 20px;
+}
+
+.clients-create-card.modern-client-order-form .modern-client-order-add-form .clients-field > span{
+  color:#e5e7eb;
+}
+
+.clients-create-card.modern-client-order-form .modern-client-order-add-form .clients-input-shell{
+  border-color:#d9dee7;
+  background:#f9fafb;
+  color:#f97316;
+}
+
+.clients-create-card.modern-client-order-form .modern-client-order-add-form .clients-input-shell svg{
+  stroke:#f97316;
+}
+
+.clients-create-card.modern-client-order-form .modern-client-order-add-form input,
+.clients-create-card.modern-client-order-form .modern-client-order-add-form select,
+.clients-create-card.modern-client-order-form .modern-client-order-add-form textarea{
+  background:transparent;
+  color:#111827;
+  -webkit-text-fill-color:#111827;
+}
+
+.clients-create-card.modern-client-order-form .modern-client-order-add-form input::placeholder,
+.clients-create-card.modern-client-order-form .modern-client-order-add-form textarea::placeholder{
+  color:#9ca3af;
+  -webkit-text-fill-color:#9ca3af;
+}
+
+.clients-create-card.modern-client-order-form .modern-client-order-add-form select option{
+  background:#fff;
+  color:#111827;
 }
 
 .modern-client-orders-grid{
@@ -4089,7 +4137,16 @@ button:hover {
 }
 
 .supplier-modern-head .clients-title-icon{
+  display:flex;
+  align-items:center;
+  justify-content:center;
   color:#f97316;
+}
+
+.supplier-modern-head .clients-title-icon svg{
+  display:block;
+  margin:0;
+  flex:0 0 auto;
 }
 
 .supplier-order-add-card{
@@ -4499,6 +4556,185 @@ button:hover {
   border-radius:24px;
   background:#fff;
   box-shadow:0 10px 30px rgba(15,23,42,.07);
+}
+
+/* Première carte principale sombre harmonisée */
+.app-dark-page-head,
+.clients-page-modern > form.clients-create-card:first-child,
+.modern-page > form.clients-create-card.modern-form-card:first-child,
+.materials-hero,
+.material-detail-hero,
+.quote-hero,
+.workshop-calc-panel > .app-dark-tool-head{
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:24px;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(255,122,0,.13), transparent 32%),
+    linear-gradient(150deg, #0b1220 0%, #111827 48%, #172033 100%);
+  box-shadow:0 16px 36px rgba(15,23,42,.16);
+}
+
+.app-dark-page-head,
+.workshop-calc-panel > .app-dark-tool-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:20px;
+}
+
+.app-dark-page-head .clients-create-head,
+.workshop-calc-panel > .app-dark-tool-head{
+  margin-bottom:0;
+}
+
+.app-dark-page-head h1,
+.clients-page-modern > form.clients-create-card:first-child .clients-create-head h1,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-create-head h1,
+.materials-hero h1,
+.material-detail-hero h1,
+.quote-hero h2,
+.workshop-calc-panel > .app-dark-tool-head h2{
+  color:#fff;
+}
+
+.app-dark-page-head span,
+.app-dark-page-head .clients-create-head span,
+.clients-page-modern > form.clients-create-card:first-child .clients-create-head span,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-create-head span,
+.materials-hero .clients-create-head span,
+.material-detail-hero .clients-create-head span,
+.quote-hero .quote-hero-meta,
+.workshop-calc-panel > .app-dark-tool-head span{
+  color:#9ca7b8;
+}
+
+.app-dark-page-head .clients-title-icon,
+.clients-page-modern > form.clients-create-card:first-child .clients-title-icon,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-title-icon,
+.materials-hero .clients-create-icon,
+.material-detail-hero .clients-create-icon,
+.workshop-calc-panel > .app-dark-tool-head .clients-title-icon{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(255,122,0,.12);
+  color:#f97316;
+}
+
+.app-dark-page-head .clients-title-icon svg,
+.clients-page-modern > form.clients-create-card:first-child .clients-title-icon svg,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-title-icon svg,
+.materials-hero .clients-create-icon svg,
+.material-detail-hero .clients-create-icon svg,
+.workshop-calc-panel > .app-dark-tool-head .clients-title-icon svg{
+  display:block;
+  margin:0;
+  stroke:currentColor;
+}
+
+.clients-page-modern > form.clients-create-card:first-child .clients-field > span,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-field > span{
+  color:#e5e7eb;
+}
+
+.clients-page-modern > form.clients-create-card:first-child .modern-section-title,
+.modern-page > form.clients-create-card.modern-form-card:first-child .modern-section-title{
+  color:#fff;
+}
+
+.clients-page-modern > form.clients-create-card:first-child .clients-input-shell,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-input-shell{
+  border-color:#d9dee7;
+  background:#f9fafb;
+  color:#f97316;
+}
+
+.clients-page-modern > form.clients-create-card:first-child .clients-input-shell input,
+.clients-page-modern > form.clients-create-card:first-child .clients-input-shell select,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-input-shell input,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-input-shell select,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-input-shell textarea{
+  background:transparent;
+  color:#111827;
+  -webkit-text-fill-color:#111827;
+}
+
+.clients-page-modern > form.clients-create-card:first-child .clients-input-shell input::placeholder,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-input-shell input::placeholder,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-input-shell textarea::placeholder{
+  color:#9ca3af;
+  -webkit-text-fill-color:#9ca3af;
+}
+
+.clients-page-modern > form.clients-create-card:first-child .clients-input-shell select option,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-input-shell select option{
+  background:#fff;
+  color:#111827;
+}
+
+.app-dark-page-head .agenda-view-switch{
+  margin-left:auto;
+}
+
+.app-dark-page-head .agenda-view-switch a{
+  border-color:rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);
+  color:#e5e7eb;
+}
+
+.app-dark-page-head .agenda-view-switch a.active{
+  border-color:rgba(249,115,22,.45);
+  background:rgba(249,115,22,.16);
+  color:#f97316;
+}
+
+/* Commandes clients : seuls les grands conteneurs sont sombres, les champs restent clairs. */
+.modern-list-head.modern-client-orders-head,
+.clients-create-card.modern-client-order-form{
+  border-color:rgba(255,255,255,.08);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(255,122,0,.13), transparent 32%),
+    linear-gradient(150deg, #0b1220 0%, #111827 48%, #172033 100%);
+  box-shadow:0 16px 36px rgba(15,23,42,.16);
+}
+
+.modern-list-head.modern-client-orders-head h1,
+.modern-client-order-add-title h2{
+  color:#fff;
+}
+
+.modern-list-head.modern-client-orders-head span{
+  color:#9ca7b8;
+}
+
+.clients-create-card.modern-client-order-form .modern-client-order-add-form .clients-field > span{
+  color:#e5e7eb;
+}
+
+.clients-create-card.modern-client-order-form .modern-client-order-add-form .clients-input-shell{
+  border-color:#d9dee7;
+  background:#f9fafb;
+  color:#f97316;
+}
+
+.clients-create-card.modern-client-order-form .modern-client-order-add-form input,
+.clients-create-card.modern-client-order-form .modern-client-order-add-form select,
+.clients-create-card.modern-client-order-form .modern-client-order-add-form textarea{
+  background:transparent;
+  color:#111827;
+  -webkit-text-fill-color:#111827;
+}
+
+.clients-create-card.modern-client-order-form .modern-client-order-add-form input::placeholder,
+.clients-create-card.modern-client-order-form .modern-client-order-add-form textarea::placeholder{
+  color:#9ca3af;
+  -webkit-text-fill-color:#9ca3af;
+}
+
+.clients-create-card.modern-client-order-form .modern-client-order-add-form select option{
+  background:#fff;
+  color:#111827;
 }
 
 .clients-create-head{
@@ -6471,6 +6707,83 @@ a.mobile-bottom-item:visited,
   min-height:0;
   overflow:hidden;
   padding:0 18px 18px;
+}
+
+/* Harmonisation finale : priorité aux premières cartes sombres, sans noircir le contenu. */
+.materials-hero,
+.material-detail-hero,
+.quote-hero,
+.quote-work-hero{
+  border-color:rgba(255,255,255,.08);
+  border-radius:24px;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(255,122,0,.13), transparent 32%),
+    linear-gradient(150deg, #0b1220 0%, #111827 48%, #172033 100%);
+  box-shadow:0 16px 36px rgba(15,23,42,.16);
+}
+
+.materials-hero h1,
+.material-detail-hero h1,
+.quote-hero h2,
+.quote-work-title h1{
+  color:#fff;
+}
+
+.materials-hero .clients-create-head span,
+.material-detail-hero .clients-create-head span,
+.quote-hero .quote-hero-meta,
+.quote-work-meta{
+  color:#9ca7b8;
+}
+
+.materials-hero .clients-create-icon,
+.material-detail-hero .clients-create-icon{
+  background:rgba(255,122,0,.12);
+  color:#f97316;
+}
+
+.materials-hero .materials-count{
+  background:rgba(255,122,0,.12);
+  color:#fed7aa;
+}
+
+.materials-hero .materials-seed-button,
+.material-detail-hero .materials-reset-btn{
+  border-color:rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);
+  color:#fff;
+}
+
+.materials-hero .materials-seed-button:hover,
+.materials-hero .materials-seed-button:focus,
+.material-detail-hero .materials-reset-btn:hover,
+.material-detail-hero .materials-reset-btn:focus{
+  border-color:rgba(249,115,22,.45);
+  background:rgba(249,115,22,.14);
+  color:#fff;
+}
+
+.clients-page-modern > form.clients-create-card:first-child .clients-create-head h1,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-create-head h1,
+.modern-page > form.clients-create-card.modern-form-card:first-child .modern-section-title{
+  color:#fff;
+}
+
+.clients-page-modern > form.clients-create-card:first-child .clients-field > span,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-field > span{
+  color:#e5e7eb;
+}
+
+.clients-page-modern > form.clients-create-card:first-child .clients-title-icon,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-title-icon{
+  background:rgba(255,122,0,.12);
+  color:#f97316;
+}
+
+.clients-page-modern > form.clients-create-card:first-child .clients-input-shell,
+.modern-page > form.clients-create-card.modern-form-card:first-child .clients-input-shell{
+  border-color:#d9dee7;
+  background:#f9fafb;
 }
 
 @media (max-width:1100px){

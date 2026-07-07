@@ -2538,8 +2538,14 @@ app.get('/agenda', requireLogin, (req, res) => {
   const pageTitle = agendaLabels[agendaView];
 
   const content = `
-      <div class="page-head agenda-page-head">
-        <h1>${escHtml(pageTitle)}</h1>
+      <div class="page-head agenda-page-head app-dark-page-head">
+        <div class="clients-create-head">
+          ${clientPageIcon('calendar', 'clients-title-icon')}
+          <div>
+            <h1>${escHtml(pageTitle)}</h1>
+            <span>${events.length} événement${events.length > 1 ? 's' : ''}</span>
+          </div>
+        </div>
         ${viewSelector}
       </div>
 
@@ -2729,8 +2735,14 @@ app.get('/outils/prises-cotes', requireLogin, (req, res) => {
       req,
       'Prises de cotes',
       `
-      <div class="page-head">
-        <h1>Prises de cotes</h1>
+      <div class="page-head app-dark-page-head">
+        <div class="clients-create-head">
+          ${clientPageIcon('measurements', 'clients-title-icon')}
+          <div>
+            <h1>Prises de cotes</h1>
+            <span>Modules chantier</span>
+          </div>
+        </div>
       </div>
 
       <section class="cards-grid">
@@ -3868,7 +3880,7 @@ const isLate = endDate && endDate < todayIso;
           <button type="button" class="modern-client-order-add-toggle" aria-expanded="false" aria-controls="client-order-add-panel" data-client-order-add-toggle>
             <span class="modern-client-order-add-title">
               ${clientPageIcon('add', 'clients-title-icon')}
-              <span>Nouvelle commande</span>
+              <h2>Nouvelle commande</h2>
             </span>
             <span class="modern-client-order-add-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
           </button>
@@ -4136,10 +4148,6 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
               <span>${orders.length} commande${orders.length > 1 ? 's' : ''} · ${activeCount} en cours</span>
             </div>
           </div>
-          <a class="clients-submit-btn modern-client-order-new-link" href="#new-supplier-order">
-            <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-            Nouvelle commande
-          </a>
         </section>
 
         <section class="clients-create-card modern-form-card modern-client-order-form supplier-order-add-card is-collapsed" id="new-supplier-order" data-supplier-order-add-card>
@@ -5008,8 +5016,14 @@ app.get('/devis', requireLogin, (req, res) => {
       req,
       'Devis',
       `
-      <div class="page-head quote-page-head">
-        <h1>Devis</h1>
+      <div class="page-head quote-page-head app-dark-page-head">
+        <div class="clients-create-head">
+          ${clientPageIcon('quotes', 'clients-title-icon')}
+          <div>
+            <h1>Devis</h1>
+            <span>${quotes.length} devis au total</span>
+          </div>
+        </div>
         <a class="btn btn-primary" href="/devis/new">+ Nouveau devis</a>
       </div>
 
@@ -7015,8 +7029,12 @@ app.get('/outils/logibarre', requireLogin, (req, res) => {
   res.send(
     pageTemplate(req, 'Logibarre', `
      <section class="panel workshop-calc-panel logibarre-page">
-  <div class="panel-header">
-    <h2>Calculateur de barres</h2>
+  <div class="panel-header app-dark-tool-head">
+    ${clientPageIcon('logibarre', 'clients-title-icon')}
+    <div>
+      <h2>Calculateur de barres</h2>
+      <span>Optimisation des coupes</span>
+    </div>
   </div>
 
   <div class="bar-calc">
@@ -7175,8 +7193,12 @@ app.get('/outils/barreaudage', requireLogin, (req, res) => {
   res.send(
     pageTemplate(req, 'Barreaudage', `
       <section class="panel workshop-calc-panel barreaudage-page">
-        <div class="panel-header">
-          <h2>Calcul barreaudage</h2>
+        <div class="panel-header app-dark-tool-head">
+          ${clientPageIcon('barreaudage', 'clients-title-icon')}
+          <div>
+            <h2>Calcul barreaudage</h2>
+            <span>Espacement et positions</span>
+          </div>
         </div>
 
         <div class="barreaudage-calc">
@@ -7375,8 +7397,12 @@ app.get('/outils/logitole', requireLogin, (req, res) => {
   res.send(
     pageTemplate(req, 'Logitôle', `
       <section class="panel workshop-calc-panel logitole-page">
-  <div class="panel-header">
-    <h2>Calculateur de tôles</h2>
+  <div class="panel-header app-dark-tool-head">
+    ${clientPageIcon('logitole', 'clients-title-icon')}
+    <div>
+      <h2>Calculateur de tôles</h2>
+      <span>Optimisation de découpe</span>
+    </div>
   </div>
 
   <div class="sheet-calc">
