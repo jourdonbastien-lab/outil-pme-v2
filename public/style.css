@@ -6200,6 +6200,7 @@ a.mobile-bottom-item:visited,
 
 .quote-photo-form input{
   min-height:44px;
+  max-width:100%;
   font-size:16px;
 }
 
@@ -6212,6 +6213,40 @@ a.mobile-bottom-item:visited,
   border:1px solid #eef0f4;
   border-radius:14px;
   background:#f8fafc;
+}
+
+.quote-photo-card a{
+  display:block;
+  color:#101827;
+  text-decoration:none;
+}
+
+.quote-file-preview{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height:82px;
+  padding:12px;
+  border:1px dashed #d8dde6;
+  border-radius:12px;
+  background:#fff;
+  color:#101827;
+}
+
+.quote-file-preview strong{
+  min-width:0;
+  overflow-wrap:anywhere;
+  font-size:14px;
+}
+
+.quote-file-icon svg{
+  width:22px;
+  height:22px;
+  fill:none;
+  stroke:#f97316;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
 }
 
 /* =========================

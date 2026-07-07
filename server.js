@@ -618,23 +618,22 @@ const pcUpload = multer({ storage: pcStorage });
 const quotePhotoStorage = multer.diskStorage({
 
   destination(req, file, cb) {
+    try {
+      const quoteId = Number(req.params.id || 0);
+      if (!Number.isFinite(quoteId) || quoteId <= 0) return cb(new Error('ID devis invalide'));
 
-    const dir = path.join(
-      QUOTE_PHOTO_DIR,
-      String(req.params.id)
-    );
+      const dir = safeResolveInside(QUOTE_PHOTO_DIR, String(quoteId));
+      ensureDir(dir);
 
-    fs.mkdirSync(dir, { recursive: true });
-
-    cb(null, dir);
+      cb(null, dir);
+    } catch (e) {
+      cb(e);
+    }
   },
 
   filename(req, file, cb) {
-
-    cb(
-      null,
-      Date.now() + '-' + file.originalname
-    );
+    const safeFileName = `${Date.now()}-${safeSegment(file.originalname || 'fichier')}`;
+    cb(null, safeFileName);
 
   }
 
@@ -5260,16 +5259,18 @@ app.post('/devis/:id/vat', requireLogin, (req, res) => {
   res.redirect('/devis/' + quoteId);
 });
 
-app.post(
-  '/devis/:id/photo',
-  requireLogin,
-  quotePhotoUpload.single('photo'),
-  (req, res) => {
+app.post('/devis/:id/photo', requireLogin, (req, res) => {
+  quotePhotoUpload.single('photo')(req, res, (err) => {
+    const quoteId = Number(req.params.id || 0);
+    if (!Number.isFinite(quoteId) || quoteId <= 0) return res.status(400).send('ID devis invalide');
+    if (err) {
+      console.error('Erreur upload fichier devis:', err);
+      return res.status(400).send('Impossible d’ajouter ce fichier au devis.');
+    }
 
-    res.redirect('/devis/' + req.params.id);
-
-  }
-);
+    res.redirect('/devis/' + quoteId);
+  });
+});
 app.get('/devis/:id', requireLogin, (req, res) => {
   const id = Number(req.params.id);
 
@@ -5282,15 +5283,21 @@ const photos =
   fs.existsSync(photoDir)
     ? fs.readdirSync(photoDir)
     : [];
-const photosHtml = photos.map(photo => `
+const photosHtml = photos.map(photo => {
+  const fileUrl = `/quote-photos/${id}/${encodeURIComponent(photo)}`;
+  const lower = photo.toLowerCase();
+  const isImage = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(lower);
+  return `
   <div class="quote-photo-card">
 
-    <a href="/quote-photos/${id}/${encodeURIComponent(photo)}"
+    <a href="${fileUrl}"
        target="_blank">
 
-      <img
-        src="/quote-photos/${id}/${encodeURIComponent(photo)}"
-        class="quote-photo">
+      ${
+        isImage
+          ? `<img src="${fileUrl}" class="quote-photo" alt="${escHtml(photo)}">`
+          : `<span class="quote-file-preview">${clientPageIcon('quotes', 'quote-file-icon')}<strong>${escHtml(photo)}</strong></span>`
+      }
     </a>
 
     <form method="POST"
@@ -5311,7 +5318,8 @@ const photosHtml = photos.map(photo => `
     </form>
 
   </div>
-`).join('');
+`;
+}).join('');
   const materials = db
     .prepare('SELECT * FROM materials ORDER BY COALESCE(type,\'\'), name')
     .all()
@@ -6274,7 +6282,7 @@ ${lines.length ? lines.map(l => `
     </div>
 
     <form method="POST" action="/devis/${id}/photo" enctype="multipart/form-data" class="quote-photo-form">
-      <input type="file" name="photo" accept="image/*">
+      <input type="file" name="photo" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
       <button type="submit" class="modern-secondary-btn">Ajouter</button>
     </form>
 
@@ -6294,12 +6302,9 @@ app.post('/devis/:id/photo/delete', requireLogin, (req, res) => {
 
   const id = Number(req.params.id);
   const photo = path.basename(req.body.photo || '');
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).send('ID devis invalide');
 
-  const photoPath = path.join(
-    QUOTE_PHOTO_DIR,
-    String(id),
-    photo
-  );
+  const photoPath = safeResolveInside(QUOTE_PHOTO_DIR, String(id), photo);
 
   if (fs.existsSync(photoPath)) {
     fs.unlinkSync(photoPath);
@@ -6365,12 +6370,12 @@ app.get(
   '/quote-photos/:id/:file',
   requireLogin,
   (req, res) => {
+    const quoteId = Number(req.params.id || 0);
+    if (!Number.isFinite(quoteId) || quoteId <= 0) return res.status(400).send('ID devis invalide');
 
-    const filePath = path.join(
-      QUOTE_PHOTO_DIR,
-      req.params.id,
-      req.params.file
-    );
+    const filePath = safeResolveInside(QUOTE_PHOTO_DIR, String(quoteId), path.basename(req.params.file || ''));
+
+    if (!fs.existsSync(filePath)) return res.status(404).send('Fichier introuvable');
 
     res.sendFile(filePath);
 
