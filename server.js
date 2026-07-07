@@ -2054,7 +2054,7 @@ function renderDashboardPrototype(req, res) {
       <div class="dash-shell dashboard-prototype">
         <section class="prototype-hero">
           <div>
-            <h1>Bonjour ${escHtml(userName)}</h1>
+            <h1>Bonjour </h1>
             <p>${escHtml(todayLabel)} · Voici l’état de l’activité aujourd’hui.</p>
           </div>
         </section>
