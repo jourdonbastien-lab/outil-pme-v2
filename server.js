@@ -1129,6 +1129,7 @@ function mobileNavIcon(name) {
 function clientPageIcon(name, className = 'clients-ui-icon') {
   const icons = {
     add: '<path d="M12 5v14M5 12h14"/>',
+    check: '<path d="M5 12.5 10 17l9-10"/>',
     user: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><path d="M4 20a8 8 0 0 1 16 0"/>',
     mail: '<path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>',
     calendar: '<path d="M7 3v4M17 3v4M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h3M8 16h5"/>',
@@ -2009,7 +2010,6 @@ function renderDashboardPrototype(req, res) {
       <div class="dash-shell dashboard-prototype">
         <section class="prototype-hero">
           <div>
-            <span class="prototype-kicker">Dashboard prototype</span>
             <h1>Bonjour ${escHtml(userName)}</h1>
             <p>${escHtml(todayLabel)} · Voici l’état de l’activité aujourd’hui.</p>
           </div>
@@ -3720,6 +3720,8 @@ app.get('/orders/clients', requireLogin, (req, res) => {
 
   const pcFoldersOptions = pcFolders.map((name) => `<option value="${escHtml(name)}"></option>`).join('');
 
+  const todayIso = isoDate();
+
   const cards =
     orders.length > 0
       ? orders
@@ -3749,51 +3751,52 @@ const progress = o.chantier_progress
   ? Math.max(0, Math.min(100, Math.round(Number(o.chantier_progress || 0))))
   : chantierProgress(actualHours, plannedHours);
 
-const statusDot =
-  plannedHours > 0 && actualHours > plannedHours
-    ? '🔴'
-    : '🟢';
+const hourGap = actualHours - plannedHours;
+const endDate = String(o.chantier_end_date || '').slice(0, 10);
+const isLate = endDate && endDate < todayIso;
+const gapClass = hourGap > 0 ? 'over' : 'ok';
             return `
-              <article class="order-card modern-order-card">
-                <a class="order-card-link" href="${clientFolderUrl}" aria-label="Ouvrir le dossier"></a>
-
-                <header class="order-card-header modern-order-card-header">
-                  <div>
-                    <div class="order-card-title">
-                     <span class="order-card-client">
-  ${!isAtelier ? statusDot + ' ' : ''}
-  ${escHtml(o.name)}
-</span>
-                      <span class="order-card-id">#${o.id}</span>
-                    </div>
-                    <div class="order-card-meta modern-order-card-meta">
-                      <span class="order-card-date">📅 ${escHtml(dateLabel || '—')}</span>
-                      <span class="order-card-status badge">${escHtml(statusLabel)}</span>
-                    </div>
+              <article class="order-card modern-client-order-card">
+                <header class="modern-client-order-head">
+                  <div class="modern-client-order-icon">
+                    ${clientPageIcon('folder', 'modern-client-order-svg')}
                   </div>
-
-                ${!isAtelier ? `
-<div class="order-card-amount">
-  <div class="order-card-amount-label">Montant</div>
-  <div class="order-card-amount-value">${escHtml(priceLabel)}</div>
-</div>
-` : ''}
+                  <div class="modern-client-order-title">
+                    <span>Commande #${o.id}</span>
+                    <h2>${escHtml(o.description || `Commande #${o.id}`)}</h2>
+                    <p>${escHtml(o.name || 'Client non renseigné')}</p>
+                  </div>
                 </header>
 
-	                <div class="order-card-body modern-order-card-body">
-	                  <p class="order-card-description">${escHtml(o.description || '—')}</p>
-                    <div class="chantier-hours-grid" style="margin-top:10px">
-                      <div><span>Chantier</span><strong>${escHtml(chantierStatus)}</strong></div>
-                      <div><span>Prévu</span><strong>${formatHours(plannedHours)}</strong></div>
-                      <div><span>Réalisé</span><strong>${formatHours(actualHours)}</strong></div>
-                      <div><span>Avancement</span><strong>${progress}%</strong></div>
-                    </div>
-	                </div>
+                <div class="modern-client-order-badges">
+                  <span class="modern-status-badge progress">${escHtml(statusLabel)}</span>
+                  <span class="chantier-status ${chantierStatusClass(chantierStatus)}">${escHtml(chantierStatus)}</span>
+                  ${isLate ? '<span class="modern-late-badge">Retard</span>' : ''}
+                </div>
 
-                <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');" class="order-card-actions">
-                  <input type="hidden" name="id" value="${o.id}" />
-                  <button type="submit" class="icon-btn" title="Terminer">✔</button>
-                </form>
+                <div class="modern-client-order-progress">
+                  <div>
+                    <span>Avancement</span>
+                    <strong>${progress}%</strong>
+                  </div>
+                  <div class="chantier-progress"><span style="width:${progress}%"></span></div>
+                </div>
+
+                <div class="modern-client-order-metrics">
+                  <div><span>Prévu</span><strong>${formatHours(plannedHours)}</strong></div>
+                  <div><span>Réalisé</span><strong>${formatHours(actualHours)}</strong></div>
+                  <div class="modern-hour-gap ${gapClass}"><span>Écart</span><strong>${formatHours(hourGap)}</strong></div>
+                  <div><span>Fin prévue</span><strong>${escHtml(endDate || '—')}</strong></div>
+                  ${!isAtelier ? `<div><span>Montant</span><strong>${escHtml(priceLabel)}</strong></div>` : ''}
+                </div>
+
+                <div class="modern-client-order-actions">
+                  <a class="modern-secondary-btn" href="${clientFolderUrl}">Ouvrir</a>
+                  <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');">
+                    <input type="hidden" name="id" value="${o.id}" />
+                    <button type="submit" class="modern-order-done-btn" title="Terminer">${clientPageIcon('check', 'modern-action-icon')} Terminer</button>
+                  </form>
+                </div>
               </article>
             `;
           })
@@ -3807,74 +3810,120 @@ const statusDot =
       req,
       'Commandes clients',
       `
-      <div class="page-head">
-        <h1>Commandes clients</h1>
+      <div class="modern-page modern-client-orders-page">
+        <section class="modern-list-head modern-client-orders-head">
+          <div class="clients-create-head">
+            ${clientPageIcon('folder', 'clients-title-icon')}
+            <div>
+              <h1>Commandes clients</h1>
+              <span>${orders.length} commande${orders.length > 1 ? 's' : ''} en cours${!isAtelier ? ` · ${totalAmount.toFixed(2)} €` : ''}</span>
+            </div>
+          </div>
+          <a class="clients-submit-btn modern-client-order-new-link" href="#new-client-order">
+            <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+            Nouvelle commande
+          </a>
+        </section>
+
+        <form method="POST" action="/orders/client" class="clients-create-card modern-form-card modern-client-order-form" id="new-client-order">
+          <div class="clients-create-head">
+            ${clientPageIcon('add', 'clients-title-icon')}
+            <h2>Nouvelle commande</h2>
+          </div>
+
+          <div class="modern-form-grid">
+            <label class="clients-field">
+              <span>Client</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('user')}
+                <input list="pc-clients" name="name" placeholder="Nom du client ou dossier PC" required value="${escHtml(preClient)}" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Nom / objet commande</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('folder')}
+                <input name="description" placeholder="Ex : Escalier, portail, garde-corps" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Statut commande</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('database')}
+                <select disabled>
+                  <option>En cours</option>
+                </select>
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Statut chantier</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('database')}
+                <select name="chantier_status">${chantierStatusOptions('À préparer')}</select>
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Heures prévues</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('calendar')}
+                <input type="number" name="planned_hours" min="0" step="0.25" placeholder="0" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Date commande</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('calendar')}
+                <input type="date" name="date" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Date début</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('calendar')}
+                <input type="date" name="chantier_start_date" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Date fin prévue</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('calendar')}
+                <input type="date" name="chantier_end_date" />
+              </div>
+            </label>
+
+            ${!isAtelier ? `
+            <label class="clients-field">
+              <span>Prix (€)</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('postal')}
+                <input type="number" name="price" step="0.01" placeholder="0.00" />
+              </div>
+            </label>
+            ` : ''}
+          </div>
+
+          <div class="modern-form-actions">
+            <button type="submit" class="clients-submit-btn">
+              <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+              Créer la commande
+            </button>
+            <a class="modern-cancel-link" href="/clients">Voir clients</a>
+          </div>
+
+          <datalist id="pc-clients">${pcFoldersOptions}</datalist>
+        </form>
+
+        <section class="orders-cards-section modern-client-orders-section">
+          <div class="modern-client-orders-grid">${cards}</div>
+        </section>
       </div>
-
-      <form method="POST" action="/orders/client" class="orders-form">
-        <div class="orders-form-row">
-          <div class="orders-form-field">
-            <label>Client</label>
-            <input list="pc-clients" name="name" placeholder="Nom du client (ou dossier PC)…" required value="${escHtml(preClient)}" />
-          </div>
-
-          <div class="orders-form-field">
-            <label>Description</label>
-            <input name="description" placeholder="Description rapide de la commande" />
-          </div>
-        </div>
-
-        <div class="orders-form-row">
-          <div class="orders-form-field">
-            <label>Prix (€)</label>
-            <input type="number" name="price" step="0.01" placeholder="0.00" />
-          </div>
-
-	          <div class="orders-form-field">
-	            <label>Date</label>
-	            <input type="date" name="date" />
-	          </div>
-	
-	          <div class="orders-form-field">
-	            <label>Statut chantier</label>
-	            <select name="chantier_status">
-	              ${chantierStatusOptions('À préparer')}
-	            </select>
-	          </div>
-	
-	          <div class="orders-form-field">
-	            <label>Heures prévues</label>
-	            <input type="number" name="planned_hours" min="0" step="0.25" placeholder="0" />
-	          </div>
-	
-	          <div class="orders-form-actions">
-	            <button type="submit">Ajouter la commande</button>
-	          </div>
-        </div>
-
-        <datalist id="pc-clients">${pcFoldersOptions}</datalist>
-      </form>
-
-${infoBar(
-  `
-    <div class="kpi">
-      <div class="kpi-label">Commandes</div>
-      <div class="kpi-value">${orders.length}</div>
-    </div>
-
-    ${!isAtelier ? `
-    <div class="kpi">
-      <div class="kpi-label">Total en cours</div>
-      <div class="kpi-value">${totalAmount.toFixed(2)} €</div>
-    </div>
-    ` : ''}
-  `,
-  `<a class="btn btn-secondary" href="/clients">← Voir clients</a>`
-)}
-
-      <section class="orders-cards-section modern-orders-section">
-        <div class="orders-cards-grid modern-orders-grid">${cards}</div>
-      </section>
       `
     )
   );
@@ -3887,6 +3936,8 @@ app.post('/orders/client', requireLogin, (req, res) => {
   const price = req.body.price;
   const chantierStatus = normalizeChantierStatus(req.body.chantier_status);
   const plannedHours = parsePositiveNumber(req.body.planned_hours);
+  const chantierStartDate = String(req.body.chantier_start_date || '').trim() || null;
+  const chantierEndDate = String(req.body.chantier_end_date || '').trim() || null;
 
   if (!name) return res.status(400).send('Nom client requis');
 
@@ -3902,13 +3953,25 @@ app.post('/orders/client', requireLogin, (req, res) => {
         price,
         planned_hours,
         chantier_status,
+        chantier_start_date,
+        chantier_end_date,
         status,
         created_at
       )
-	    VALUES (?, ?, ?, ?, ?, ?, 'En cours', ?)
+	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'En cours', ?)
 	  `
-	    )
-	    .run(name, description || null, dateValue, price ? parseFloat(price) : 0, plannedHours, chantierStatus, new Date().toISOString());
+    )
+	    .run(
+        name,
+        description || null,
+        dateValue,
+        price ? parseFloat(price) : 0,
+        plannedHours,
+        chantierStatus,
+        chantierStartDate,
+        chantierEndDate,
+        new Date().toISOString()
+      );
 
   const orderId = info.lastInsertRowid;
 
