@@ -3756,10 +3756,8 @@ const progress = o.chantier_progress
   ? Math.max(0, Math.min(100, Math.round(Number(o.chantier_progress || 0))))
   : chantierProgress(actualHours, plannedHours);
 
-const hourGap = actualHours - plannedHours;
 const endDate = String(o.chantier_end_date || '').slice(0, 10);
 const isLate = endDate && endDate < todayIso;
-const gapClass = hourGap > 0 ? 'over' : 'ok';
             return `
               <article class="order-card modern-client-order-card">
                 <header class="modern-client-order-head">
@@ -3767,32 +3765,20 @@ const gapClass = hourGap > 0 ? 'over' : 'ok';
                     ${clientPageIcon('folder', 'modern-client-order-svg')}
                   </div>
                   <div class="modern-client-order-title">
-                    <span>Commande #${o.id}</span>
                     <h2>${escHtml(o.description || `Commande #${o.id}`)}</h2>
                     <p>${escHtml(o.name || 'Client non renseigné')}</p>
                   </div>
+                  <span class="modern-status-badge progress">${escHtml(statusLabel)}</span>
                 </header>
 
-                <div class="modern-client-order-badges">
-                  <span class="modern-status-badge progress">${escHtml(statusLabel)}</span>
+                <div class="modern-client-order-row">
                   <span class="chantier-status ${chantierStatusClass(chantierStatus)}">${escHtml(chantierStatus)}</span>
+                  <strong>${progress}%</strong>
                   ${isLate ? '<span class="modern-late-badge">Retard</span>' : ''}
                 </div>
 
                 <div class="modern-client-order-progress">
-                  <div>
-                    <span>Avancement</span>
-                    <strong>${progress}%</strong>
-                  </div>
                   <div class="chantier-progress"><span style="width:${progress}%"></span></div>
-                </div>
-
-                <div class="modern-client-order-metrics">
-                  <div><span>Prévu</span><strong>${formatHours(plannedHours)}</strong></div>
-                  <div><span>Réalisé</span><strong>${formatHours(actualHours)}</strong></div>
-                  <div class="modern-hour-gap ${gapClass}"><span>Écart</span><strong>${formatHours(hourGap)}</strong></div>
-                  <div><span>Fin prévue</span><strong>${escHtml(endDate || '—')}</strong></div>
-                  ${!isAtelier ? `<div><span>Montant</span><strong>${escHtml(priceLabel)}</strong></div>` : ''}
                 </div>
 
                 <div class="modern-client-order-actions">

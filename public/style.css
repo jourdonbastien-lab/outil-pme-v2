@@ -3415,13 +3415,25 @@ button:hover {
 
 .modern-client-orders-head{
   align-items:center;
+  padding:20px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:24px;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(255,122,0,.13), transparent 32%),
+    linear-gradient(150deg, #0b1220 0%, #111827 48%, #172033 100%);
+  box-shadow:0 16px 36px rgba(15,23,42,.16);
 }
 
 .modern-client-orders-head h1{
   margin:0;
-  color:#101827;
+  color:#fff;
   font-size:clamp(28px, 4vw, 42px);
   line-height:1.05;
+}
+
+.modern-client-orders-head .modern-list-head span,
+.modern-client-orders-head .clients-create-head span{
+  color:#9ca7b8;
 }
 
 .modern-client-orders-head .clients-create-head{
@@ -3436,6 +3448,38 @@ button:hover {
 
 .modern-client-order-form{
   max-width:none;
+  border:1px solid rgba(255,255,255,.08);
+  background:
+    radial-gradient(circle at 84% 0%, rgba(255,122,0,.10), transparent 34%),
+    linear-gradient(150deg, #0b1220 0%, #111827 48%, #172033 100%);
+  box-shadow:0 16px 36px rgba(15,23,42,.16);
+}
+
+.modern-client-order-form .clients-create-head h2{
+  color:#fff;
+}
+
+.modern-client-order-form .clients-field span{
+  color:#cbd5e1;
+}
+
+.modern-client-order-form .clients-input-shell{
+  border-color:rgba(255,255,255,.12);
+  background:#151f30;
+  color:#fff;
+}
+
+.modern-client-order-form .clients-input-shell svg{
+  stroke:#f97316;
+}
+
+.modern-client-order-form input,
+.modern-client-order-form select{
+  color:#fff;
+}
+
+.modern-client-order-form input::placeholder{
+  color:#7f8ea3;
 }
 
 .modern-client-orders-grid{
@@ -3447,35 +3491,35 @@ button:hover {
 .modern-client-order-card{
   position:relative;
   display:grid;
-  gap:14px;
+  gap:10px;
   min-width:0;
-  padding:16px;
-  border:1px solid #e5e7eb;
-  border-radius:22px;
+  padding:13px;
+  border:1px solid #e7edf5;
+  border-radius:18px;
   background:#fff;
-  box-shadow:0 12px 30px rgba(15,23,42,.08);
+  box-shadow:0 8px 20px rgba(15,23,42,.07);
 }
 
 .modern-client-order-head{
   display:grid;
-  grid-template-columns:52px minmax(0, 1fr);
-  gap:12px;
-  align-items:start;
+  grid-template-columns:44px minmax(0, 1fr) auto;
+  gap:10px;
+  align-items:center;
 }
 
 .modern-client-order-icon{
   display:grid;
   place-items:center;
-  width:52px;
-  height:52px;
-  border-radius:16px;
+  width:44px;
+  height:44px;
+  border-radius:14px;
   background:#fff1e4;
   color:#f97316;
 }
 
 .modern-client-order-svg svg{
-  width:25px;
-  height:25px;
+  width:22px;
+  height:22px;
   fill:none;
   stroke:currentColor;
   stroke-width:2;
@@ -3495,9 +3539,9 @@ button:hover {
 }
 
 .modern-client-order-title h2{
-  margin:3px 0 0;
+  margin:0;
   color:#101827;
-  font-size:21px;
+  font-size:17px;
   line-height:1.15;
   overflow-wrap:anywhere;
 }
@@ -3505,15 +3549,22 @@ button:hover {
 .modern-client-order-title p{
   margin:5px 0 0;
   color:#667085;
-  font-size:14px;
+  font-size:12px;
   font-weight:800;
   overflow-wrap:anywhere;
 }
 
-.modern-client-order-badges{
+.modern-client-order-row{
   display:flex;
-  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
   gap:8px;
+}
+
+.modern-client-order-row strong{
+  color:#101827;
+  font-size:14px;
+  line-height:1;
 }
 
 .modern-late-badge{
@@ -3530,56 +3581,7 @@ button:hover {
 
 .modern-client-order-progress{
   display:grid;
-  gap:8px;
-}
-
-.modern-client-order-progress > div:first-child{
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  color:#667085;
-  font-size:13px;
-  font-weight:900;
-}
-
-.modern-client-order-progress strong{
-  color:#101827;
-}
-
-.modern-client-order-metrics{
-  display:grid;
-  grid-template-columns:repeat(4, minmax(0, 1fr));
-  gap:8px;
-}
-
-.modern-client-order-metrics div{
-  min-width:0;
-  padding:10px;
-  border-radius:14px;
-  background:#f8fafc;
-}
-
-.modern-client-order-metrics span{
-  display:block;
-  color:#667085;
-  font-size:11px;
-  font-weight:900;
-}
-
-.modern-client-order-metrics strong{
-  display:block;
-  margin-top:5px;
-  color:#101827;
-  font-size:14px;
-  overflow-wrap:anywhere;
-}
-
-.modern-hour-gap.over strong{
-  color:#c2410c;
-}
-
-.modern-hour-gap.ok strong{
-  color:#15803d;
+  gap:0;
 }
 
 .modern-client-order-actions{
@@ -5662,38 +5664,52 @@ button:hover {
     width:100%;
   }
 
-  .modern-client-orders-grid,
-  .modern-client-order-metrics{
+  .modern-client-orders-grid{
     grid-template-columns:1fr;
   }
 
   .modern-client-order-card{
-    padding:14px;
-    border-radius:18px;
+    gap:9px;
+    padding:12px;
+    border-radius:16px;
   }
 
   .modern-client-order-head{
-    grid-template-columns:46px minmax(0, 1fr);
+    grid-template-columns:40px minmax(0, 1fr) auto;
+    gap:9px;
   }
 
   .modern-client-order-icon{
-    width:46px;
-    height:46px;
-    border-radius:14px;
+    width:40px;
+    height:40px;
+    border-radius:12px;
   }
 
   .modern-client-order-title h2{
-    font-size:19px;
+    font-size:16px;
+  }
+
+  .modern-client-order-title p{
+    font-size:12px;
+  }
+
+  .modern-client-order-row{
+    align-items:center;
   }
 
   .modern-client-order-actions{
     display:grid;
-    grid-template-columns:1fr;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
   }
 
   .modern-client-order-actions .modern-secondary-btn,
-  .modern-client-order-actions form,
   .modern-order-done-btn{
+    min-height:40px;
+    padding:0 10px;
+  }
+
+  .modern-client-order-actions form{
     width:100%;
   }
 }
