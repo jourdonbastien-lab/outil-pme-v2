@@ -1992,20 +1992,17 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
   const userName = req.session?.user?.username || 'Utilisateur';
 
   const openTasks = db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status != 'Terminée'").get().c;
+  const eventsToday = db.prepare("SELECT COUNT(*) AS c FROM events WHERE start_date LIKE ?").get(`${todayIso}%`).c;
+  const clientsCount = db.prepare('SELECT COUNT(*) AS c FROM clients').get().c;
   const openClientOrders = db.prepare("SELECT COUNT(*) AS c FROM client_orders WHERE status != 'Terminée'").get().c;
-  const remainingHours = db
+  const activeOrderChantiers = db
     .prepare(`
-      SELECT COALESCE(SUM(
-        CASE
-          WHEN COALESCE(planned_hours, 0) > COALESCE(done_hours, 0)
-          THEN COALESCE(planned_hours, 0) - COALESCE(done_hours, 0)
-          ELSE 0
-        END
-      ), 0) AS total
+      SELECT COUNT(*) AS c
       FROM client_orders
       WHERE status != 'Terminée'
+      AND COALESCE(chantier_status, 'À préparer') NOT IN ('Terminé', 'Facturé')
     `)
-    .get().total;
+    .get().c;
   const quotesToFollowCount = db
     .prepare(`
       SELECT COUNT(*) AS c
@@ -2098,16 +2095,30 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
     return icons.site;
   };
 
+  const kpiIcon = (name) => {
+    const icons = {
+      tasks: '<path d="M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="m8 12 2.5 2.5L16 9"/>',
+      calendar: '<path d="M7 3v4M17 3v4M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h3M8 16h5"/>',
+      clients: '<path d="M16 19v-1.5A3.5 3.5 0 0 0 12.5 14h-5A3.5 3.5 0 0 0 4 17.5V19"/><path d="M10 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M20 19v-1.2a3 3 0 0 0-2.4-2.9"/><path d="M15.5 5.3a3 3 0 0 1 0 5.4"/>',
+      orders: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h8M8 15h5"/>',
+      suppliers: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><path d="M6.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
+      quotes: '<path d="M7 3h7l4 4v14H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h4M9 12h6M9 16h6"/>',
+    };
+    return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.orders}</svg>`;
+  };
+
   const kpis = [
-    { icon: 'C', label: 'Commandes en cours', value: openClientOrders, href: '/orders/clients' },
-    { icon: 'H', label: 'Heures prévues restantes', value: formatHours(remainingHours), href: '/orders/clients' },
-    { icon: 'D', label: 'Devis à suivre', value: quotesToFollowCount, href: '/devis' },
-    { icon: 'F', label: 'Fournisseurs en attente', value: waitingSupplierOrders, href: '/orders/suppliers' },
+    { icon: 'tasks', label: 'Tâches en cours', value: openTasks, href: '/tasks' },
+    { icon: 'calendar', label: 'Agenda aujourd’hui', value: eventsToday, href: '/agenda' },
+    { icon: 'clients', label: 'Clients', value: clientsCount, href: '/clients' },
+    { icon: 'orders', label: 'Commandes / chantiers en cours', value: activeOrderChantiers, href: '/orders/clients' },
+    { icon: 'suppliers', label: 'Commandes fournisseurs', value: waitingSupplierOrders, href: '/orders/suppliers' },
+    { icon: 'quotes', label: 'Devis', value: quotesToFollowCount, href: '/devis' },
   ]
     .map(
       (item) => `
       <a class="prototype-kpi-card" href="${item.href}">
-        <span class="prototype-kpi-icon">${escHtml(item.icon)}</span>
+        <span class="prototype-kpi-icon">${kpiIcon(item.icon)}</span>
         <span class="prototype-kpi-body">
           <strong>${escHtml(item.value)}</strong>
           <small>${escHtml(item.label)}</small>

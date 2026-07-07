@@ -2534,7 +2534,7 @@ button:hover {
   top:0;
   left:0;
   right:0;
-  height:224px;
+  height:330px;
   border-radius:0 0 30px 30px;
   background:#101827;
 }
@@ -2573,7 +2573,7 @@ button:hover {
 
 .prototype-kpi-grid{
   display:grid;
-  grid-template-columns:repeat(4, minmax(0, 1fr));
+  grid-template-columns:repeat(3, minmax(0, 1fr));
   gap:12px;
 }
 
@@ -2583,12 +2583,13 @@ button:hover {
   gap:12px;
   min-width:0;
   padding:16px;
-  border:1px solid rgba(255,255,255,.12);
+  min-height:104px;
+  border:1px solid rgba(255,122,0,.18);
   border-radius:18px;
-  background:#151f30;
-  color:#fff;
+  background:#fff3e6;
+  color:#111827;
   text-decoration:none;
-  box-shadow:0 7px 20px rgba(0,0,0,.12);
+  box-shadow:0 7px 20px rgba(15,23,42,.06);
 }
 
 .prototype-kpi-icon{
@@ -2598,10 +2599,18 @@ button:hover {
   width:42px;
   height:42px;
   border-radius:13px;
-  background:rgba(255,122,0,.14);
+  background:rgba(255,122,0,.13);
   color:#c75f00;
-  font-size:13px;
-  font-weight:900;
+}
+
+.prototype-kpi-icon svg{
+  width:22px;
+  height:22px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
 }
 
 .prototype-kpi-body{
@@ -2612,13 +2621,13 @@ button:hover {
 }
 
 .prototype-kpi-body strong{
-  color:#fff;
+  color:#101827;
   font-size:31px;
   line-height:.95;
 }
 
 .prototype-kpi-body small{
-  color:#9ca7b8;
+  color:#374151;
   font-size:12px;
   font-weight:800;
   line-height:1.25;
@@ -2634,7 +2643,7 @@ button:hover {
 }
 
 .prototype-kpi-card:hover{
-  border-color:rgba(255,122,0,.42);
+  border-color:rgba(255,122,0,.36);
   transform:translateY(-1px);
 }
 
@@ -3112,7 +3121,7 @@ button:hover {
   }
 
   .dashboard-prototype::before{
-    height:326px;
+    height:430px;
   }
 
   .dash-quick-grid,
@@ -3133,7 +3142,7 @@ button:hover {
   }
 
   .dashboard-prototype::before{
-    height:318px;
+    height:458px;
     border-radius:0 0 26px 26px;
   }
 
@@ -3226,12 +3235,18 @@ button:hover {
     gap:9px;
     padding:12px;
     border-radius:16px;
+    min-height:104px;
   }
 
   .prototype-kpi-icon{
     width:36px;
     height:36px;
     border-radius:11px;
+  }
+
+  .prototype-kpi-icon svg{
+    width:20px;
+    height:20px;
   }
 
   .prototype-kpi-body strong{
