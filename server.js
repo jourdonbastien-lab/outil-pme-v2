@@ -5262,15 +5262,15 @@ const photosHtml = photos.map(photo => {
   return `
   <div class="quote-photo-card">
 
-    <a href="${fileUrl}"
-       target="_blank">
-
-      ${
-        isImage
-          ? `<img src="${fileUrl}" class="quote-photo" alt="${escHtml(photo)}">`
-          : `<span class="quote-file-preview">${clientPageIcon('quotes', 'quote-file-icon')}<strong>${escHtml(photo)}</strong></span>`
-      }
-    </a>
+    ${
+      isImage
+        ? `<button type="button" class="quote-photo-open" data-quote-photo-url="${escHtml(fileUrl)}" data-quote-photo-title="${escHtml(photo)}" aria-label="Ouvrir ${escHtml(photo)}">
+            <img src="${fileUrl}" class="quote-photo" alt="${escHtml(photo)}">
+          </button>`
+        : `<a href="${fileUrl}" target="_blank" rel="noopener">
+            <span class="quote-file-preview">${clientPageIcon('quotes', 'quote-file-icon')}<strong>${escHtml(photo)}</strong></span>
+          </a>`
+    }
 
     <form method="POST"
           action="/devis/${id}/photo/delete"
@@ -6263,6 +6263,59 @@ ${lines.length ? lines.map(l => `
     </div>
   </article>
 </section>
+
+<div class="quote-lightbox" data-quote-lightbox hidden>
+  <div class="quote-lightbox-backdrop" data-quote-lightbox-close></div>
+  <div class="quote-lightbox-panel" role="dialog" aria-modal="true" aria-label="Visionneuse photo devis">
+    <button type="button" class="quote-lightbox-close" data-quote-lightbox-close aria-label="Fermer la photo">×</button>
+    <img src="" alt="" class="quote-lightbox-image" data-quote-lightbox-image>
+    <p class="quote-lightbox-title" data-quote-lightbox-title></p>
+  </div>
+</div>
+
+<script>
+(function () {
+  const lightbox = document.querySelector('[data-quote-lightbox]');
+  if (!lightbox) return;
+
+  const image = lightbox.querySelector('[data-quote-lightbox-image]');
+  const title = lightbox.querySelector('[data-quote-lightbox-title]');
+  const closeControls = lightbox.querySelectorAll('[data-quote-lightbox-close]');
+
+  function closeLightbox() {
+    lightbox.hidden = true;
+    document.body.classList.remove('quote-lightbox-open');
+    if (image) {
+      image.removeAttribute('src');
+      image.alt = '';
+    }
+    if (title) title.textContent = '';
+  }
+
+  function openLightbox(url, label) {
+    if (!image || !url) return;
+    image.src = url;
+    image.alt = label || 'Photo du devis';
+    if (title) title.textContent = label || '';
+    lightbox.hidden = false;
+    document.body.classList.add('quote-lightbox-open');
+  }
+
+  document.querySelectorAll('[data-quote-photo-url]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      openLightbox(button.getAttribute('data-quote-photo-url'), button.getAttribute('data-quote-photo-title'));
+    });
+  });
+
+  closeControls.forEach(function (control) {
+    control.addEventListener('click', closeLightbox);
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && !lightbox.hidden) closeLightbox();
+  });
+})();
+</script>
 
 </div>
 

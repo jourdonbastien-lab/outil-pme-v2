@@ -6282,10 +6282,26 @@ a.mobile-bottom-item:visited,
   background:#f8fafc;
 }
 
-.quote-photo-card a{
+.quote-photo-card a,
+.quote-photo-open{
   display:block;
   color:#101827;
   text-decoration:none;
+}
+
+.quote-photo-open{
+  width:100%;
+  padding:0;
+  border:0;
+  background:transparent;
+  cursor:pointer;
+  text-align:left;
+}
+
+.quote-photo-open:focus-visible{
+  outline:3px solid rgba(230,126,34,.35);
+  outline-offset:3px;
+  border-radius:12px;
 }
 
 .quote-file-preview{
@@ -6314,6 +6330,97 @@ a.mobile-bottom-item:visited,
   stroke-width:2;
   stroke-linecap:round;
   stroke-linejoin:round;
+}
+
+.quote-lightbox[hidden]{
+  display:none;
+}
+
+.quote-lightbox{
+  position:fixed;
+  inset:0;
+  z-index:2000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:clamp(18px, 4vw, 48px);
+}
+
+.quote-lightbox-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(7, 12, 20, .88);
+  backdrop-filter:blur(4px);
+}
+
+.quote-lightbox-panel{
+  position:relative;
+  z-index:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  width:min(1120px, 100%);
+  max-height:100%;
+}
+
+.quote-lightbox-image{
+  display:block;
+  max-width:100%;
+  max-height:min(78vh, 820px);
+  object-fit:contain;
+  border-radius:14px;
+  background:#fff;
+  box-shadow:0 24px 80px rgba(0,0,0,.36);
+}
+
+.quote-lightbox-close{
+  position:absolute;
+  top:-14px;
+  right:-14px;
+  z-index:2;
+  width:44px;
+  height:44px;
+  border:1px solid rgba(255,255,255,.28);
+  border-radius:999px;
+  background:#fff;
+  color:#101827;
+  font-size:30px;
+  line-height:1;
+  cursor:pointer;
+  box-shadow:0 14px 30px rgba(0,0,0,.28);
+}
+
+.quote-lightbox-title{
+  max-width:100%;
+  margin:12px 0 0;
+  color:#fff;
+  font-size:14px;
+  text-align:center;
+  overflow-wrap:anywhere;
+}
+
+body.quote-lightbox-open{
+  overflow:hidden;
+}
+
+@media (max-width:768px){
+  .quote-lightbox{
+    padding:18px 12px calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .quote-lightbox-image{
+    max-height:74vh;
+    border-radius:10px;
+  }
+
+  .quote-lightbox-close{
+    top:8px;
+    right:8px;
+    width:42px;
+    height:42px;
+    font-size:28px;
+  }
 }
 
 /* =========================
