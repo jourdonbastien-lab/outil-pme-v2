@@ -5740,6 +5740,7 @@ button:hover {
   .mobile-sheet-links a{
     display:flex;
     align-items:center;
+    gap:10px;
     min-height:46px;
     padding:12px 13px;
     border:1px solid #e5e7eb;
@@ -5748,6 +5749,18 @@ button:hover {
     color:#111827;
     text-decoration:none;
     font-weight:850;
+  }
+
+  .mobile-sheet-links a .mobile-bottom-icon{
+    flex:0 0 24px;
+    width:24px;
+    height:24px;
+    color:#ff7a00;
+  }
+
+  .mobile-sheet-links a .mobile-bottom-icon svg{
+    width:21px;
+    height:21px;
   }
 
   .mobile-sheet-cancel{

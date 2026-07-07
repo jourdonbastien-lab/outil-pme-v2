@@ -1111,6 +1111,7 @@ function mobileNavIcon(name) {
     new: '<path d="M12 5v14M5 12h14"/>',
     calendar: '<path d="M7 3v4M17 3v4M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h3M8 16h5"/>',
     more: '<path d="M6 12h.01M12 12h.01M18 12h.01"/>',
+    tasks: '<path d="M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="m8 12 2.5 2.5L16 9"/>',
     orders: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h8M8 15h5"/>',
     measurements: '<path d="M4 17 17 4l3 3L7 20z"/><path d="m14 7 3 3M11 10l2 2M8 13l3 3"/>',
   };
@@ -1173,6 +1174,7 @@ function pageTemplate(req, title, content) {
       ];
   const mobileMoreLinks = isAtelier
     ? [
+        { href: '/tasks', label: 'Tâches', icon: 'tasks' },
         { href: '/orders/clients', label: 'Commandes clients' },
         { href: '/orders/suppliers', label: 'Commandes fournisseurs' },
         { href: '/outils/prises-cotes', label: 'Prises de cotes' },
@@ -1181,6 +1183,7 @@ function pageTemplate(req, title, content) {
         { href: '/logout', label: 'Déconnexion' }
       ]
     : [
+        { href: '/tasks', label: 'Tâches', icon: 'tasks' },
         { href: '/devis', label: 'Devis' },
         { href: '/orders/clients', label: 'Commandes clients' },
         { href: '/orders/suppliers', label: 'Commandes fournisseurs' },
@@ -1196,7 +1199,9 @@ function pageTemplate(req, title, content) {
     }
     return `<button class="mobile-bottom-item${item.primary ? ' mobile-bottom-primary' : ''}" type="button" data-mobile-sheet="${item.action}" aria-expanded="false">${mobileNavIcon(item.icon)}<small>${escHtml(item.label)}</small></button>`;
   };
-  const renderSheetLinks = (links) => links.map((link) => `<a href="${link.href}">${escHtml(link.label)}</a>`).join('');
+  const renderSheetLinks = (links) => links
+    .map((link) => `<a href="${link.href}">${link.icon ? mobileNavIcon(link.icon) : ''}<span>${escHtml(link.label)}</span></a>`)
+    .join('');
 
   return `
 <!DOCTYPE html>
@@ -1773,230 +1778,17 @@ const statusDot =
   );
 });
 
-app.get('/dashboard', requireLogin, (req, res) => {
-  const todayIso = isoDate();
-  const todayLabel = new Date().toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  });
-
-  const openTasks = db.prepare("SELECT COUNT(*) AS c FROM tasks WHERE status != 'Terminée'").get().c;
-  const eventsToday = db
-    .prepare("SELECT COUNT(*) AS c FROM events WHERE start_date LIKE ?")
-    .get(`${todayIso}%`).c;
-  const clientsCount = db.prepare('SELECT COUNT(*) AS c FROM clients').get().c;
-  const openClientOrders = db.prepare("SELECT COUNT(*) AS c FROM client_orders WHERE status != 'Terminée'").get().c;
-  const openSupplierOrders = db
-    .prepare("SELECT COUNT(*) AS c FROM supplier_orders WHERE status IS NULL OR TRIM(status) = '' OR status != 'Terminée'")
-    .get().c;
-  const quotesCount = db.prepare('SELECT COUNT(*) AS c FROM quotes').get().c;
-  const activeOrderChantiers = db
-    .prepare(`
-      SELECT COUNT(*) AS c
-      FROM client_orders
-      WHERE status != 'Terminée'
-      AND COALESCE(chantier_status, 'À préparer') NOT IN ('Terminé', 'Facturé')
-    `)
-    .get().c;
-
-  const priorityTasks = db
-    .prepare(`
-      SELECT title, status, created_at
-      FROM tasks
-      WHERE status != 'Terminée'
-      ORDER BY created_at DESC, id DESC
-      LIMIT 5
-    `)
-    .all();
-
-  const todayEvents = db
-    .prepare(`
-      SELECT title, start_date, end_date, type
-      FROM events
-      WHERE start_date LIKE ?
-      ORDER BY datetime(start_date) ASC
-      LIMIT 8
-    `)
-    .all(`${todayIso}%`);
-
-  const openOrders = db
-    .prepare(`
-      SELECT id, name, description, date, status
-      FROM client_orders
-      WHERE status != 'Terminée'
-      ORDER BY date DESC, id DESC
-      LIMIT 6
-    `)
-    .all();
-
-  const todayStats = [
-    { label: 'Tâches à faire', value: openTasks },
-    { label: 'Événements du jour', value: eventsToday },
-    { label: 'Cmd clients en cours', value: openClientOrders },
-    { label: 'Cmd fournisseurs en cours', value: openSupplierOrders },
-  ]
-    .map(
-      (item) => `
-      <article class="dash-today-stat">
-        <span>${escHtml(item.label)}</span>
-        <strong>${item.value}</strong>
-      </article>
-    `
-    )
-    .join('');
-
-  const quickCardsData = [
-    { icon: '✓', label: 'Tâches en cours', value: openTasks, href: '/tasks' },
-    { icon: 'A', label: 'Agenda aujourd’hui', value: eventsToday, href: '/agenda' },
-    { icon: 'C', label: 'Clients', value: clientsCount, href: '/clients' },
-    { icon: 'CC', label: 'Commandes / chantiers en cours', value: activeOrderChantiers, href: '/orders/clients' },
-    { icon: 'CF', label: 'Commandes fournisseurs', value: openSupplierOrders, href: '/orders/suppliers' },
-    { icon: 'D', label: 'Devis', value: quotesCount, href: '/devis' },
-  ];
-  const quickCards = quickCardsData
-    .map(
-      (card) => `
-      <a class="dash-quick-card" href="${card.href}">
-        <span class="dash-quick-icon">${escHtml(card.icon)}</span>
-        <span class="dash-quick-body">
-          <span>${escHtml(card.label)}</span>
-          <strong>${card.value}</strong>
-        </span>
-        <span class="dash-quick-open">Voir</span>
-      </a>
-    `
-    )
-    .join('');
-
-  const priorityTasksHtml = priorityTasks.length
-    ? priorityTasks
-        .map(
-          (t) => `
-      <li class="dash-list-item">
-        <span>
-          <strong>${escHtml(t.title || 'Sans titre')}</strong>
-          <small>${escHtml(t.status || 'À faire')}</small>
-        </span>
-        <a class="dash-mini-link" href="/tasks">Ouvrir</a>
-      </li>
-    `
-        )
-        .join('')
-    : '<li class="dash-empty">Aucune tâche prioritaire</li>';
-
-  const todayEventsHtml = todayEvents.length
-    ? todayEvents
-        .map((e) => {
-          const hour = String(e.start_date || '').slice(11, 16);
-          const endHour = String(e.end_date || '').slice(11, 16);
-          return `
-      <li class="dash-list-item">
-        <span>
-          <strong>${escHtml(e.title || 'Événement')}</strong>
-          <small>${escHtml(e.type || 'rdv')}${hour ? ' · ' + escHtml(hour) : ''}${endHour ? ' - ' + escHtml(endHour) : ''}</small>
-        </span>
-        <a class="dash-mini-link" href="/agenda">Voir</a>
-      </li>
-    `;
-        })
-        .join('')
-    : '<li class="dash-empty">Aucun événement aujourd’hui</li>';
-
-  const openOrdersHtml = openOrders.length
-    ? openOrders
-        .map((o) => {
-          const safeClientFolder = safeName(o.name || 'Client');
-          const orderFolderName = safeName(
-            o.description && o.description.trim() !== ''
-              ? o.description
-              : `Commande_${o.id}`
-          );
-          const clientFolderUrl = `/pc-folders/${encodeURIComponent(
-            safeClientFolder
-          )}/${encodeURIComponent(orderFolderName)}`;
-
-          const day = String(o.date || '').slice(0, 10) || '—';
-          const status = o.status || 'En cours';
-          return `
-      <article class="dash-order-card">
-        <a class="dash-order-link" href="${clientFolderUrl}" aria-label="Ouvrir la commande"></a>
-        <header>
-          <div>
-            <strong>${escHtml(o.name || 'Client')}</strong>
-            <p>${escHtml(o.description || 'Commande')}</p>
-          </div>
-          <span>#${o.id}</span>
-        </header>
-        <div class="dash-order-meta">
-          <span>${escHtml(day)}</span>
-          <span>${escHtml(status)}</span>
-        </div>
-        <span class="dash-card-button">Ouvrir</span>
-      </article>
-    `;
-        })
-        .join('')
-    : '<p class="dash-empty">Aucune commande client en cours</p>';
-
-  res.send(
-    dashboardTemplate(
-      req,
-      `
-      <div class="dash-shell">
-        <section class="dash-today">
-          <div>
-            <h1>${escHtml(todayLabel)}</h1>
-            <a class="dash-prototype-link" href="/dashboard-prototype">Tester le dashboard prototype</a>
-          </div>
-          <div class="dash-today-grid">
-            ${todayStats}
-          </div>
-        </section>
-
-        <section class="dash-quick-grid" aria-label="Accès rapides">
-          ${quickCards}
-        </section>
-
-        <section class="dash-main-grid">
-          <article class="dash-panel">
-            <div class="dash-panel-head">
-              <h2>À faire en priorité</h2>
-              <a href="/tasks">Voir</a>
-            </div>
-            <ul class="dash-list">
-              ${priorityTasksHtml}
-            </ul>
-          </article>
-
-          <article class="dash-panel">
-            <div class="dash-panel-head">
-              <h2>Planning du jour</h2>
-              <a href="/agenda">Ouvrir</a>
-            </div>
-            <ul class="dash-list">
-              ${todayEventsHtml}
-            </ul>
-          </article>
-
-          <article class="dash-panel dash-panel-wide">
-            <div class="dash-panel-head">
-              <h2>Commandes en cours</h2>
-              <a href="/orders/clients">Voir tout</a>
-            </div>
-            <div class="dash-orders-grid">
-              ${openOrdersHtml}
-            </div>
-          </article>
-        </section>
-      </div>
-      `
-    )
-  );
-});
+app.get('/dashboard', requireLogin, renderDashboardPrototype);
 
 app.get('/dashboard-prototype', requireLogin, (req, res) => {
+  res.redirect('/dashboard');
+});
+
+app.get('/dashboard/prototype', requireLogin, (req, res) => {
+  res.redirect('/dashboard');
+});
+
+function renderDashboardPrototype(req, res) {
   const todayIso = isoDate();
   const todayLabel = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long',
@@ -2313,11 +2105,7 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
       `
     )
   );
-});
-
-app.get('/dashboard/prototype', requireLogin, (req, res) => {
-  res.redirect('/dashboard-prototype');
-});
+}
 
 function weatherConditionLabel(code) {
   const n = Number(code);
