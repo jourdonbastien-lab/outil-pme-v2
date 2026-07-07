@@ -6874,6 +6874,47 @@ a.mobile-bottom-item:visited,
   stroke:currentColor;
 }
 
+/* Couleur réelle des pictogrammes d'en-tête : alignée sur LogiBarre. */
+:is(
+  .app-dark-page-head,
+  .modern-list-head.modern-client-orders-head,
+  .clients-page-modern > form.clients-create-card:first-child,
+  .modern-page > form.clients-create-card.modern-form-card:first-child,
+  .materials-hero,
+  .material-detail-hero,
+  .quote-work-title-head,
+  .workshop-calc-panel > .app-dark-tool-head
+) :is(.clients-title-icon, .clients-create-icon){
+  background:var(--header-icon-bg) !important;
+  color:var(--header-icon-color) !important;
+  opacity:1 !important;
+}
+
+:is(
+  .app-dark-page-head,
+  .modern-list-head.modern-client-orders-head,
+  .clients-page-modern > form.clients-create-card:first-child,
+  .modern-page > form.clients-create-card.modern-form-card:first-child,
+  .materials-hero,
+  .material-detail-hero,
+  .quote-work-title-head,
+  .workshop-calc-panel > .app-dark-tool-head
+) :is(.clients-title-icon, .clients-create-icon) svg,
+:is(
+  .app-dark-page-head,
+  .modern-list-head.modern-client-orders-head,
+  .clients-page-modern > form.clients-create-card:first-child,
+  .modern-page > form.clients-create-card.modern-form-card:first-child,
+  .materials-hero,
+  .material-detail-hero,
+  .quote-work-title-head,
+  .workshop-calc-panel > .app-dark-tool-head
+) :is(.clients-title-icon, .clients-create-icon) svg *{
+  stroke:var(--header-icon-color) !important;
+  fill:none !important;
+  opacity:1 !important;
+}
+
 @media (max-width:1100px){
   .quote-list-grid{
     grid-template-columns:repeat(2, minmax(0, 1fr));
