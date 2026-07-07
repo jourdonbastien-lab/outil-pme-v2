@@ -2645,6 +2645,12 @@ button:hover {
   align-items:start;
 }
 
+.prototype-side-stack{
+  display:grid;
+  gap:12px;
+  min-width:0;
+}
+
 .prototype-panel{
   min-width:0;
   padding:18px;
@@ -2924,6 +2930,103 @@ button:hover {
   font-weight:900;
 }
 
+.prototype-weather-card{
+  display:grid;
+  gap:14px;
+}
+
+.prototype-weather-head{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.prototype-weather-icon{
+  display:grid;
+  place-items:center;
+  flex:0 0 44px;
+  width:44px;
+  height:44px;
+  border-radius:15px;
+  background:#fff3e6;
+  color:#c75f00;
+}
+
+.prototype-weather-icon svg{
+  width:25px;
+  height:25px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.prototype-weather-head h2{
+  margin:0;
+  color:#111827;
+  font-size:18px;
+}
+
+.prototype-weather-head small{
+  display:block;
+  margin-top:3px;
+  color:#6b7280;
+  font-size:12px;
+  font-weight:800;
+}
+
+.prototype-weather-content{
+  display:grid;
+  gap:12px;
+}
+
+.prototype-weather-main{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.prototype-weather-main strong{
+  color:#111827;
+  font-size:34px;
+  line-height:1;
+}
+
+.prototype-weather-main span{
+  color:#6b7280;
+  font-size:13px;
+  font-weight:900;
+  text-align:right;
+}
+
+.prototype-weather-meta,
+.prototype-weather-forecast{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:8px;
+}
+
+.prototype-weather-meta span,
+.prototype-weather-forecast span{
+  min-width:0;
+  padding:10px;
+  border-radius:14px;
+  background:#f9fafb;
+  color:#6b7280;
+  font-size:12px;
+  font-weight:800;
+}
+
+.prototype-weather-meta strong,
+.prototype-weather-forecast strong{
+  display:block;
+  margin-top:4px;
+  color:#111827;
+  font-size:14px;
+}
+
 .prototype-panel h3{
   margin:16px 0 8px;
   color:#111827;
@@ -3109,6 +3212,10 @@ button:hover {
     grid-template-columns:1fr;
   }
 
+  .prototype-side-stack{
+    gap:12px;
+  }
+
   .prototype-kpi-grid{
     grid-template-columns:repeat(2, minmax(0, 1fr));
     gap:10px;
@@ -3213,6 +3320,15 @@ button:hover {
 
   .prototype-today-stat small{
     font-size:17px;
+  }
+
+  .prototype-weather-main strong{
+    font-size:30px;
+  }
+
+  .prototype-weather-meta,
+  .prototype-weather-forecast{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
   }
 
   .prototype-quote-item{

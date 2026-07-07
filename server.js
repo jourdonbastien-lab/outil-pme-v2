@@ -2205,16 +2205,85 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
             </div>
           </article>
 
-          <article class="prototype-panel prototype-today-panel">
-            <div class="prototype-panel-head">
-              <h2>À faire aujourd’hui</h2>
-            </div>
-            <div class="prototype-today-grid">
-              ${todaySummary}
-            </div>
-          </article>
+          <aside class="prototype-side-stack">
+            <article class="prototype-panel prototype-today-panel">
+              <div class="prototype-panel-head">
+                <h2>À faire aujourd’hui</h2>
+              </div>
+              <div class="prototype-today-grid">
+                ${todaySummary}
+              </div>
+            </article>
+
+            <article class="prototype-panel prototype-weather-card" data-weather-card aria-live="polite">
+              <div class="prototype-weather-head">
+                <span class="prototype-weather-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M7 16.5h9a4 4 0 0 0 .7-7.9A6 6 0 0 0 5.5 10.2 3.3 3.3 0 0 0 7 16.5z"/>
+                    <path d="M8 20h8M10 22h4"/>
+                  </svg>
+                </span>
+                <div>
+                  <h2>Météo Riaillé</h2>
+                  <small data-weather-status>Chargement météo...</small>
+                </div>
+              </div>
+
+              <div class="prototype-weather-content" data-weather-content hidden>
+                <div class="prototype-weather-main">
+                  <strong data-weather-temp>—</strong>
+                  <span data-weather-condition>—</span>
+                </div>
+                <div class="prototype-weather-meta">
+                  <span>Pluie <strong data-weather-rain>—</strong></span>
+                  <span>Vent <strong data-weather-wind>—</strong></span>
+                </div>
+                <div class="prototype-weather-forecast">
+                  <span>Aujourd’hui <strong data-weather-today>—</strong></span>
+                  <span>Demain <strong data-weather-tomorrow>—</strong></span>
+                </div>
+              </div>
+            </article>
+          </aside>
         </section>
       </div>
+      <script>
+        (function(){
+          const card = document.querySelector('[data-weather-card]');
+          if (!card) return;
+          const status = card.querySelector('[data-weather-status]');
+          const content = card.querySelector('[data-weather-content]');
+          const setText = function(selector, value) {
+            const el = card.querySelector(selector);
+            if (el) el.textContent = value;
+          };
+          const unavailable = function() {
+            if (status) status.textContent = 'Météo indisponible';
+            if (content) content.hidden = true;
+          };
+
+          fetch('/api/weather', { headers: { Accept: 'application/json' } })
+            .then(function(response) {
+              if (!response.ok) throw new Error('weather');
+              return response.json();
+            })
+            .then(function(data) {
+              if (!data || !data.ok) throw new Error('weather');
+              const current = data.current || {};
+              const today = data.today || {};
+              const tomorrow = data.tomorrow || {};
+              setText('[data-weather-temp]', current.temperature === null || current.temperature === undefined ? '—' : current.temperature + '°C');
+              setText('[data-weather-condition]', current.condition || '—');
+              setText('[data-weather-rain]', today.precipitation === null || today.precipitation === undefined ? '—' : today.precipitation + ' mm');
+              setText('[data-weather-wind]', current.wind === null || current.wind === undefined ? '—' : current.wind + ' km/h');
+              setText('[data-weather-today]', (today.temperatureMin === null || today.temperatureMin === undefined ? '—' : today.temperatureMin + '°') + ' / ' + (today.temperatureMax === null || today.temperatureMax === undefined ? '—' : today.temperatureMax + '°'));
+              setText('[data-weather-tomorrow]', (tomorrow.temperatureMin === null || tomorrow.temperatureMin === undefined ? '—' : tomorrow.temperatureMin + '°') + ' / ' + (tomorrow.temperatureMax === null || tomorrow.temperatureMax === undefined ? '—' : tomorrow.temperatureMax + '°'));
+              if (status) status.textContent = current.condition || 'Météo actuelle';
+              if (content) content.hidden = false;
+            })
+            .catch(unavailable);
+        })();
+      </script>
       `
     )
   );
@@ -2222,6 +2291,78 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
 
 app.get('/dashboard/prototype', requireLogin, (req, res) => {
   res.redirect('/dashboard-prototype');
+});
+
+function weatherConditionLabel(code) {
+  const n = Number(code);
+  if ([0].includes(n)) return 'Ciel dégagé';
+  if ([1, 2, 3].includes(n)) return 'Nuageux';
+  if ([45, 48].includes(n)) return 'Brouillard';
+  if ([51, 53, 55, 56, 57].includes(n)) return 'Bruine';
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(n)) return 'Pluie';
+  if ([71, 73, 75, 77, 85, 86].includes(n)) return 'Neige';
+  if ([95, 96, 99].includes(n)) return 'Orage';
+  return 'Météo variable';
+}
+
+function roundWeatherValue(value, decimals = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const factor = 10 ** decimals;
+  return Math.round(n * factor) / factor;
+}
+
+app.get('/api/weather', requireLogin, async (req, res) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4500);
+
+  try {
+    const params = new URLSearchParams({
+      latitude: '47.52',
+      longitude: '-1.29',
+      timezone: 'Europe/Paris',
+      forecast_days: '2',
+      current: 'temperature_2m,weather_code,wind_speed_10m,precipitation',
+      daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max',
+    });
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return res.status(502).json({ ok: false, error: 'Météo indisponible' });
+    }
+
+    const data = await response.json();
+    const current = data.current || {};
+    const daily = data.daily || {};
+    const dayAt = (index) => ({
+      date: daily.time?.[index] || null,
+      condition: weatherConditionLabel(daily.weather_code?.[index]),
+      temperatureMax: roundWeatherValue(daily.temperature_2m_max?.[index]),
+      temperatureMin: roundWeatherValue(daily.temperature_2m_min?.[index]),
+      precipitation: roundWeatherValue(daily.precipitation_sum?.[index], 1),
+      windMax: roundWeatherValue(daily.wind_speed_10m_max?.[index]),
+    });
+
+    res.json({
+      ok: true,
+      location: 'Riaillé',
+      current: {
+        temperature: roundWeatherValue(current.temperature_2m),
+        condition: weatherConditionLabel(current.weather_code),
+        precipitation: roundWeatherValue(current.precipitation, 1),
+        wind: roundWeatherValue(current.wind_speed_10m),
+      },
+      today: dayAt(0),
+      tomorrow: dayAt(1),
+    });
+  } catch (err) {
+    res.status(503).json({ ok: false, error: 'Météo indisponible' });
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 
