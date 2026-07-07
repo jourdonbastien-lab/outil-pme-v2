@@ -803,7 +803,7 @@ function renderAuthPage({ title, body }) {
 <body class="login-body">
   <div class="login-wrapper">
     <div class="login-card">
-      <div class="login-logo">A2 METAL</div>
+      <div class="login-logo">A2 MÉTAL</div>
       ${body}
     </div>
   </div>
@@ -814,9 +814,9 @@ function renderAuthPage({ title, body }) {
 
 function renderMfaEmailPage(error = '') {
   return renderAuthPage({
-    title: 'Vérification e-mail',
+    title: 'Vérification email',
     body: `
-      <h1>Vérification e-mail</h1>
+      <h1>Vérification email</h1>
       <p class="login-help">Saisissez une adresse e-mail autorisée pour recevoir votre code.</p>
       ${error ? `<p class="login-error">${escHtml(error)}</p>` : ''}
       <form method="POST" action="/login/email">
@@ -831,7 +831,7 @@ function renderMfaEmailPage(error = '') {
         <button type="submit">Envoyer le code</button>
       </form>
       <form method="GET" action="/logout" class="login-secondary-form">
-        <button type="submit" class="btn-secondary">Annuler</button>
+        <button type="submit" class="btn-secondary">Retour à la connexion</button>
       </form>
     `
   });
@@ -841,8 +841,8 @@ function renderMfaCodePage(error = '') {
   return renderAuthPage({
     title: 'Code de vérification',
     body: `
-      <h1>Code de vérification</h1>
-      <p class="login-help">Entrez le code à 6 chiffres reçu par e-mail.</p>
+      <h1>Vérification email</h1>
+      <p class="login-help">Un code de sécurité vous a été envoyé par email.</p>
       ${error ? `<p class="login-error">${escHtml(error)}</p>` : ''}
       <form method="POST" action="/login/code">
         <label for="code">Code</label>
@@ -857,11 +857,12 @@ function renderMfaCodePage(error = '') {
           maxlength="6"
           required
         />
-        <button type="submit">Valider</button>
+        <button type="submit">Valider le code</button>
       </form>
       <form method="POST" action="/login/email" class="login-secondary-form">
         <button type="submit" class="btn-secondary">Renvoyer un code</button>
       </form>
+      <a class="login-back-link" href="/logout">Retour à la connexion</a>
     `
   });
 }
