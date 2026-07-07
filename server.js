@@ -3841,6 +3841,7 @@ app.get('/orders/clients', requireLogin, (req, res) => {
             const safeClientFolder = safeName(o.name);
             const orderFolderName = safeName(o.description && o.description.trim() !== '' ? o.description : `Commande_${o.id}`);
             const clientFolderUrl = `/pc-folders/${encodeURIComponent(safeClientFolder)}/${encodeURIComponent(orderFolderName)}`;
+            const chantierHoursUrl = `${clientFolderUrl}/Heure%20chantier`;
 
             const dateLabel = (o.date || '').slice(0, 10);
             const priceLabel = (o.price || 0).toFixed(2) + ' €';
@@ -3850,7 +3851,7 @@ const realMinutes = db.prepare(`
   FROM chantier_hours
   WHERE client = ?
   AND order_name = ?
-`).get(o.name, o.description);
+`).get(safeClientFolder, orderFolderName);
 
 const actualHours =
   Number(realMinutes.total || 0) / 60;
@@ -3880,6 +3881,7 @@ const isLate = endDate && endDate < todayIso;
                 <div class="modern-client-order-row">
                   <span class="chantier-status ${chantierStatusClass(chantierStatus)}">${escHtml(chantierStatus)}</span>
                   <strong>${progress}%</strong>
+                  <span class="modern-client-order-hours-total">${actualHours.toFixed(1)} h</span>
                   ${isLate ? '<span class="modern-late-badge">Retard</span>' : ''}
                 </div>
 
@@ -3891,6 +3893,11 @@ const isLate = endDate && endDate < todayIso;
                   <a class="modern-client-order-open" href="${clientFolderUrl}">
                     ${clientPageIcon('folder', 'modern-client-order-open-icon')}
                     <span>Ouvrir</span>
+                    <b aria-hidden="true">›</b>
+                  </a>
+                  <a class="modern-client-order-open modern-client-order-hours-link" href="${chantierHoursUrl}">
+                    ${pcFolderIcon('Heure chantier', 'modern-client-order-open-icon')}
+                    <span>Heures</span>
                     <b aria-hidden="true">›</b>
                   </a>
                   <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');">
@@ -4424,6 +4431,7 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
         `;
       })()
     : '';
+  const chantierHoursUrl = `/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/Heure%20chantier`;
 
   const content = `
     <div class="pc-modern-page">
@@ -4436,6 +4444,10 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
         <div class="pc-modern-actions pc-order-hero-actions">
           ${chantierHeroControl}
           <div class="pc-order-hero-links">
+            <a class="pc-order-hero-link pc-order-hours-link" href="${chantierHoursUrl}">
+              ${pcFolderIcon('Heure chantier', 'pc-order-hero-link-icon')}
+              Saisir des heures
+            </a>
             <a class="pc-order-hero-link" href="/pc-folders/${encodeURIComponent(client)}">
               ${clientPageIcon('clients', 'pc-order-hero-link-icon')}
               Client

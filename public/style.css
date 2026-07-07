@@ -715,6 +715,14 @@ button {
   gap:8px;
 }
 
+.pc-order-hours-link{
+  grid-column:1 / -1;
+  min-height:42px;
+  border-color:rgba(249,115,22,.35);
+  background:rgba(249,115,22,.16);
+  color:#fff;
+}
+
 .pc-order-hero-link{
   display:inline-flex;
   align-items:center;
@@ -4036,6 +4044,7 @@ button:hover {
   align-items:center;
   justify-content:space-between;
   gap:8px;
+  flex-wrap:wrap;
 }
 
 .modern-client-order-row strong{
@@ -4052,6 +4061,18 @@ button:hover {
   border-radius:999px;
   background:#fee2e2;
   color:#991b1b;
+  font-size:12px;
+  font-weight:900;
+}
+
+.modern-client-order-hours-total{
+  display:inline-flex;
+  align-items:center;
+  min-height:28px;
+  padding:5px 9px;
+  border-radius:999px;
+  background:#f8fafc;
+  color:#334155;
   font-size:12px;
   font-weight:900;
 }
@@ -4097,6 +4118,11 @@ button:hover {
 .modern-client-order-open:hover,
 .modern-client-order-open:focus{
   border-color:#fed7aa;
+  background:#fff7ed;
+}
+
+.modern-client-order-hours-link{
+  border-color:#ffedd5;
   background:#fff7ed;
 }
 
@@ -7699,7 +7725,7 @@ body.sketchpad-drawing{
 
   .modern-client-order-actions{
     display:grid;
-    grid-template-columns:auto minmax(0, 1fr);
+    grid-template-columns:auto auto minmax(0, 1fr);
     gap:8px;
   }
 
