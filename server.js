@@ -3807,7 +3807,11 @@ const isLate = endDate && endDate < todayIso;
                 </div>
 
                 <div class="modern-client-order-actions">
-                  <a class="modern-secondary-btn" href="${clientFolderUrl}">Ouvrir</a>
+                  <a class="modern-client-order-open" href="${clientFolderUrl}">
+                    ${clientPageIcon('folder', 'modern-client-order-open-icon')}
+                    <span>Ouvrir</span>
+                    <b aria-hidden="true">›</b>
+                  </a>
                   <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');">
                     <input type="hidden" name="id" value="${o.id}" />
                     <button type="submit" class="modern-order-done-btn" title="Terminer">${clientPageIcon('check', 'modern-action-icon')} Terminer</button>

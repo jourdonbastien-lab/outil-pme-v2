@@ -3818,6 +3818,60 @@ button:hover {
   align-items:center;
 }
 
+.modern-client-order-open{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+  gap:7px;
+  min-height:34px;
+  padding:0 11px;
+  border:1px solid #e5e7eb;
+  border-radius:999px;
+  background:#fff;
+  color:#101827;
+  font-size:13px;
+  font-weight:900;
+  line-height:1;
+  text-decoration:none;
+  box-shadow:0 5px 12px rgba(15,23,42,.05);
+}
+
+.modern-client-order-open:hover,
+.modern-client-order-open:focus,
+.modern-client-order-open:visited{
+  color:#101827;
+  text-decoration:none;
+}
+
+.modern-client-order-open:hover,
+.modern-client-order-open:focus{
+  border-color:#fed7aa;
+  background:#fff7ed;
+}
+
+.modern-client-order-open-icon{
+  display:grid;
+  place-items:center;
+  color:#f97316;
+}
+
+.modern-client-order-open-icon svg{
+  width:16px;
+  height:16px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.modern-client-order-open b{
+  color:#f97316;
+  font-size:15px;
+  line-height:1;
+}
+
 .modern-client-order-actions form{
   margin:0;
 }
@@ -4719,6 +4773,89 @@ button:hover {
 .modern-danger-btn{
   background:#fee2e2;
   color:#991b1b;
+}
+
+/* Liens d'action affichés comme boutons */
+a.btn,
+a.btn-primary,
+a.btn-secondary,
+a.dash-card-button,
+a.clients-submit-btn,
+a.client-card-link,
+a.modern-client-order-new-link,
+a.modern-client-order-open,
+a.modern-secondary-btn,
+a.modern-danger-btn,
+a.pc-modern-card-link,
+a.pc-modern-open,
+a.material-list-link,
+a.quote-list-link,
+a.chantier-open-btn,
+a.measurement-link-badge,
+a.mobile-bottom-item,
+.mobile-sheet-links a,
+.bottom-sheet a{
+  text-decoration:none;
+}
+
+a.btn:hover,
+a.btn:focus,
+a.btn:visited,
+a.btn-primary:hover,
+a.btn-primary:focus,
+a.btn-primary:visited,
+a.btn-secondary:hover,
+a.btn-secondary:focus,
+a.btn-secondary:visited,
+a.dash-card-button:hover,
+a.dash-card-button:focus,
+a.dash-card-button:visited,
+a.clients-submit-btn:hover,
+a.clients-submit-btn:focus,
+a.clients-submit-btn:visited,
+a.client-card-link:hover,
+a.client-card-link:focus,
+a.client-card-link:visited,
+a.modern-client-order-new-link:hover,
+a.modern-client-order-new-link:focus,
+a.modern-client-order-new-link:visited,
+a.modern-client-order-open:hover,
+a.modern-client-order-open:focus,
+a.modern-client-order-open:visited,
+a.modern-secondary-btn:hover,
+a.modern-secondary-btn:focus,
+a.modern-secondary-btn:visited,
+a.modern-danger-btn:hover,
+a.modern-danger-btn:focus,
+a.modern-danger-btn:visited,
+a.pc-modern-card-link:hover,
+a.pc-modern-card-link:focus,
+a.pc-modern-card-link:visited,
+a.pc-modern-open:hover,
+a.pc-modern-open:focus,
+a.pc-modern-open:visited,
+a.material-list-link:hover,
+a.material-list-link:focus,
+a.material-list-link:visited,
+a.quote-list-link:hover,
+a.quote-list-link:focus,
+a.quote-list-link:visited,
+a.chantier-open-btn:hover,
+a.chantier-open-btn:focus,
+a.chantier-open-btn:visited,
+a.measurement-link-badge:hover,
+a.measurement-link-badge:focus,
+a.measurement-link-badge:visited,
+a.mobile-bottom-item:hover,
+a.mobile-bottom-item:focus,
+a.mobile-bottom-item:visited,
+.mobile-sheet-links a:hover,
+.mobile-sheet-links a:focus,
+.mobile-sheet-links a:visited,
+.bottom-sheet a:hover,
+.bottom-sheet a:focus,
+.bottom-sheet a:visited{
+  text-decoration:none;
 }
 
 .modern-invoice-badge{
@@ -5926,17 +6063,26 @@ button:hover {
 
   .modern-client-order-actions{
     display:grid;
-    grid-template-columns:1fr 1fr;
+    grid-template-columns:auto minmax(0, 1fr);
     gap:8px;
   }
 
-  .modern-client-order-actions .modern-secondary-btn,
+  .modern-client-order-open,
   .modern-order-done-btn{
     min-height:40px;
     padding:0 10px;
   }
 
+  .modern-client-order-open{
+    justify-self:start;
+    min-width:0;
+  }
+
   .modern-client-order-actions form{
+    width:100%;
+  }
+
+  .modern-order-done-btn{
     width:100%;
   }
 
