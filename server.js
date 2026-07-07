@@ -624,6 +624,8 @@ const quotePhotoStorage = multer.diskStorage({
 
       const dir = safeResolveInside(QUOTE_PHOTO_DIR, String(quoteId));
       ensureDir(dir);
+      req.quotePhotoDir = dir;
+      console.log('UPLOAD DEVIS DESTINATION', { id: req.params.id, dir });
 
       cb(null, dir);
     } catch (e) {
@@ -633,6 +635,7 @@ const quotePhotoStorage = multer.diskStorage({
 
   filename(req, file, cb) {
     const safeFileName = `${Date.now()}-${safeSegment(file.originalname || 'fichier')}`;
+    req.quotePhotoFilename = safeFileName;
     cb(null, safeFileName);
 
   }
@@ -5211,9 +5214,28 @@ app.post('/devis/:id/photo', requireLogin, (req, res) => {
   quotePhotoUpload.single('photo')(req, res, (err) => {
     const quoteId = Number(req.params.id || 0);
     if (!Number.isFinite(quoteId) || quoteId <= 0) return res.status(400).send('ID devis invalide');
+    console.log('UPLOAD DEVIS', { id: req.params.id, file: req.file, body: req.body });
     if (err) {
       console.error('Erreur upload fichier devis:', err);
       return res.status(400).send('Impossible d’ajouter ce fichier au devis.');
+    }
+    if (!req.file) {
+      console.warn('UPLOAD DEVIS SANS FICHIER', { id: req.params.id, body: req.body });
+      return res.status(400).send('Aucun fichier reçu. Vérifiez que le champ fichier du formulaire est bien renseigné.');
+    }
+
+    const savedPath = req.file.path || safeResolveInside(QUOTE_PHOTO_DIR, String(quoteId), req.file.filename);
+    console.log('UPLOAD DEVIS FICHIER SAUVEGARDE', {
+      id: quoteId,
+      destination: req.file.destination,
+      filename: req.file.filename,
+      path: savedPath,
+      exists: fs.existsSync(savedPath),
+      size: req.file.size,
+    });
+
+    if (!fs.existsSync(savedPath)) {
+      return res.status(500).send('Le fichier a été reçu mais n’a pas été retrouvé sur le disque.');
     }
 
     res.redirect('/devis/' + quoteId);
@@ -5224,13 +5246,15 @@ app.get('/devis/:id', requireLogin, (req, res) => {
 
   const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(id);
   if (!quote) return res.status(404).send('Devis introuvable');
-const photoDir =
-  path.join(QUOTE_PHOTO_DIR, String(id));
+const photoDir = safeResolveInside(QUOTE_PHOTO_DIR, String(id));
+console.log('LECTURE FICHIERS DEVIS', { id, photoDir, exists: fs.existsSync(photoDir) });
 
-const photos =
-  fs.existsSync(photoDir)
-    ? fs.readdirSync(photoDir)
-    : [];
+const photos = fs.existsSync(photoDir)
+  ? fs.readdirSync(photoDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))
+  : [];
 const photosHtml = photos.map(photo => {
   const fileUrl = `/quote-photos/${id}/${encodeURIComponent(photo)}`;
   const lower = photo.toLowerCase();
@@ -6230,7 +6254,7 @@ ${lines.length ? lines.map(l => `
     </div>
 
     <form method="POST" action="/devis/${id}/photo" enctype="multipart/form-data" class="quote-photo-form">
-      <input type="file" name="photo" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+      <input type="file" name="photo" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" required>
       <button type="submit" class="modern-secondary-btn">Ajouter</button>
     </form>
 
