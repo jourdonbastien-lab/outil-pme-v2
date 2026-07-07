@@ -5738,7 +5738,8 @@ button:hover {
   }
 
   .mobile-sheet-links a{
-    display:flex;
+    display:grid;
+    grid-template-columns:24px minmax(0, 1fr);
     align-items:center;
     gap:10px;
     min-height:46px;
@@ -5761,6 +5762,13 @@ button:hover {
   .mobile-sheet-links a .mobile-bottom-icon svg{
     width:21px;
     height:21px;
+  }
+
+  .mobile-sheet-links a span:last-child{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
   }
 
   .mobile-sheet-cancel{

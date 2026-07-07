@@ -1113,7 +1113,14 @@ function mobileNavIcon(name) {
     more: '<path d="M6 12h.01M12 12h.01M18 12h.01"/>',
     tasks: '<path d="M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="m8 12 2.5 2.5L16 9"/>',
     orders: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h8M8 15h5"/>',
+    clientOrders: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h8M8 15h5"/>',
+    supplierOrders: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><path d="M6.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
+    quotes: '<path d="M7 3h7l4 4v14H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h4M9 12h6M9 16h6"/>',
     measurements: '<path d="M4 17 17 4l3 3L7 20z"/><path d="m14 7 3 3M11 10l2 2M8 13l3 3"/>',
+    materials: '<path d="M4 8 12 4l8 4-8 4z"/><path d="m4 12 8 4 8-4"/><path d="m4 16 8 4 8-4"/>',
+    logibarre: '<path d="M4 14h16"/><path d="M6 10h12"/><path d="M8 18h8"/><path d="M5 14v3M19 11v3"/>',
+    logitole: '<path d="M5 5h14v14H5z"/><path d="M8 8h8v8H8z"/><path d="M5 12h3M16 12h3"/>',
+    logout: '<path d="M10 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path d="M14 8l4 4-4 4"/><path d="M18 12H9"/>',
   };
   const svg = icons[name] || icons.more;
   return `<span class="mobile-bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false">${svg}</svg></span>`;
@@ -1175,23 +1182,23 @@ function pageTemplate(req, title, content) {
   const mobileMoreLinks = isAtelier
     ? [
         { href: '/tasks', label: 'Tâches', icon: 'tasks' },
-        { href: '/orders/clients', label: 'Commandes clients' },
-        { href: '/orders/suppliers', label: 'Commandes fournisseurs' },
-        { href: '/outils/prises-cotes', label: 'Prises de cotes' },
-        { href: '/outils/logibarre', label: 'LogiBarre' },
-        { href: '/outils/logitole', label: 'LogiTôle' },
-        { href: '/logout', label: 'Déconnexion' }
+        { href: '/orders/clients', label: 'Commandes clients', icon: 'clientOrders' },
+        { href: '/orders/suppliers', label: 'Commandes fournisseurs', icon: 'supplierOrders' },
+        { href: '/outils/prises-cotes', label: 'Prises de cotes', icon: 'measurements' },
+        { href: '/outils/logibarre', label: 'LogiBarre', icon: 'logibarre' },
+        { href: '/outils/logitole', label: 'LogiTôle', icon: 'logitole' },
+        { href: '/logout', label: 'Déconnexion', icon: 'logout' }
       ]
     : [
         { href: '/tasks', label: 'Tâches', icon: 'tasks' },
-        { href: '/devis', label: 'Devis' },
-        { href: '/orders/clients', label: 'Commandes clients' },
-        { href: '/orders/suppliers', label: 'Commandes fournisseurs' },
-        { href: '/outils/prises-cotes', label: 'Prises de cotes' },
-        { href: '/materials', label: 'Bibliothèque matière' },
-        { href: '/outils/logibarre', label: 'LogiBarre' },
-        { href: '/outils/logitole', label: 'LogiTôle' },
-        { href: '/logout', label: 'Déconnexion' }
+        { href: '/devis', label: 'Devis', icon: 'quotes' },
+        { href: '/orders/clients', label: 'Commandes clients', icon: 'clientOrders' },
+        { href: '/orders/suppliers', label: 'Commandes fournisseurs', icon: 'supplierOrders' },
+        { href: '/outils/prises-cotes', label: 'Prises de cotes', icon: 'measurements' },
+        { href: '/materials', label: 'Bibliothèque matière', icon: 'materials' },
+        { href: '/outils/logibarre', label: 'LogiBarre', icon: 'logibarre' },
+        { href: '/outils/logitole', label: 'LogiTôle', icon: 'logitole' },
+        { href: '/logout', label: 'Déconnexion', icon: 'logout' }
       ];
   const renderBottomItem = (item) => {
     if (item.href) {
