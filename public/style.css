@@ -3614,18 +3614,204 @@ button:hover {
   background:#0ea5e9;
   color:white;
 }
+/* =========================
+   Clients modernisés
+   ========================= */
+
+.clients-page-modern{
+  display:grid;
+  gap:16px;
+}
+
+.clients-create-card,
+.clients-list-card{
+  padding:20px;
+  border:1px solid #e5e7eb;
+  border-radius:24px;
+  background:#fff;
+  box-shadow:0 10px 30px rgba(15,23,42,.07);
+}
+
+.clients-create-head{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:18px;
+}
+
+.clients-create-head h1{
+  margin:0;
+  color:#111827;
+  font-size:24px;
+  line-height:1.15;
+}
+
+.clients-title-icon{
+  display:grid;
+  place-items:center;
+  flex:0 0 44px;
+  width:44px;
+  height:44px;
+  border-radius:15px;
+  background:#fff3e6;
+  color:#c75f00;
+}
+
+.clients-title-icon svg,
+.clients-ui-icon svg,
+.client-info-icon svg,
+.client-source-icon svg,
+.client-delete-icon svg,
+.clients-submit-icon svg{
+  width:20px;
+  height:20px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.clients-form-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:13px;
+}
+
+.clients-field{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-width:0;
+}
+
+.clients-field-wide{
+  grid-column:1 / -1;
+}
+
+.clients-field > span{
+  color:#374151;
+  font-size:13px;
+  font-weight:900;
+}
+
+.clients-input-shell,
+.clients-search-shell{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-height:50px;
+  padding:0 14px;
+  border:1px solid #d9dee7;
+  border-radius:16px;
+  background:#f9fafb;
+  color:#c75f00;
+}
+
+.clients-input-shell:focus-within,
+.clients-search-shell:focus-within{
+  border-color:#ff7a00;
+  background:#fff;
+  box-shadow:0 0 0 4px rgba(255,122,0,.12);
+}
+
+.clients-input-shell input,
+.clients-search-shell input{
+  width:100%;
+  min-width:0;
+  border:0;
+  outline:0;
+  background:transparent;
+  color:#111827;
+  font-size:16px;
+}
+
+.clients-input-shell input::placeholder,
+.clients-search-shell input::placeholder{
+  color:#9ca3af;
+}
+
+.clients-submit-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  width:100%;
+  min-height:52px;
+  margin-top:16px;
+  border:0;
+  border-radius:999px;
+  background:#ff7a00;
+  color:#111827;
+  font-weight:900;
+  cursor:pointer;
+  box-shadow:0 12px 24px rgba(255,122,0,.24);
+}
+
+.clients-submit-btn > span{
+  display:grid;
+  place-items:center;
+  width:28px;
+  height:28px;
+  border-radius:50%;
+  background:rgba(255,255,255,.32);
+}
+
+.clients-submit-icon{
+  display:grid;
+  place-items:center;
+  color:#111827;
+}
+
+.clients-list-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:14px;
+}
+
+.clients-list-head h2{
+  margin:0;
+  color:#111827;
+  font-size:24px;
+}
+
+.clients-list-head span{
+  display:block;
+  margin-top:4px;
+  color:#6b7280;
+  font-size:13px;
+  font-weight:800;
+}
+
+.clients-list-head strong{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:42px;
+  height:34px;
+  padding:0 12px;
+  border-radius:999px;
+  background:#fff3e6;
+  color:#c75f00;
+  font-size:15px;
+}
+
 .client-card-modern{
   position:relative;
   background:#fff;
-  border-radius:18px;
+  border:1px solid #e5e7eb;
+  border-radius:20px;
   padding:18px;
-  box-shadow:0 4px 14px rgba(0,0,0,.08);
+  box-shadow:0 8px 24px rgba(15,23,42,.06);
   transition:.2s;
+  overflow:hidden;
 }
 
 .client-card-modern:hover{
   transform:translateY(-2px);
-  box-shadow:0 8px 20px rgba(0,0,0,.12);
+  box-shadow:0 14px 28px rgba(15,23,42,.10);
 }
 
 .client-card-link{
@@ -3637,55 +3823,150 @@ button:hover {
 .client-header{
   display:flex;
   justify-content:space-between;
-  align-items:center;
+  align-items:flex-start;
+  gap:12px;
   margin-bottom:12px;
 }
 
 .client-name{
   font-size:20px;
-  font-weight:700;
-  color:#1f2937;
+  font-weight:900;
+  color:#111827;
+  overflow-wrap:anywhere;
 }
 
 .client-source{
-  background:#f3f4f6;
-  padding:4px 10px;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  flex-shrink:0;
+  background:#fff3e6;
+  color:#9a4a00;
+  padding:5px 9px;
   border-radius:999px;
-  font-size:12px;
+  font-size:11px;
+  font-weight:900;
+}
+
+.client-source-icon,
+.client-info-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  color:#c75f00;
+}
+
+.client-source-icon svg{
+  width:14px;
+  height:14px;
 }
 
 .client-infos{
   display:flex;
   flex-direction:column;
-  gap:8px;
+  gap:9px;
   color:#6b7280;
   font-size:14px;
+  font-weight:700;
+}
+
+.client-infos div{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+
+.client-info-icon svg{
+  width:17px;
+  height:17px;
 }
 
 .client-delete-btn{
   position:absolute;
-  top:12px;
   right:12px;
-
-  width:36px;
-  height:36px;
-
+  bottom:12px;
+  display:grid;
+  place-items:center;
+  width:34px;
+  height:34px;
   border:none;
   border-radius:50%;
-
-  background:#ef4444;
-  color:#fff;
-
+  background:#fee2e2;
+  color:#b91c1c;
   cursor:pointer;
+  z-index:3;
 }
 
 .client-delete-btn:hover{
-  background:#dc2626;
+  background:#fecaca;
+}
+
+.client-delete-icon{
+  display:grid;
+  place-items:center;
+}
+
+.client-delete-icon svg{
+  width:17px;
+  height:17px;
 }
 .cards-grid{
   display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
   gap:16px;
+}
+
+@media (max-width:768px){
+  .clients-page-modern{
+    gap:12px;
+  }
+
+  .clients-create-card,
+  .clients-list-card{
+    padding:16px;
+    border-radius:20px;
+  }
+
+  .clients-create-head h1,
+  .clients-list-head h2{
+    font-size:22px;
+  }
+
+  .clients-form-grid{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+
+  .clients-field-wide{
+    grid-column:auto;
+  }
+
+  .clients-input-shell,
+  .clients-search-shell{
+    min-height:50px;
+    border-radius:15px;
+  }
+
+  .clients-submit-btn{
+    min-height:52px;
+  }
+
+  .cards-grid{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+
+  .client-card-modern{
+    padding:16px;
+    border-radius:18px;
+  }
+
+  .client-name{
+    font-size:19px;
+    padding-right:4px;
+  }
 }
 .quote-photo-card{
   display:flex;

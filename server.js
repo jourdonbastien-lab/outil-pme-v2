@@ -1104,6 +1104,24 @@ function mobileNavIcon(name) {
   return `<span class="mobile-bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false">${svg}</svg></span>`;
 }
 
+function clientPageIcon(name, className = 'clients-ui-icon') {
+  const icons = {
+    add: '<path d="M12 5v14M5 12h14"/>',
+    user: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><path d="M4 20a8 8 0 0 1 16 0"/>',
+    mail: '<path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>',
+    location: '<path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11z"/><path d="M12 11.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
+    postal: '<path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+    building: '<path d="M6 21V5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v16"/><path d="M9 8h2M13 8h2M9 12h2M13 12h2M9 16h2M13 16h2M4 21h16"/>',
+    phone: '<path d="M8 4h3l1.5 4-2 1.2a10 10 0 0 0 4.3 4.3l1.2-2 4 1.5v3a3 3 0 0 1-3.3 3A15 15 0 0 1 5 7.3 3 3 0 0 1 8 4z"/>',
+    search: '<path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z"/><path d="m20 20-4-4"/>',
+    database: '<path d="M5 6c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3z"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>',
+    folder: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
+    trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  };
+  const svg = icons[name] || icons.user;
+  return `<span class="${className}" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false">${svg}</svg></span>`;
+}
+
 function pageTemplate(req, title, content) {
   const stats = req.navStats || { tasksTodo: 0, eventsToday: 0, clientOrders: 0, supplierOrders: 0 };
 
@@ -3456,22 +3474,23 @@ for (const folder of pcFolders) {
       </div>
 
       <span class="client-source">
-        ${c.source === 'pc' ? '📂 PC' : '🗄️ DB'}
+        ${clientPageIcon(c.source === 'pc' ? 'folder' : 'database', 'client-source-icon')}
+        ${c.source === 'pc' ? 'PC' : 'DB'}
       </span>
     </div>
 
     <div class="client-infos">
 
       ${c.city ? `
-        <div>📍 ${escHtml(c.city)}</div>
+        <div>${clientPageIcon('building', 'client-info-icon')} ${escHtml(c.city)}</div>
       ` : ''}
 
       ${c.phone ? `
-        <div>📞 ${escHtml(c.phone)}</div>
+        <div>${clientPageIcon('phone', 'client-info-icon')} ${escHtml(c.phone)}</div>
       ` : ''}
 
       ${c.email ? `
-        <div>✉️ ${escHtml(c.email)}</div>
+        <div>${clientPageIcon('mail', 'client-info-icon')} ${escHtml(c.email)}</div>
       ` : ''}
 
     </div>
@@ -3486,7 +3505,7 @@ for (const folder of pcFolders) {
     <input type="hidden" name="id" value="${c.id}">
 
     <button class="client-delete-btn">
-      🗑️
+      ${clientPageIcon('trash', 'client-delete-icon')}
     </button>
 
   </form>
@@ -3503,57 +3522,86 @@ for (const folder of pcFolders) {
       req,
       'Clients',
       `
-      <div class="page-head">
-        <h1>Clients</h1>
-      </div>
-
-      <form method="POST" action="/clients" class="orders-form">
-        <h2>Ajouter un client</h2>
-
-        <div class="orders-form-row">
-          <div class="orders-form-field">
-            <label>Nom *</label>
-            <input name="name" required placeholder="Nom du client" />
-          </div>
-          <div class="orders-form-field">
-            <label>Email</label>
-            <input name="email" type="email" placeholder="client@email.com" />
-          </div>
-        </div>
-
-        <div class="orders-form-row">
-          <div class="orders-form-field">
-            <label>Adresse</label>
-            <input name="address" placeholder="Adresse" />
-          </div>
-          <div class="orders-form-field">
-            <label>Code postal</label>
-            <input name="postal_code" placeholder="00000" />
-          </div>
-          <div class="orders-form-field">
-            <label>Ville</label>
-            <input name="city" placeholder="Ville" />
-          </div>
-        </div>
-
-        <div class="orders-form-row">
-          <div class="orders-form-field">
-            <label>Téléphone</label>
-            <input name="phone" placeholder="06…" />
+      <div class="clients-page-modern">
+        <form method="POST" action="/clients" class="clients-create-card">
+          <div class="clients-create-head">
+            ${clientPageIcon('user', 'clients-title-icon')}
+            <h1>Ajouter un client</h1>
           </div>
 
-          <div class="orders-form-actions">
-            <button type="submit">➕ Ajouter le client</button>
-          </div>
-        </div>
-      </form>
+          <div class="clients-form-grid">
+            <label class="clients-field">
+              <span>Nom *</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('user')}
+                <input name="name" required placeholder="Nom du client" />
+              </div>
+            </label>
 
-      ${infoBar(
-        `<div class="kpi"><div class="kpi-label">Clients</div><div class="kpi-value">${merged.length}</div></div>`,
-        `<input id="clientSearch" class="search" placeholder="Rechercher un client…" autocomplete="off" />`
-      )}
+            <label class="clients-field">
+              <span>Email</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('mail')}
+                <input name="email" type="email" placeholder="client@email.com" />
+              </div>
+            </label>
+
+            <label class="clients-field clients-field-wide">
+              <span>Adresse</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('location')}
+                <input name="address" placeholder="Adresse" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Code postal</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('postal')}
+                <input name="postal_code" placeholder="00000" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Ville</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('building')}
+                <input name="city" placeholder="Ville" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Téléphone</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('phone')}
+                <input name="phone" placeholder="06…" />
+              </div>
+            </label>
+          </div>
+
+          <button class="clients-submit-btn" type="submit">
+            <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+            Ajouter le client
+          </button>
+        </form>
+
+        <section class="clients-list-card">
+          <div class="clients-list-head">
+            <div>
+              <h2>Clients</h2>
+              <span>${merged.length} au total</span>
+            </div>
+            <strong>${merged.length}</strong>
+          </div>
+
+          <div class="clients-search-shell">
+            ${clientPageIcon('search')}
+            <input id="clientSearch" class="search" placeholder="Rechercher un client…" autocomplete="off" />
+          </div>
+        </section>
 
       <section class="cards-grid" id="clientsGrid">${cards}</section>
+      </div>
 
       <script>
         (function(){
