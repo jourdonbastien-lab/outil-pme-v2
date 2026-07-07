@@ -1148,6 +1148,7 @@ function clientPageIcon(name, className = 'clients-ui-icon') {
     database: '<path d="M5 6c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3z"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>',
     materials: '<path d="M4 8 12 4l8 4-8 4z"/><path d="m4 12 8 4 8-4"/><path d="m4 16 8 4 8-4"/>',
     logibarre: '<path d="M4 14h16"/><path d="M6 10h12"/><path d="M8 18h8"/><path d="M5 14v3M19 11v3"/>',
+    supplierOrders: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><path d="M6.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
     folder: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   };
@@ -3863,105 +3864,138 @@ const isLate = endDate && endDate < todayIso;
           </a>
         </section>
 
-        <form method="POST" action="/orders/client" class="clients-create-card modern-form-card modern-client-order-form" id="new-client-order">
-          <div class="clients-create-head">
-            ${clientPageIcon('add', 'clients-title-icon')}
-            <h2>Nouvelle commande</h2>
+        <section class="clients-create-card modern-form-card modern-client-order-form modern-client-order-add-card is-collapsed" id="new-client-order" data-client-order-add-card>
+          <button type="button" class="modern-client-order-add-toggle" aria-expanded="false" aria-controls="client-order-add-panel" data-client-order-add-toggle>
+            <span class="modern-client-order-add-title">
+              ${clientPageIcon('add', 'clients-title-icon')}
+              <span>Nouvelle commande</span>
+            </span>
+            <span class="modern-client-order-add-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
+
+          <div class="modern-client-order-add-panel" id="client-order-add-panel" hidden data-client-order-add-panel>
+            <form method="POST" action="/orders/client" class="modern-client-order-add-form">
+              <div class="modern-form-grid">
+                <label class="clients-field">
+                  <span>Client</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('user')}
+                    <input list="pc-clients" name="name" placeholder="Nom du client ou dossier PC" required value="${escHtml(preClient)}" />
+                  </div>
+                </label>
+
+                <label class="clients-field">
+                  <span>Nom / objet commande</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('folder')}
+                    <input name="description" placeholder="Ex : Escalier, portail, garde-corps" />
+                  </div>
+                </label>
+
+                <label class="clients-field">
+                  <span>Statut commande</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('database')}
+                    <select disabled>
+                      <option>En cours</option>
+                    </select>
+                  </div>
+                </label>
+
+                <label class="clients-field">
+                  <span>Statut chantier</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('database')}
+                    <select name="chantier_status">${chantierStatusOptions('À préparer')}</select>
+                  </div>
+                </label>
+
+                <label class="clients-field">
+                  <span>Heures prévues</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('calendar')}
+                    <input type="number" name="planned_hours" min="0" step="0.25" placeholder="0" />
+                  </div>
+                </label>
+
+                <label class="clients-field">
+                  <span>Date commande</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('calendar')}
+                    <input type="date" name="date" />
+                  </div>
+                </label>
+
+                <label class="clients-field">
+                  <span>Date début</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('calendar')}
+                    <input type="date" name="chantier_start_date" />
+                  </div>
+                </label>
+
+                <label class="clients-field">
+                  <span>Date fin prévue</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('calendar')}
+                    <input type="date" name="chantier_end_date" />
+                  </div>
+                </label>
+
+                ${!isAtelier ? `
+                <label class="clients-field">
+                  <span>Prix (€)</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('postal')}
+                    <input type="number" name="price" step="0.01" placeholder="0.00" />
+                  </div>
+                </label>
+                ` : ''}
+              </div>
+
+              <div class="modern-form-actions">
+                <button type="submit" class="clients-submit-btn">
+                  <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+                  Créer la commande
+                </button>
+                <a class="modern-cancel-link" href="/clients">Voir clients</a>
+              </div>
+
+              <datalist id="pc-clients">${pcFoldersOptions}</datalist>
+            </form>
           </div>
-
-          <div class="modern-form-grid">
-            <label class="clients-field">
-              <span>Client</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('user')}
-                <input list="pc-clients" name="name" placeholder="Nom du client ou dossier PC" required value="${escHtml(preClient)}" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Nom / objet commande</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('folder')}
-                <input name="description" placeholder="Ex : Escalier, portail, garde-corps" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Statut commande</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('database')}
-                <select disabled>
-                  <option>En cours</option>
-                </select>
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Statut chantier</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('database')}
-                <select name="chantier_status">${chantierStatusOptions('À préparer')}</select>
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Heures prévues</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('calendar')}
-                <input type="number" name="planned_hours" min="0" step="0.25" placeholder="0" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Date commande</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('calendar')}
-                <input type="date" name="date" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Date début</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('calendar')}
-                <input type="date" name="chantier_start_date" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Date fin prévue</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('calendar')}
-                <input type="date" name="chantier_end_date" />
-              </div>
-            </label>
-
-            ${!isAtelier ? `
-            <label class="clients-field">
-              <span>Prix (€)</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('postal')}
-                <input type="number" name="price" step="0.01" placeholder="0.00" />
-              </div>
-            </label>
-            ` : ''}
-          </div>
-
-          <div class="modern-form-actions">
-            <button type="submit" class="clients-submit-btn">
-              <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-              Créer la commande
-            </button>
-            <a class="modern-cancel-link" href="/clients">Voir clients</a>
-          </div>
-
-          <datalist id="pc-clients">${pcFoldersOptions}</datalist>
-        </form>
+        </section>
 
         <section class="orders-cards-section modern-client-orders-section">
           <div class="modern-client-orders-grid">${cards}</div>
         </section>
       </div>
+      <script>
+        (function(){
+          var card = document.querySelector('[data-client-order-add-card]');
+          if (!card) return;
+          var toggle = card.querySelector('[data-client-order-add-toggle]');
+          var panel = card.querySelector('[data-client-order-add-panel]');
+          if (!toggle || !panel) return;
+          toggle.addEventListener('click', function(){
+            var isOpen = toggle.getAttribute('aria-expanded') === 'true';
+            toggle.setAttribute('aria-expanded', String(!isOpen));
+            if (isOpen) {
+              card.classList.remove('is-open');
+              card.classList.add('is-collapsed');
+              window.setTimeout(function(){
+                if (toggle.getAttribute('aria-expanded') !== 'true') panel.hidden = true;
+              }, 230);
+            } else {
+              panel.hidden = false;
+              window.requestAnimationFrame(function(){
+                card.classList.add('is-open');
+                card.classList.remove('is-collapsed');
+              });
+            }
+          });
+        })();
+      </script>
       `
     )
   );
@@ -4059,86 +4093,132 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
     .prepare('SELECT * FROM supplier_orders ORDER BY date DESC, id DESC')
     .all();
 
-  const rows =
-    orders.length > 0
-      ? orders.map(o => `
-          <tr>
-            <td>${escHtml(o.name)}</td>
-            <td>${escHtml(o.description || '—')}</td>
-            <td>${escHtml((o.date || '').slice(0, 10))}</td>
-            <td>
-              <form method="POST" action="/orders/supplier/delete"
-                    onsubmit="return confirm('Supprimer cette commande ?');">
+  const activeCount = orders.filter((o) => String(o.status || 'En cours') !== 'Terminée').length;
+  const cards = orders.length > 0
+    ? orders.map((o) => {
+        const status = String(o.status || 'En cours');
+        const statusClass = status === 'Terminée' ? 'done' : 'progress';
+        const dateLabel = String(o.date || '').slice(0, 10) || 'Date non renseignée';
+        return `
+          <article class="supplier-modern-card">
+            <header>
+              <span class="supplier-modern-icon">${clientPageIcon('supplierOrders', 'modern-client-order-svg')}</span>
+              <div>
+                <h2>${escHtml(o.name || 'Commande fournisseur')}</h2>
+                <p>${escHtml(o.description || 'Aucune description')}</p>
+              </div>
+              <span class="modern-status-badge ${statusClass}">${escHtml(status)}</span>
+            </header>
+
+            <div class="supplier-modern-meta">
+              <span>${clientPageIcon('calendar', 'modern-action-icon')} ${escHtml(dateLabel)}</span>
+            </div>
+
+            <div class="supplier-modern-actions">
+              <form method="POST" action="/orders/supplier/delete" onsubmit="return confirm('Supprimer cette commande ?');">
                 <input type="hidden" name="id" value="${o.id}">
-                <button>🗑️</button>
+                <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
               </form>
-            </td>
-          </tr>
-        `).join('')
-      : `<tr><td colspan="4">Aucune commande fournisseur</td></tr>`;
+            </div>
+          </article>
+        `;
+      }).join('')
+    : '<div class="empty-state">Aucune commande fournisseur</div>';
 
   res.send(
     pageTemplate(req, 'Commandes fournisseurs', `
-      <div class="page-head">
-        <h1>Commandes fournisseurs</h1>
-      </div>
-
-      <form method="POST" action="/orders/supplier" class="orders-form">
-        <div class="orders-form-row">
-          <div class="orders-form-field">
-            <label>Nom</label>
-            <input name="name" required />
+      <div class="modern-page supplier-modern-page">
+        <section class="modern-list-head modern-client-orders-head supplier-modern-head">
+          <div class="clients-create-head">
+            ${clientPageIcon('supplierOrders', 'clients-title-icon')}
+            <div>
+              <h1>Commandes fournisseurs</h1>
+              <span>${orders.length} commande${orders.length > 1 ? 's' : ''} · ${activeCount} en cours</span>
+            </div>
           </div>
-          <div class="orders-form-field">
-            <label>Description</label>
-            <input name="description" />
-          </div>
-          <div class="orders-form-field">
-            <label>Date</label>
-            <input name="date" type="date" />
-          </div>
-          <div class="orders-form-actions">
-            <button type="submit">Ajouter</button>
-          </div>
-        </div>
-      </form>
-<div class="supplier-cards">
-  ${
-    orders.length > 0
-      ? orders.map(o => `
-        <div class="supplier-card">
+          <a class="clients-submit-btn modern-client-order-new-link" href="#new-supplier-order">
+            <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+            Nouvelle commande
+          </a>
+        </section>
 
-          <div class="supplier-title">
-            ${escHtml(o.name)}
-          </div>
+        <section class="clients-create-card modern-form-card modern-client-order-form supplier-order-add-card is-collapsed" id="new-supplier-order" data-supplier-order-add-card>
+          <button type="button" class="modern-client-order-add-toggle" aria-expanded="false" aria-controls="supplier-order-add-panel" data-supplier-order-add-toggle>
+            <span class="modern-client-order-add-title">
+              ${clientPageIcon('add', 'clients-title-icon')}
+              <span>Nouvelle commande fournisseur</span>
+            </span>
+            <span class="modern-client-order-add-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
+          </button>
 
-          <div class="supplier-description">
-            ${escHtml(o.description || 'Aucune description')}
-          </div>
+          <div class="modern-client-order-add-panel" id="supplier-order-add-panel" hidden data-supplier-order-add-panel>
+            <form method="POST" action="/orders/supplier" class="modern-client-order-add-form">
+              <div class="modern-form-grid supplier-modern-form-grid">
+                <label class="clients-field">
+                  <span>Nom</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('supplierOrders')}
+                    <input name="name" required placeholder="Nom fournisseur ou commande" />
+                  </div>
+                </label>
 
-          <div class="supplier-date">
-            📅 ${escHtml((o.date || '').slice(0, 10))}
-          </div>
+                <label class="clients-field">
+                  <span>Description</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('folder')}
+                    <input name="description" placeholder="Ex : acier, quincaillerie, traitement" />
+                  </div>
+                </label>
 
-          <div class="supplier-actions">
-            <form method="POST"
-                  action="/orders/supplier/delete"
-                  onsubmit="return confirm('Supprimer cette commande ?');">
+                <label class="clients-field">
+                  <span>Date</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('calendar')}
+                    <input name="date" type="date" />
+                  </div>
+                </label>
+              </div>
 
-              <input type="hidden" name="id" value="${o.id}">
-
-              <button class="btn danger">
-                🗑️ Supprimer
-              </button>
-
+              <div class="modern-form-actions">
+                <button type="submit" class="clients-submit-btn">
+                  <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+                  Créer la commande
+                </button>
+              </div>
             </form>
           </div>
+        </section>
 
-        </div>
-      `).join('')
-      : '<div class="empty-state">Aucune commande fournisseur</div>'
-  }
-</div>
+        <section class="supplier-modern-grid">
+          ${cards}
+        </section>
+      </div>
+      <script>
+        (function(){
+          var card = document.querySelector('[data-supplier-order-add-card]');
+          if (!card) return;
+          var toggle = card.querySelector('[data-supplier-order-add-toggle]');
+          var panel = card.querySelector('[data-supplier-order-add-panel]');
+          if (!toggle || !panel) return;
+          toggle.addEventListener('click', function(){
+            var isOpen = toggle.getAttribute('aria-expanded') === 'true';
+            toggle.setAttribute('aria-expanded', String(!isOpen));
+            if (isOpen) {
+              card.classList.remove('is-open');
+              card.classList.add('is-collapsed');
+              window.setTimeout(function(){
+                if (toggle.getAttribute('aria-expanded') !== 'true') panel.hidden = true;
+              }, 230);
+            } else {
+              panel.hidden = false;
+              window.requestAnimationFrame(function(){
+                card.classList.add('is-open');
+                card.classList.remove('is-collapsed');
+              });
+            }
+          });
+        })();
+      </script>
     `)
   );
 });
