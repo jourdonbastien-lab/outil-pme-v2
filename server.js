@@ -881,6 +881,11 @@ function chantierStatusOptions(selected) {
     .join('');
 }
 
+function chantierStatusClass(status) {
+  const index = CHANTIER_STATUSES.indexOf(normalizeChantierStatus(status));
+  return `chantier-status-${index >= 0 ? index : 0}`;
+}
+
 function chantierProgress(doneHours, plannedHours) {
   const planned = Number(plannedHours || 0);
   const done = Number(doneHours || 0);
