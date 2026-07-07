@@ -2532,11 +2532,14 @@ button:hover {
   position:absolute;
   z-index:-1;
   top:0;
-  left:0;
-  right:0;
+  left:-2px;
+  right:-2px;
   height:330px;
-  border-radius:0 0 30px 30px;
-  background:#101827;
+  border-radius:0 0 10px 10px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255,122,0,.10), transparent 34%),
+    linear-gradient(155deg, #0b1220 0%, #111827 45%, #172033 100%);
+  box-shadow:0 18px 42px rgba(15,23,42,.08);
 }
 
 .prototype-hero{
@@ -3143,7 +3146,7 @@ button:hover {
 
   .dashboard-prototype::before{
     height:458px;
-    border-radius:0 0 26px 26px;
+    border-radius:0 0 8px 8px;
   }
 
   .dash-today{
