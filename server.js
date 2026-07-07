@@ -260,6 +260,19 @@ function removeStoragePathIfExists(targetPath) {
 function normalizeKey(str) {
   return safeName(str).toLowerCase();
 }
+
+function clientOrderFolderName(order) {
+  return safeName(order?.description && String(order.description).trim() !== '' ? order.description : `Commande_${order?.id}`);
+}
+
+function findClientOrderByFolder(clientFolder, orderFolder) {
+  const safeClientFolder = safeName(clientFolder);
+  const safeOrderFolder = safeName(orderFolder);
+  return db
+    .prepare('SELECT * FROM client_orders ORDER BY id DESC')
+    .all()
+    .find((row) => safeName(row.name) === safeClientFolder && clientOrderFolderName(row) === safeOrderFolder);
+}
 /* ===================== DB INIT ===================== */
 
 const dataDir = DATA_DIR;
@@ -369,6 +382,7 @@ function createSqliteTables(database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       client TEXT NOT NULL,
       order_name TEXT NOT NULL,
+      client_order_id INTEGER NULL,
       work_date TEXT NOT NULL,
       start_time TEXT,
       end_time TEXT,
@@ -471,6 +485,7 @@ function runSqliteMigrations(ensureColumn) {
   ensureColumn('client_orders', 'chantier_notes', 'TEXT');
   ensureColumn('client_orders', 'status', 'TEXT');
   ensureColumn('supplier_orders', 'status', 'TEXT');
+  ensureColumn('chantier_hours', 'client_order_id', 'INTEGER NULL');
   ensureColumn('tasks', 'status', 'TEXT');
   ensureColumn('tasks', 'to_invoice', 'INTEGER DEFAULT 0');
   ensureColumn('quotes', 'title', 'TEXT');
@@ -3831,19 +3846,29 @@ app.get('/orders/clients', requireLogin, (req, res) => {
     .all();
 
   const totalAmount = orders.reduce((sum, o) => sum + (o.price || 0), 0);
-  const chantierHoursTotals = db
+  const chantierHoursByOrderId = new Map();
+  const legacyChantierHoursTotals = new Map();
+  db
     .prepare(
       `
-      SELECT client, order_name, COALESCE(SUM(minutes_total), 0) AS total_minutes
+      SELECT client_order_id, client, order_name, COALESCE(SUM(minutes_total), 0) AS total_minutes
       FROM chantier_hours
-      GROUP BY client, order_name
+      GROUP BY client_order_id, client, order_name
     `
     )
     .all()
-    .reduce((map, row) => {
-      map.set(`${String(row.client || '')}\u0000${String(row.order_name || '')}`, Number(row.total_minutes || 0));
-      return map;
-    }, new Map());
+    .forEach((row) => {
+      const totalMinutes = Number(row.total_minutes || 0);
+      const orderId = Number(row.client_order_id || 0);
+      if (Number.isFinite(orderId) && orderId > 0) {
+        chantierHoursByOrderId.set(orderId, (chantierHoursByOrderId.get(orderId) || 0) + totalMinutes);
+        return;
+      }
+      legacyChantierHoursTotals.set(
+        `${String(row.client || '')}\u0000${String(row.order_name || '')}`,
+        totalMinutes
+      );
+    });
 
   // datalist clients PC
   let pcFolders = [];
@@ -3871,7 +3896,8 @@ app.get('/orders/clients', requireLogin, (req, res) => {
             const priceLabel = (o.price || 0).toFixed(2) + ' €';
             const statusLabel = o.status || 'En cours';
 const actualMinutes =
-  chantierHoursTotals.get(`${safeClientFolder}\u0000${orderFolderName}`) || 0;
+  (chantierHoursByOrderId.get(Number(o.id)) || 0)
+  + (legacyChantierHoursTotals.get(`${safeClientFolder}\u0000${orderFolderName}`) || 0);
 
 const actualHours =
   actualMinutes / 60;
@@ -4756,27 +4782,34 @@ app.get('/pc-file-raw/:client/:order/:type/:file', requireLogin, (req, res) => {
 function renderHeuresChantier(req, res) {
   const client = safeName(req.params.client);
   const order = safeName(req.params.order);
+  const orderDb = findClientOrderByFolder(client, order);
+  const orderId = Number(orderDb?.id || 0);
+  const hasOrderId = Number.isFinite(orderId) && orderId > 0;
 
-  const rows = db
-    .prepare(
-      `
+  const rows = hasOrderId
+    ? db
+        .prepare(
+          `
+    SELECT *
+    FROM chantier_hours
+    WHERE client_order_id = ?
+       OR (client_order_id IS NULL AND client = ? AND order_name = ?)
+    ORDER BY work_date DESC, id DESC
+  `
+        )
+        .all(orderId, client, order)
+    : db
+        .prepare(
+          `
     SELECT *
     FROM chantier_hours
     WHERE client = ? AND order_name = ?
     ORDER BY work_date DESC, id DESC
   `
-    )
-    .all(client, order);
+        )
+        .all(client, order);
 
   const totalMinutes = rows.reduce((sum, r) => sum + (r.minutes_total || 0), 0);
-  const orderDb = db.prepare(`
-  SELECT planned_hours
-  FROM client_orders
-  WHERE name = ?
-  AND description = ?
-  ORDER BY id DESC
-  LIMIT 1
-`).get(client, order);
 
 const plannedHours =
   Number(orderDb?.planned_hours || 0);
@@ -4796,13 +4829,20 @@ const isOver =
 
   const last7 = db
     .prepare(
-      `
+      hasOrderId
+        ? `
+    SELECT COALESCE(SUM(minutes_total),0) AS m
+    FROM chantier_hours
+    WHERE (client_order_id = ? OR (client_order_id IS NULL AND client = ? AND order_name = ?))
+      AND work_date >= ?
+  `
+        : `
     SELECT COALESCE(SUM(minutes_total),0) AS m
     FROM chantier_hours
     WHERE client = ? AND order_name = ? AND work_date >= ?
   `
     )
-    .get(client, order, since7Iso).m;
+    .get(...(hasOrderId ? [orderId, client, order, since7Iso] : [client, order, since7Iso])).m;
 
   const listHtml = rows.length
     ? `
@@ -4850,7 +4890,7 @@ const isOver =
           <div class="pc-modern-actions">
             <a class="modern-cancel-link" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">Retour commande</a>
             <a class="modern-cancel-link" href="/pc-folders/${encodeURIComponent(client)}">Retour client</a>
-            <a class="clients-submit-btn" href="/chantier-hours/export.csv?client=${encodeURIComponent(client)}&order=${encodeURIComponent(order)}">Export CSV</a>
+            <a class="clients-submit-btn" href="/chantier-hours/export.csv?client=${encodeURIComponent(client)}&order=${encodeURIComponent(order)}${hasOrderId ? `&client_order_id=${encodeURIComponent(String(orderId))}` : ''}">Export CSV</a>
           </div>
         </section>
 
@@ -4873,6 +4913,7 @@ const isOver =
               <form method="POST" action="/chantier-hours/planned-hours" class="pc-modern-planned-form">
                 <input type="hidden" name="client" value="${escHtml(client)}">
                 <input type="hidden" name="order" value="${escHtml(order)}">
+                ${hasOrderId ? `<input type="hidden" name="client_order_id" value="${orderId}">` : ''}
                 <label>Heures prévues</label>
                 <input type="number" step="0.5" name="planned_hours" value="${plannedHours}">
                 <button class="clients-submit-btn" type="submit">Enregistrer</button>
@@ -4890,6 +4931,7 @@ const isOver =
         <form method="POST" action="/chantier-hours/add" class="hours-form">
           <input type="hidden" name="client" value="${escHtml(client)}">
           <input type="hidden" name="order" value="${escHtml(order)}">
+          ${hasOrderId ? `<input type="hidden" name="client_order_id" value="${orderId}">` : ''}
 
           <div class="hours-grid">
             <div class="field">
@@ -4940,6 +4982,11 @@ const isOver =
 app.post('/chantier-hours/add', requireLogin, (req, res) => {
   const client = String(req.body.client || '').trim();
   const order = String(req.body.order || '').trim();
+  const requestedOrderId = Number(req.body.client_order_id || 0);
+  const linkedOrder = Number.isFinite(requestedOrderId) && requestedOrderId > 0
+    ? db.prepare('SELECT id FROM client_orders WHERE id = ?').get(requestedOrderId)
+    : null;
+  const clientOrderId = linkedOrder ? requestedOrderId : null;
   const work_date = String(req.body.work_date || '').trim();
   const start_time = String(req.body.start_time || '').trim();
   const end_time = String(req.body.end_time || '').trim();
@@ -4957,10 +5004,10 @@ app.post('/chantier-hours/add', requireLogin, (req, res) => {
 
   db.prepare(
     `
-    INSERT INTO chantier_hours (client, order_name, work_date, start_time, end_time, break_minutes, minutes_total, note, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chantier_hours (client, order_name, client_order_id, work_date, start_time, end_time, break_minutes, minutes_total, note, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
-  ).run(client, order, work_date, start_time, end_time, break_minutes, minutes_total, note || null, new Date().toISOString());
+  ).run(client, order, clientOrderId, work_date, start_time, end_time, break_minutes, minutes_total, note || null, new Date().toISOString());
 
   res.redirect(`/pc-folders/${encodeURIComponent(safeName(client))}/${encodeURIComponent(safeName(order))}/Heure%20chantier`);
 });
@@ -4977,17 +5024,34 @@ app.post('/chantier-hours/delete', requireLogin, (req, res) => {
 app.get('/chantier-hours/export.csv', requireLogin, (req, res) => {
   const client = String(req.query.client || '').trim();
   const order = String(req.query.order || '').trim();
+  const requestedOrderId = Number(req.query.client_order_id || 0);
+  const linkedOrder = Number.isFinite(requestedOrderId) && requestedOrderId > 0
+    ? db.prepare('SELECT id FROM client_orders WHERE id = ?').get(requestedOrderId)
+    : null;
+  const clientOrderId = linkedOrder ? requestedOrderId : null;
 
-  const rows = db
-    .prepare(
-      `
+  const rows = clientOrderId
+    ? db
+        .prepare(
+          `
+    SELECT work_date, start_time, end_time, break_minutes, minutes_total, note
+    FROM chantier_hours
+    WHERE client_order_id = ?
+       OR (client_order_id IS NULL AND client = ? AND order_name = ?)
+    ORDER BY work_date ASC, id ASC
+  `
+        )
+        .all(clientOrderId, client, order)
+    : db
+        .prepare(
+          `
     SELECT work_date, start_time, end_time, break_minutes, minutes_total, note
     FROM chantier_hours
     WHERE client = ? AND order_name = ?
     ORDER BY work_date ASC, id ASC
   `
-    )
-    .all(client, order);
+        )
+        .all(client, order);
 
   const header = 'date;debut;fin;pause_min;total;note\n';
   const lines = rows
@@ -5002,17 +5066,32 @@ app.get('/chantier-hours/export.csv', requireLogin, (req, res) => {
   res.send(header + lines + '\n');
 });
 app.post('/chantier-hours/planned-hours', requireLogin, (req, res) => {
+  const requestedOrderId = Number(req.body.client_order_id || 0);
+  const linkedOrder = Number.isFinite(requestedOrderId) && requestedOrderId > 0
+    ? db.prepare('SELECT id FROM client_orders WHERE id = ?').get(requestedOrderId)
+    : null;
 
-  db.prepare(`
+  if (linkedOrder) {
+    db.prepare(`
+    UPDATE client_orders
+    SET planned_hours = ?
+    WHERE id = ?
+  `).run(
+      Number(req.body.planned_hours || 0),
+      requestedOrderId
+    );
+  } else {
+    db.prepare(`
     UPDATE client_orders
     SET planned_hours = ?
     WHERE name = ?
     AND description = ?
   `).run(
-    Number(req.body.planned_hours || 0),
-    req.body.client,
-    req.body.order
-  );
+      Number(req.body.planned_hours || 0),
+      req.body.client,
+      req.body.order
+    );
+  }
 
   res.redirect(
     `/pc-folders/${encodeURIComponent(req.body.client)}/${encodeURIComponent(req.body.order)}/Heure chantier`
