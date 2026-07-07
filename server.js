@@ -7116,6 +7116,57 @@ function buildRailingDiagram(totalLength, barWidth, barCount, spacing, maxSpace)
   return html;
 }
 
+function buildRailingPositions(barCount, barWidth, spacing) {
+  var positions = [];
+  var centerDistance = barWidth + spacing;
+
+  for (var i = 1; i <= barCount; i++) {
+    var start = spacing + (i - 1) * centerDistance;
+    var axis = start + barWidth / 2;
+    var end = start + barWidth;
+
+    positions.push({
+      index: i,
+      start: start,
+      axis: axis,
+      end: end
+    });
+  }
+
+  return positions;
+}
+
+function buildRailingPositionsHtml(positions) {
+  var rows = positions.map(function(pos) {
+    return '<tr>' +
+      '<td>Barreau ' + pos.index + '</td>' +
+      '<td>' + formatRailingMm(pos.start) + '</td>' +
+      '<td>' + formatRailingMm(pos.axis) + '</td>' +
+      '<td>' + formatRailingMm(pos.end) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  var cards = positions.map(function(pos) {
+    return '<article class="barreaudage-position-card">' +
+      '<strong>Barreau ' + pos.index + '</strong>' +
+      '<div><span>Début depuis poteau</span><b>' + formatRailingMm(pos.start) + '</b></div>' +
+      '<div><span>Axe / entraxe</span><b>' + formatRailingMm(pos.axis) + '</b></div>' +
+      '<div><span>Fin depuis poteau</span><b>' + formatRailingMm(pos.end) + '</b></div>' +
+    '</article>';
+  }).join('');
+
+  return '<div class="barreaudage-positions">' +
+    '<h3>Positions des barreaux</h3>' +
+    '<div class="barreaudage-table-wrap">' +
+      '<table class="barreaudage-positions-table">' +
+        '<thead><tr><th>Barreau n°</th><th>Début depuis poteau</th><th>Axe / entraxe</th><th>Fin depuis poteau</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<div class="barreaudage-position-cards">' + cards + '</div>' +
+  '</div>';
+}
+
 function calculateBarreaudage() {
   var totalLength = getRailingNumber('railing-total-length');
   var barWidth = getRailingNumber('railing-bar-width');
@@ -7132,6 +7183,8 @@ function calculateBarreaudage() {
   var spaces = barCount + 1;
   var occupied = barCount * barWidth;
   var spacing = (totalLength - occupied) / spaces;
+  var centerDistance = barWidth + spacing;
+  var positions = buildRailingPositions(barCount, barWidth, spacing);
   var isValid = spacing >= 0 && spacing <= maxSpace;
   var result = document.getElementById('railing-result');
   var statusClass = isValid ? 'ok' : 'warning';
@@ -7146,10 +7199,12 @@ function calculateBarreaudage() {
       '<div><span>Nombre de barreaux</span><strong>' + barCount + '</strong></div>' +
       '<div><span>Nombre d\\'espaces</span><strong>' + spaces + '</strong></div>' +
       '<div><span>Espacement réel</span><strong>' + formatRailingMm(spacing) + '</strong></div>' +
+      '<div><span>Entraxe barreaux</span><strong>' + formatRailingMm(centerDistance) + '</strong></div>' +
       '<div><span>Longueur occupée</span><strong>' + formatRailingMm(occupied) + '</strong></div>' +
     '</div>' +
     '<p class="barreaudage-note">' + detail + '</p>' +
-    '<div class="barreaudage-diagram">' + buildRailingDiagram(totalLength, barWidth, barCount, spacing, maxSpace) + '</div>';
+    '<div class="barreaudage-diagram">' + buildRailingDiagram(totalLength, barWidth, barCount, spacing, maxSpace) + '</div>' +
+    buildRailingPositionsHtml(positions);
 }
 
 function resetBarreaudage() {
