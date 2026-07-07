@@ -4729,6 +4729,48 @@ button:hover {
   line-height:1;
 }
 
+.quote-vat-card{
+  gap:10px;
+}
+
+.quote-vat-card-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+
+.quote-vat-form{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  margin:0;
+}
+
+.quote-vat-form select{
+  min-height:34px;
+  max-width:112px;
+  border:1px solid #fed7aa;
+  border-radius:999px;
+  background:#fff;
+  color:#101827;
+  font-size:13px;
+  font-weight:900;
+  padding:0 9px;
+}
+
+.quote-vat-form button{
+  min-height:34px;
+  margin:0;
+  border:0;
+  border-radius:999px;
+  background:#f97316;
+  color:#fff;
+  font-size:12px;
+  font-weight:900;
+  padding:0 10px;
+}
+
 .quote-finance-card-total{
   border-color:#fed7aa;
   background:#fff7ed;
@@ -5330,6 +5372,22 @@ button:hover {
   .quote-finance-card strong{
     font-size:18px;
     overflow-wrap:anywhere;
+  }
+
+  .quote-vat-card-head{
+    display:grid;
+    gap:6px;
+  }
+
+  .quote-vat-form{
+    display:grid;
+    grid-template-columns:1fr auto;
+  }
+
+  .quote-vat-form select{
+    width:100%;
+    max-width:none;
+    font-size:12px;
   }
 
   .quote-add-grid,

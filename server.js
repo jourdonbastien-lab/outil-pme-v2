@@ -390,6 +390,7 @@ function createSqliteTables(database) {
       client_phone TEXT,
       client_address TEXT,
       status TEXT DEFAULT 'Brouillon',
+      vat_rate REAL DEFAULT 20,
       created_at TEXT NOT NULL
     )
   `).run();
@@ -466,6 +467,7 @@ function runSqliteMigrations(ensureColumn) {
   ensureColumn('quotes', 'client_address', 'TEXT');
   ensureColumn('quotes', 'status', 'TEXT');
   ensureColumn('quotes', 'created_at', 'TEXT');
+  ensureColumn('quotes', 'vat_rate', 'REAL DEFAULT 20');
   ensureColumn('quotes', 'margin_pct', 'REAL');
   ensureColumn('quotes', 'notes', 'TEXT');
   ensureColumn('quotes', 'photos', 'TEXT');
@@ -916,6 +918,18 @@ function quoteStatusOptions(selected) {
 
 function quoteStatusClass(status) {
   return `quote-status-${Math.max(0, QUOTE_STATUSES.indexOf(normalizeQuoteStatus(status)))}`;
+}
+
+function normalizeVatRate(value) {
+  const rate = Number(value);
+  return rate === 10 || rate === 20 ? rate : 20;
+}
+
+function quoteVatOptions(selected) {
+  const current = normalizeVatRate(selected);
+  return [20, 10]
+    .map((rate) => `<option value="${rate}"${rate === current ? ' selected' : ''}>TVA ${rate} %</option>`)
+    .join('');
 }
 
 function formatDateLabel(value) {
@@ -5009,7 +5023,7 @@ app.get('/devis', requireLogin, (req, res) => {
         .map(
           (q) => {
             const totalHt = quoteTotals.get(Number(q.id)) || 0;
-            const tva = round2(totalHt * 0.2);
+            const tva = round2(totalHt * (normalizeVatRate(q.vat_rate) / 100));
             const totalTtc = round2(totalHt + tva);
             const status = normalizeQuoteStatus(q.status);
             return `
@@ -5251,8 +5265,8 @@ app.post('/devis', requireLogin, (req, res) => {
     .prepare(
       `
     INSERT INTO quotes
-    (title, client_name, client_email, client_phone, client_address, status, created_at)
-    VALUES (?, ?, ?, ?, ?, 'Brouillon', ?)
+    (title, client_name, client_email, client_phone, client_address, status, vat_rate, created_at)
+    VALUES (?, ?, ?, ?, ?, 'Brouillon', 20, ?)
   `
     )
     .run(
@@ -5288,6 +5302,20 @@ app.post('/devis/:id/status', requireLogin, (req, res) => {
 
   const status = normalizeQuoteStatus(req.body.status);
   db.prepare('UPDATE quotes SET status = ? WHERE id = ?').run(status, quoteId);
+
+  res.redirect('/devis/' + quoteId);
+});
+
+app.post('/devis/:id/vat', requireLogin, (req, res) => {
+  const quoteId = Number(req.params.id);
+  if (!Number.isFinite(quoteId) || quoteId <= 0) return res.status(400).send('ID devis invalide');
+
+  const requestedRate = Number(req.body.vat_rate);
+  if (requestedRate !== 10 && requestedRate !== 20) {
+    return res.status(400).send('TVA invalide');
+  }
+
+  db.prepare('UPDATE quotes SET vat_rate = ? WHERE id = ?').run(requestedRate, quoteId);
 
   res.redirect('/devis/' + quoteId);
 });
@@ -5379,7 +5407,8 @@ const photosHtml = photos.map(photo => `
   const acceptDisabled = String(quote.status || '') === 'Accepté';
   const marginPct = Number(quote.margin_pct ?? 0);
   const totalWithMargin = round2(total * (1 + marginPct / 100));
-  const tva = round2(total * 0.2);
+  const vatRate = normalizeVatRate(quote.vat_rate);
+  const tva = round2(total * (vatRate / 100));
   const totalTtc = round2(total + tva);
   const quoteStatus = normalizeQuoteStatus(quote.status);
   const linkedMeasurements = db
@@ -5434,8 +5463,14 @@ const photosHtml = photos.map(photo => `
             <span>Total HT</span>
             <strong>${total.toFixed(2)} €</strong>
           </article>
-          <article class="quote-finance-card">
-            <span>TVA 20%</span>
+          <article class="quote-finance-card quote-vat-card">
+            <div class="quote-vat-card-head">
+              <span>TVA ${vatRate}%</span>
+              <form method="POST" action="/devis/${id}/vat" class="quote-vat-form">
+                <select name="vat_rate" aria-label="Taux de TVA">${quoteVatOptions(vatRate)}</select>
+                <button type="submit">OK</button>
+              </form>
+            </div>
             <strong>${tva.toFixed(2)} €</strong>
           </article>
           <article class="quote-finance-card quote-finance-card-total">
