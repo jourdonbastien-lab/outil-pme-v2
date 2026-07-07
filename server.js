@@ -6645,7 +6645,7 @@ app.get('/materials', requireLogin, (req, res) => {
         '<div class="clients-create-head">' +
           clientPageIcon('database', 'clients-create-icon') +
           '<div>' +
-            '<span>Stock matière</span>' +
+            
             '<h1>Bibliothèque matière</h1>' +
           '</div>' +
         '</div>' +
@@ -6653,7 +6653,7 @@ app.get('/materials', requireLogin, (req, res) => {
           '<span class="materials-count">' + totalMaterials + ' matière(s)</span>' +
           (isAdmin
             ? '<form method="POST" action="/materials/seed" class="materials-seed-form">' +
-                '<button type="submit" class="materials-seed-button">Préremplir la bibliothèque</button>' +
+              
                 (seeded ? '<span>' + added + ' matière(s) ajoutée(s)</span>' : '') +
               '</form>'
             : '') +
@@ -6667,65 +6667,69 @@ app.get('/materials', requireLogin, (req, res) => {
       ? '<div class="success-message">Matière enregistrée.</div>'
       : '') +
 
-    '<form method="POST" action="/materials" class="clients-create-card materials-add-form">' +
-      '<div class="clients-create-head">' +
-        clientPageIcon('add', 'clients-create-icon') +
-        '<div>' +
-          '<span>Nouvelle matière</span>' +
-          '<h2>Ajouter une matière</h2>' +
-        '</div>' +
+    '<section class="clients-create-card materials-add-card is-collapsed" data-materials-add-card>' +
+      '<button type="button" class="materials-add-toggle" aria-expanded="false" aria-controls="materials-add-panel" data-materials-add-toggle>' +
+        '<span class="materials-add-title">' +
+          clientPageIcon('add', 'clients-create-icon') +
+          '<span>Ajouter une matière</span>' +
+        '</span>' +
+        '<span class="materials-add-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>' +
+      '</button>' +
+      '<div class="materials-add-panel" id="materials-add-panel" hidden data-materials-add-panel>' +
+        '<form method="POST" action="/materials" class="materials-add-form">' +
+          '<div class="clients-form-grid">' +
+            '<label class="clients-field">' +
+              '<span>Type</span>' +
+              '<div class="clients-input-shell">' +
+                clientPageIcon('materials') +
+                '<input name="type" required placeholder="Ex: Tubes carrés acier">' +
+              '</div>' +
+            '</label>' +
+            '<label class="clients-field">' +
+              '<span>Nom</span>' +
+              '<div class="clients-input-shell">' +
+                clientPageIcon('postal') +
+                '<input name="name" required placeholder="Ex: 40x40x2">' +
+              '</div>' +
+            '</label>' +
+            '<label class="clients-field">' +
+              '<span>Unité</span>' +
+              '<div class="clients-input-shell">' +
+                clientPageIcon('materials') +
+                '<input name="unit" placeholder="ml, m², pièce">' +
+              '</div>' +
+            '</label>' +
+            '<label class="clients-field">' +
+              '<span>Prix (€)</span>' +
+              '<div class="clients-input-shell">' +
+                clientPageIcon('postal') +
+                '<input name="price" inputmode="decimal" placeholder="0.00">' +
+              '</div>' +
+            '</label>' +
+            '<label class="clients-field">' +
+              '<span>kg / m</span>' +
+              '<div class="clients-input-shell">' +
+                clientPageIcon('logibarre') +
+                '<input name="kg_per_m" inputmode="decimal" placeholder="Optionnel">' +
+              '</div>' +
+            '</label>' +
+            '<label class="clients-field">' +
+              '<span>Densité</span>' +
+              '<div class="clients-input-shell">' +
+                clientPageIcon('database') +
+                '<input name="density" inputmode="decimal" placeholder="Optionnel">' +
+              '</div>' +
+            '</label>' +
+          '</div>' +
+          '<div class="clients-submit-row">' +
+            '<button type="submit" class="clients-submit-btn">' +
+              clientPageIcon('add', 'clients-submit-icon') +
+              'Ajouter la matière' +
+            '</button>' +
+          '</div>' +
+        '</form>' +
       '</div>' +
-      '<div class="clients-form-grid">' +
-        '<label class="clients-field">' +
-          '<span>Type</span>' +
-          '<div class="clients-input-shell">' +
-            clientPageIcon('materials') +
-            '<input name="type" required placeholder="Ex: Tubes carrés acier">' +
-          '</div>' +
-        '</label>' +
-        '<label class="clients-field">' +
-          '<span>Nom</span>' +
-          '<div class="clients-input-shell">' +
-            clientPageIcon('postal') +
-            '<input name="name" required placeholder="Ex: 40x40x2">' +
-          '</div>' +
-        '</label>' +
-        '<label class="clients-field">' +
-          '<span>Unité</span>' +
-          '<div class="clients-input-shell">' +
-            clientPageIcon('materials') +
-            '<input name="unit" placeholder="ml, m², pièce">' +
-          '</div>' +
-        '</label>' +
-        '<label class="clients-field">' +
-          '<span>Prix (€)</span>' +
-          '<div class="clients-input-shell">' +
-            clientPageIcon('postal') +
-            '<input name="price" inputmode="decimal" placeholder="0.00">' +
-          '</div>' +
-        '</label>' +
-        '<label class="clients-field">' +
-          '<span>kg / m</span>' +
-          '<div class="clients-input-shell">' +
-            clientPageIcon('logibarre') +
-            '<input name="kg_per_m" inputmode="decimal" placeholder="Optionnel">' +
-          '</div>' +
-        '</label>' +
-        '<label class="clients-field">' +
-          '<span>Densité</span>' +
-          '<div class="clients-input-shell">' +
-            clientPageIcon('database') +
-            '<input name="density" inputmode="decimal" placeholder="Optionnel">' +
-          '</div>' +
-        '</label>' +
-      '</div>' +
-      '<div class="clients-submit-row">' +
-        '<button type="submit" class="clients-submit-btn">' +
-          clientPageIcon('add', 'clients-submit-icon') +
-          'Ajouter la matière' +
-        '</button>' +
-      '</div>' +
-    '</form>' +
+    '</section>' +
 
     '<form method="GET" action="/materials" class="materials-search-form">' +
       '<div class="materials-search-shell">' +
@@ -6737,6 +6741,27 @@ app.get('/materials', requireLogin, (req, res) => {
     '</form>' +
 
     '<div class="materials-groups">' + materialGroups + '</div>' +
+    '<script>' +
+      '(function(){' +
+        'var card=document.querySelector("[data-materials-add-card]");' +
+        'if(!card)return;' +
+        'var toggle=card.querySelector("[data-materials-add-toggle]");' +
+        'var panel=card.querySelector("[data-materials-add-panel]");' +
+        'if(!toggle||!panel)return;' +
+        'toggle.addEventListener("click",function(){' +
+          'var isOpen=toggle.getAttribute("aria-expanded")==="true";' +
+          'toggle.setAttribute("aria-expanded",String(!isOpen));' +
+          'if(isOpen){' +
+            'card.classList.remove("is-open");' +
+            'card.classList.add("is-collapsed");' +
+            'window.setTimeout(function(){if(toggle.getAttribute("aria-expanded")!=="true")panel.hidden=true;},230);' +
+          '}else{' +
+            'panel.hidden=false;' +
+            'window.requestAnimationFrame(function(){card.classList.add("is-open");card.classList.remove("is-collapsed");});' +
+          '}' +
+        '});' +
+      '})();' +
+    '</script>' +
     '</div>';
 
   res.send(pageTemplate(req, 'Bibliothèque matière', html));
