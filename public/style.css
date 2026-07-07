@@ -682,6 +682,73 @@ button {
   flex-wrap:wrap;
 }
 
+.pc-order-hero{
+  align-items:stretch;
+  padding:18px;
+}
+
+.pc-order-hero-main{
+  min-width:0;
+  align-self:center;
+}
+
+.pc-order-hero-main h1{
+  font-size:clamp(25px, 3vw, 36px);
+}
+
+.pc-order-hero-main p{
+  margin-top:6px;
+}
+
+.pc-order-hero-actions{
+  display:grid;
+  grid-template-columns:minmax(280px, 420px);
+  gap:10px;
+  align-content:center;
+  justify-content:end;
+  min-width:min(440px, 100%);
+}
+
+.pc-order-hero-links{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+
+.pc-order-hero-link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  min-height:38px;
+  padding:0 12px;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:999px;
+  background:rgba(255,255,255,.06);
+  color:#e5e7eb;
+  font-size:13px;
+  font-weight:900;
+  text-decoration:none;
+}
+
+.pc-order-hero-link:hover,
+.pc-order-hero-link:focus{
+  border-color:rgba(249,115,22,.45);
+  background:rgba(249,115,22,.14);
+  color:#fff;
+  text-decoration:none;
+}
+
+.pc-order-hero-link-icon svg{
+  width:16px;
+  height:16px;
+  fill:none;
+  stroke:#f97316;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
 .pc-modern-grid{
   display:grid;
   grid-template-columns:repeat(3, minmax(0, 1fr));
@@ -7352,10 +7419,28 @@ a.mobile-bottom-item:visited,
     justify-content:stretch;
   }
 
+  .pc-order-hero{
+    padding:14px;
+  }
+
+  .pc-order-hero-actions{
+    grid-template-columns:1fr;
+    min-width:0;
+  }
+
+  .pc-order-hero-links{
+    grid-template-columns:1fr 1fr;
+  }
+
   .pc-modern-actions a,
   .pc-modern-upload-form .clients-submit-btn,
   .pc-modern-planned-form .clients-submit-btn{
     width:100%;
+  }
+
+  .pc-order-hero-link{
+    min-height:38px;
+    padding:0 10px;
   }
 
   .pc-modern-grid,
@@ -8617,12 +8702,10 @@ a.mobile-bottom-item:visited,
 }
 
 .chantier-status-card-form{
-  display:grid;
-  grid-template-columns:minmax(220px, 1fr) auto;
-  gap:12px;
+  display:block;
   align-items:end;
   margin:0;
-  min-width:min(420px, 100%);
+  min-width:0;
 }
 
 .chantier-status-card-form label{
@@ -8639,21 +8722,14 @@ a.mobile-bottom-item:visited,
 
 .chantier-status-card-form select{
   width:100%;
-  min-height:48px;
-  padding:0 14px;
+  min-height:44px;
+  padding:0 13px;
   border:1px solid #d9dee7;
-  border-radius:16px;
+  border-radius:14px;
   background:#f9fafb;
   color:#111827;
   font-size:16px;
   font-weight:800;
-}
-
-.chantier-status-card-form .clients-submit-btn{
-  width:auto;
-  min-height:48px;
-  margin:0;
-  white-space:nowrap;
 }
 
 .pc-modern-hero .chantier-status-card-form{

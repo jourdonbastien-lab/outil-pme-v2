@@ -4370,12 +4370,11 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
     ? (() => {
         const status = normalizeChantierStatus(orderDb.chantier_status);
         return `
-          <form method="POST" action="/orders/client/${orderDb.id}/chantier" class="chantier-status-card-form">
+          <form method="POST" action="/orders/client/${orderDb.id}/chantier" class="chantier-status-card-form" data-auto-submit>
             <label>
               <span>Étape chantier</span>
-              <select name="chantier_status">${chantierStatusOptions(status)}</select>
+              <select name="chantier_status" onchange="this.form.requestSubmit()">${chantierStatusOptions(status)}</select>
             </label>
-            <button class="clients-submit-btn" type="submit">Mettre à jour</button>
           </form>
         `;
       })()
@@ -4383,16 +4382,24 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
 
   const content = `
     <div class="pc-modern-page">
-      <section class="pc-modern-hero">
-        <div>
+      <section class="pc-modern-hero pc-order-hero">
+        <div class="pc-order-hero-main">
           <span>Commande</span>
           <h1>${escHtml(order)}</h1>
           <p>${foldersToShow.length} dossier${foldersToShow.length > 1 ? 's' : ''}</p>
         </div>
-        <div class="pc-modern-actions">
+        <div class="pc-modern-actions pc-order-hero-actions">
           ${chantierHeroControl}
-          <a class="modern-cancel-link" href="/clients/${encodeURIComponent(client)}">Retour client</a>
-          <a class="clients-submit-btn" href="/pc-folders/${encodeURIComponent(client)}">Retour commandes</a>
+          <div class="pc-order-hero-links">
+            <a class="pc-order-hero-link" href="/clients/${encodeURIComponent(client)}">
+              ${clientPageIcon('clients', 'pc-order-hero-link-icon')}
+              Client
+            </a>
+            <a class="pc-order-hero-link" href="/pc-folders/${encodeURIComponent(client)}">
+              ${clientPageIcon('folder', 'pc-order-hero-link-icon')}
+              Commandes
+            </a>
+          </div>
         </div>
       </section>
 
