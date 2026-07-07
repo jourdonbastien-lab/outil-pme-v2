@@ -6608,25 +6608,21 @@ app.get('/materials', requireLogin, (req, res) => {
     ? Object.keys(groupedMaterials)
         .sort((a, b) => a.localeCompare(b, 'fr'))
         .map((type) => {
-          const cards = groupedMaterials[type]
+          const rows = groupedMaterials[type]
             .map((m) => {
               const priceValue = Number(m.price || 0).toFixed(2);
               return (
-                '<article class="material-list-card">' +
-                  '<div class="material-list-card-main">' +
-                    '<span class="material-type-badge">' + escHtml(type) + '</span>' +
+                '<a class="material-list-row" href="/materials/' + m.id + '">' +
+                  '<div class="material-list-main">' +
                     '<strong>' + escHtml(String(m.name || 'Matière')) + '</strong>' +
+                    '<span>' + escHtml(type) + '</span>' +
                   '</div>' +
                   '<div class="material-list-meta">' +
-                    '<span><b>Unité</b>' + escHtml(String(m.unit || '—')) + '</span>' +
-                    '<span><b>Prix</b>' + priceValue + ' €</span>' +
+                    '<span>' + priceValue + ' €</span>' +
+                    '<small>' + escHtml(String(m.unit || '—')) + '</small>' +
                   '</div>' +
-                  '<a class="material-open-btn" href="/materials/' + m.id + '">' +
-                    clientPageIcon('folder', 'material-open-icon') +
-                    '<span>Ouvrir</span>' +
-                    '<b aria-hidden="true">›</b>' +
-                  '</a>' +
-                '</article>'
+                  '<b aria-hidden="true">›</b>' +
+                '</a>'
               );
             })
             .join('');
@@ -6636,7 +6632,7 @@ app.get('/materials', requireLogin, (req, res) => {
                 '<h2>' + escHtml(type) + '</h2>' +
                 '<span>' + groupedMaterials[type].length + ' matière(s)</span>' +
               '</header>' +
-              '<div class="materials-category-grid">' + cards + '</div>' +
+              '<div class="materials-compact-list">' + rows + '</div>' +
             '</section>'
           );
         })
@@ -6670,6 +6666,66 @@ app.get('/materials', requireLogin, (req, res) => {
     (saved
       ? '<div class="success-message">Matière enregistrée.</div>'
       : '') +
+
+    '<form method="POST" action="/materials" class="clients-create-card materials-add-form">' +
+      '<div class="clients-create-head">' +
+        clientPageIcon('add', 'clients-create-icon') +
+        '<div>' +
+          '<span>Nouvelle matière</span>' +
+          '<h2>Ajouter une matière</h2>' +
+        '</div>' +
+      '</div>' +
+      '<div class="clients-form-grid">' +
+        '<label class="clients-field">' +
+          '<span>Type</span>' +
+          '<div class="clients-input-shell">' +
+            clientPageIcon('materials') +
+            '<input name="type" required placeholder="Ex: Tubes carrés acier">' +
+          '</div>' +
+        '</label>' +
+        '<label class="clients-field">' +
+          '<span>Nom</span>' +
+          '<div class="clients-input-shell">' +
+            clientPageIcon('postal') +
+            '<input name="name" required placeholder="Ex: 40x40x2">' +
+          '</div>' +
+        '</label>' +
+        '<label class="clients-field">' +
+          '<span>Unité</span>' +
+          '<div class="clients-input-shell">' +
+            clientPageIcon('materials') +
+            '<input name="unit" placeholder="ml, m², pièce">' +
+          '</div>' +
+        '</label>' +
+        '<label class="clients-field">' +
+          '<span>Prix (€)</span>' +
+          '<div class="clients-input-shell">' +
+            clientPageIcon('postal') +
+            '<input name="price" inputmode="decimal" placeholder="0.00">' +
+          '</div>' +
+        '</label>' +
+        '<label class="clients-field">' +
+          '<span>kg / m</span>' +
+          '<div class="clients-input-shell">' +
+            clientPageIcon('logibarre') +
+            '<input name="kg_per_m" inputmode="decimal" placeholder="Optionnel">' +
+          '</div>' +
+        '</label>' +
+        '<label class="clients-field">' +
+          '<span>Densité</span>' +
+          '<div class="clients-input-shell">' +
+            clientPageIcon('database') +
+            '<input name="density" inputmode="decimal" placeholder="Optionnel">' +
+          '</div>' +
+        '</label>' +
+      '</div>' +
+      '<div class="clients-submit-row">' +
+        '<button type="submit" class="clients-submit-btn">' +
+          clientPageIcon('add', 'clients-submit-icon') +
+          'Ajouter la matière' +
+        '</button>' +
+      '</div>' +
+    '</form>' +
 
     '<form method="GET" action="/materials" class="materials-search-form">' +
       '<div class="materials-search-shell">' +
@@ -6825,6 +6881,13 @@ app.get('/materials/:id', requireLogin, (req, res) => {
           'Enregistrer' +
         '</button>' +
       '</div>' +
+    '</form>' +
+    '<form method="POST" action="/materials/delete" class="material-delete-form" onsubmit="return confirm(\'Supprimer cette matière ?\');">' +
+      '<input type="hidden" name="id" value="' + id + '">' +
+      '<button type="submit" class="modern-danger-btn">' +
+        clientPageIcon('trash', 'modern-action-icon') +
+        'Supprimer la matière' +
+      '</button>' +
     '</form>' +
     '</div>';
 
