@@ -2397,16 +2397,31 @@ button:hover {
    ========================= */
 
 .dashboard-prototype{
+  position:relative;
   gap:12px;
   padding-bottom:10px;
+  isolation:isolate;
+}
+
+.dashboard-prototype::before{
+  content:"";
+  position:absolute;
+  z-index:-1;
+  top:0;
+  left:0;
+  right:0;
+  height:224px;
+  border-radius:0 0 30px 30px;
+  background:#101827;
 }
 
 .prototype-hero{
+  position:relative;
   padding:20px;
-  border:1px solid #e5e7eb;
+  border:1px solid transparent;
   border-radius:20px;
-  background:#fff;
-  box-shadow:0 8px 24px rgba(15,23,42,.06);
+  background:transparent;
+  box-shadow:none;
 }
 
 .prototype-kicker{
@@ -2421,7 +2436,7 @@ button:hover {
 
 .prototype-hero h1{
   margin:0;
-  color:#111827;
+  color:#fff;
   font-size:36px;
   line-height:1.12;
 }
@@ -2429,7 +2444,7 @@ button:hover {
 .prototype-hero p{
   max-width:680px;
   margin:10px 0 0;
-  color:#6b7280;
+  color:#9ca7b8;
 }
 
 .prototype-kpi-grid{
@@ -2444,12 +2459,12 @@ button:hover {
   gap:12px;
   min-width:0;
   padding:16px;
-  border:1px solid #e5e7eb;
+  border:1px solid rgba(255,255,255,.12);
   border-radius:18px;
-  background:#fff;
-  color:#111827;
+  background:#151f30;
+  color:#fff;
   text-decoration:none;
-  box-shadow:0 7px 20px rgba(15,23,42,.055);
+  box-shadow:0 7px 20px rgba(0,0,0,.12);
 }
 
 .prototype-kpi-icon{
@@ -2459,7 +2474,7 @@ button:hover {
   width:42px;
   height:42px;
   border-radius:13px;
-  background:#fff3e6;
+  background:rgba(255,122,0,.14);
   color:#c75f00;
   font-size:13px;
   font-weight:900;
@@ -2473,13 +2488,13 @@ button:hover {
 }
 
 .prototype-kpi-body strong{
-  color:#111827;
+  color:#fff;
   font-size:31px;
   line-height:.95;
 }
 
 .prototype-kpi-body small{
-  color:#6b7280;
+  color:#9ca7b8;
   font-size:12px;
   font-weight:800;
   line-height:1.25;
@@ -2495,7 +2510,7 @@ button:hover {
 }
 
 .prototype-kpi-card:hover{
-  border-color:#ffb066;
+  border-color:rgba(255,122,0,.42);
   transform:translateY(-1px);
 }
 
@@ -2861,6 +2876,10 @@ button:hover {
     grid-template-columns:1fr;
   }
 
+  .dashboard-prototype::before{
+    height:326px;
+  }
+
   .dash-quick-grid,
   .dash-orders-grid,
   .prototype-kpi-grid{
@@ -2876,6 +2895,11 @@ button:hover {
 @media (max-width: 768px){
   .dash-shell{
     gap:12px;
+  }
+
+  .dashboard-prototype::before{
+    height:318px;
+    border-radius:0 0 26px 26px;
   }
 
   .dash-today{
