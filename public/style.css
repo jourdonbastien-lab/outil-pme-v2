@@ -8750,6 +8750,14 @@ a.mobile-bottom-item:visited,
   background:#ff7a00;
 }
 
+.client-order-stage-progress span{
+  background:#22c55e;
+}
+
+.client-order-stage-progress.over-hours span{
+  background:#dc2626;
+}
+
 .chantier-progress-label{
   color:#6b7280;
   font-size:12px;

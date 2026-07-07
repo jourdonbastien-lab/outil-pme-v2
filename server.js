@@ -892,6 +892,13 @@ function chantierProgress(doneHours, plannedHours) {
   return Math.max(0, Math.min(100, Math.round((done / planned) * 100)));
 }
 
+function clientOrderStageProgress(status) {
+  const normalized = normalizeChantierStatus(status);
+  if (normalized === 'En fabrication') return 50;
+  if (normalized === 'Facturé' || normalized === 'Terminé') return 100;
+  return 0;
+}
+
 function formatHours(value) {
   const n = Number(value || 0);
   if (!Number.isFinite(n)) return '0h';
@@ -3807,15 +3814,14 @@ const realMinutes = db.prepare(`
 `).get(o.name, o.description);
 
 const actualHours =
-  Number(o.done_hours || 0) || Number(realMinutes.total || 0) / 60;
+  Number(realMinutes.total || 0) / 60;
 
 const plannedHours =
   Number(o.planned_hours || 0);
 
 const chantierStatus = normalizeChantierStatus(o.chantier_status);
-const progress = o.chantier_progress
-  ? Math.max(0, Math.min(100, Math.round(Number(o.chantier_progress || 0))))
-  : chantierProgress(actualHours, plannedHours);
+const progress = clientOrderStageProgress(chantierStatus);
+const isOverHours = plannedHours > 0 && actualHours > plannedHours;
 
 const endDate = String(o.chantier_end_date || '').slice(0, 10);
 const isLate = endDate && endDate < todayIso;
@@ -3839,7 +3845,7 @@ const isLate = endDate && endDate < todayIso;
                 </div>
 
                 <div class="modern-client-order-progress">
-                  <div class="chantier-progress"><span style="width:${progress}%"></span></div>
+                  <div class="chantier-progress client-order-stage-progress ${isOverHours ? 'over-hours' : 'ok-hours'}"><span style="width:${progress}%"></span></div>
                 </div>
 
                 <div class="modern-client-order-actions">
