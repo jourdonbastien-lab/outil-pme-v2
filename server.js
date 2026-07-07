@@ -246,6 +246,17 @@ function safeResolveInside(baseDir, ...parts) {
   }
   return target;
 }
+
+function removeStoragePathIfExists(targetPath) {
+  const storageBase = path.resolve(STORAGE_DIR);
+  const target = path.resolve(targetPath);
+  if (!target.startsWith(storageBase + path.sep) && target !== storageBase) {
+    console.warn('Suppression ignoree hors storage:', target);
+    return;
+  }
+  if (!fs.existsSync(target)) return;
+  fs.rmSync(target, { recursive: true, force: true });
+}
 function normalizeKey(str) {
   return safeName(str).toLowerCase();
 }
@@ -6935,6 +6946,9 @@ app.post('/devis/:id/delete', requireLogin, (req, res) => {
 
   db.prepare('DELETE FROM quote_lines WHERE quote_id = ?').run(quoteId);
   db.prepare('DELETE FROM quotes WHERE id = ?').run(quoteId);
+
+  removeStoragePathIfExists(safeResolveInside(QUOTE_PHOTO_DIR, String(quoteId)));
+  removeStoragePathIfExists(sketchPath('quotes', quoteId));
 
   res.redirect('/devis');
 });
