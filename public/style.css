@@ -4588,6 +4588,356 @@ button:hover {
 }
 
 /* =========================
+   Fiche devis moderne
+   ========================= */
+
+.quote-work-page{
+  display:grid;
+  gap:18px;
+}
+
+.quote-work-hero,
+.quote-work-card,
+.quote-finance-card{
+  border:1px solid #e5e7eb;
+  border-radius:22px;
+  background:#fff;
+  box-shadow:0 14px 34px rgba(15,23,42,.08);
+}
+
+.quote-work-hero{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(280px, auto);
+  gap:18px;
+  align-items:start;
+  padding:22px;
+}
+
+.quote-work-kicker{
+  display:inline-flex;
+  margin-bottom:8px;
+  color:#f97316;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.quote-work-title h1{
+  margin:0;
+  color:#101827;
+  font-size:clamp(26px, 3vw, 38px);
+  line-height:1.05;
+  overflow-wrap:anywhere;
+}
+
+.quote-work-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:14px;
+  color:#5f6b7a;
+  font-size:14px;
+  font-weight:800;
+}
+
+.quote-work-meta span{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+}
+
+.quote-work-meta-icon svg{
+  width:17px;
+  height:17px;
+  stroke:#f97316;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.quote-work-actions{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.quote-work-actions form{
+  margin:0;
+}
+
+.quote-work-status-form{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:8px;
+  border:1px solid #eef0f4;
+  border-radius:999px;
+  background:#f8fafc;
+}
+
+.quote-work-status-form label{
+  padding-left:8px;
+  color:#64748b;
+  font-size:12px;
+  font-weight:900;
+}
+
+.quote-work-status-form select{
+  min-height:38px;
+  border:0;
+  background:transparent;
+  color:#101827;
+  font-size:16px;
+  font-weight:800;
+}
+
+.quote-accept-btn{
+  min-height:44px;
+  padding-inline:18px;
+}
+
+.quote-accept-btn:disabled{
+  opacity:.62;
+  cursor:not-allowed;
+}
+
+.quote-finance-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0,1fr));
+  gap:12px;
+}
+
+.quote-finance-card{
+  display:grid;
+  gap:8px;
+  padding:18px;
+}
+
+.quote-finance-card span{
+  color:#667085;
+  font-size:13px;
+  font-weight:900;
+}
+
+.quote-finance-card strong{
+  color:#101827;
+  font-size:clamp(22px, 3vw, 32px);
+  line-height:1;
+}
+
+.quote-finance-card-total{
+  border-color:#fed7aa;
+  background:#fff7ed;
+}
+
+.quote-work-card{
+  padding:20px;
+}
+
+.modern-section-title p,
+.quote-cost-section p{
+  margin:4px 0 0;
+  color:#667085;
+  font-size:13px;
+  font-weight:700;
+}
+
+.quote-add-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:14px;
+  margin-top:16px;
+}
+
+.quote-cost-section,
+.quote-support-tool{
+  min-width:0;
+  padding:16px;
+  border:1px solid #edf0f4;
+  border-radius:18px;
+  background:#fbfcfe;
+}
+
+.quote-cost-section header{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+  margin-bottom:14px;
+}
+
+.quote-cost-section h3{
+  margin:0;
+  color:#101827;
+  font-size:19px;
+}
+
+.quote-section-icon svg{
+  width:24px;
+  height:24px;
+  stroke:#f97316;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.quote-line-modern-form{
+  margin:0;
+}
+
+.quote-line-form-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:12px;
+}
+
+.modern-field{
+  display:grid;
+  gap:7px;
+  min-width:0;
+}
+
+.modern-field label{
+  color:#475467;
+  font-size:13px;
+  font-weight:900;
+}
+
+.field-wide{
+  grid-column:1 / -1;
+}
+
+.quote-material-summary{
+  display:grid;
+  gap:8px;
+  grid-column:1 / -1;
+  padding:14px;
+  border:1px solid #fed7aa;
+  border-radius:16px;
+  background:#fff7ed;
+}
+
+.quote-material-summary span{
+  color:#9a4a00;
+  font-size:12px;
+  font-weight:900;
+}
+
+.quote-material-summary strong{
+  color:#101827;
+  font-size:18px;
+  overflow-wrap:anywhere;
+}
+
+.quote-material-summary div{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  color:#667085;
+}
+
+.quote-support-tool{
+  grid-column:1 / -1;
+  order:3;
+  background:#fff;
+}
+
+.quote-add-grid .quote-cost-section:first-of-type{
+  order:1;
+}
+
+.quote-add-grid .quote-cost-section:last-of-type{
+  order:2;
+}
+
+.quote-support-tool summary{
+  cursor:pointer;
+  color:#101827;
+  font-weight:900;
+}
+
+.quote-work-lines{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:12px;
+  margin-top:14px;
+}
+
+.quote-work-line-card{
+  margin:0;
+  border-radius:18px;
+  box-shadow:0 10px 24px rgba(15,23,42,.07);
+}
+
+.quote-work-line-card .quote-type{
+  border-radius:999px;
+  background:#fff1e4;
+  color:#9a4a00;
+}
+
+.quote-work-line-card .delete-btn{
+  width:38px;
+  min-width:38px;
+  height:38px;
+  border-radius:999px;
+}
+
+.quote-work-line-card .delete-btn svg{
+  width:18px;
+  height:18px;
+}
+
+.quote-secondary-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:14px;
+}
+
+.quote-notes-form{
+  display:grid;
+  gap:12px;
+}
+
+.quote-notes-form textarea{
+  width:100%;
+  min-height:190px;
+  padding:14px 16px;
+  border:1px solid #d8dde6;
+  border-radius:18px;
+  color:#101827;
+  font-size:16px;
+  resize:vertical;
+}
+
+.quote-photo-form{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+  margin:0 0 14px;
+}
+
+.quote-photo-form input{
+  min-height:44px;
+  font-size:16px;
+}
+
+.quote-photo-grid{
+  margin-top:10px;
+}
+
+.quote-photo-card{
+  padding:10px;
+  border:1px solid #eef0f4;
+  border-radius:14px;
+  background:#f8fafc;
+}
+
+/* =========================
    Prises de cotes liées
    ========================= */
 
@@ -4912,6 +5262,99 @@ button:hover {
   .measurement-linked-grid,
   .measurement-detail-grid{
     grid-template-columns:1fr;
+  }
+
+  .quote-work-page{
+    gap:14px;
+  }
+
+  .quote-work-hero,
+  .quote-work-card{
+    border-radius:18px;
+    padding:16px;
+  }
+
+  .quote-work-hero,
+  .quote-secondary-grid{
+    grid-template-columns:1fr;
+  }
+
+  .quote-work-title h1{
+    font-size:28px;
+  }
+
+  .quote-work-meta{
+    display:grid;
+    gap:8px;
+  }
+
+  .quote-work-actions,
+  .quote-work-status-form{
+    width:100%;
+    align-items:stretch;
+  }
+
+  .quote-work-actions{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+
+  .quote-work-actions form,
+  .quote-work-actions button,
+  .quote-work-actions a,
+  .quote-work-status-form select{
+    width:100%;
+  }
+
+  .quote-work-status-form{
+    display:grid;
+    grid-template-columns:1fr;
+    border-radius:18px;
+  }
+
+  .quote-finance-grid{
+    grid-template-columns:repeat(3, minmax(0,1fr));
+    gap:8px;
+  }
+
+  .quote-finance-card{
+    min-width:0;
+    padding:12px 10px;
+    border-radius:16px;
+  }
+
+  .quote-finance-card span{
+    font-size:11px;
+  }
+
+  .quote-finance-card strong{
+    font-size:18px;
+    overflow-wrap:anywhere;
+  }
+
+  .quote-add-grid,
+  .quote-line-form-grid,
+  .quote-work-lines{
+    grid-template-columns:1fr;
+  }
+
+  .quote-cost-section,
+  .quote-support-tool{
+    padding:14px;
+    border-radius:16px;
+  }
+
+  .quote-material-summary div{
+    display:grid;
+    gap:6px;
+  }
+
+  .quote-work-line-card .quote-line-grid{
+    grid-template-columns:1fr;
+  }
+
+  .quote-photo-form{
+    display:grid;
   }
 
   .materials-seed-form,

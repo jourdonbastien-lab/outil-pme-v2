@@ -5337,7 +5337,7 @@ const photosHtml = photos.map(photo => `
       <button
         type="submit"
         class="btn danger">
-        🗑️ Supprimer
+        Supprimer
       </button>
 
     </form>
@@ -5367,7 +5367,7 @@ const photosHtml = photos.map(photo => `
           <form method="POST" action="/devis/line/delete" onsubmit="return confirm('Supprimer cette ligne ?');" style="margin:0">
             <input type="hidden" name="quote_id" value="${id}">
             <input type="hidden" name="id" value="${l.id}">
-            <button class="btn-icon danger" title="Supprimer">🗑️</button>
+            <button class="btn-icon danger" title="Supprimer">Supprimer</button>
           </form>
         </td>
       </tr>
@@ -5391,117 +5391,87 @@ const photosHtml = photos.map(photo => `
       req,
       `Devis #${id}`,
       `
-      <div class="page-head quote-page-head">
-        <h1>${escHtml(quote.title || '')}</h1>
-        <a class="btn btn-secondary" href="/devis">Retour aux devis</a>
-      </div>
+      <div class="quote-work-page">
+        <section class="quote-work-hero">
+          <div class="quote-work-title">
+            <span class="quote-work-kicker">Devis #${id}</span>
+            <h1>${escHtml(quote.title || 'Sans titre')}</h1>
+            <div class="quote-work-meta">
+              <span>${clientPageIcon('user', 'quote-work-meta-icon')}${escHtml(quote.client_name || 'Client non renseigné')}</span>
+              <span>${clientPageIcon('calendar', 'quote-work-meta-icon')}${escHtml(formatDateLabel(quote.created_at))}</span>
+              <span class="quote-status-badge ${quoteStatusClass(quoteStatus)}">${escHtml(quoteStatus)}</span>
+            </div>
+          </div>
 
-<section class="quote-hero">
-  <div class="quote-hero-main">
-    <span class="quote-number">Devis #${id}</span>
-    <h2>${escHtml(quote.client_name || 'Client non renseigné')}</h2>
-    <div class="quote-hero-meta">
-      <span class="quote-status-badge ${quoteStatusClass(quoteStatus)}">${escHtml(quoteStatus)}</span>
-      <span>Date : ${escHtml(formatDateLabel(quote.created_at))}</span>
-    </div>
-  </div>
+          <div class="quote-work-actions">
+            <a class="modern-cancel-link" href="/devis">Retour aux devis</a>
+            <form method="POST" action="/devis/${id}/status" class="quote-work-status-form">
+              <label>Statut</label>
+              <select name="status">${quoteStatusOptions(quote.status)}</select>
+              <button class="modern-secondary-btn" type="submit">Modifier</button>
+            </form>
+            <form
+              method="POST"
+              action="/devis/${id}/accept"
+              onsubmit="return confirm('Accepter ce devis et créer la commande client ?');"
+            >
+              <button class="clients-submit-btn quote-accept-btn" ${acceptDisabled ? 'disabled' : ''}>
+                ${acceptDisabled ? 'Devis accepté' : 'Accepter le devis'}
+              </button>
+            </form>
+            <form
+              method="POST"
+              action="/devis/${id}/delete"
+              onsubmit="return confirm('Supprimer définitivement ce devis ? Cette action est irréversible.');"
+            >
+              <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
+            </form>
+          </div>
+        </section>
 
-  <div class="quote-hero-totals">
-    <div><span>Total HT</span><strong>${total.toFixed(2)} €</strong></div>
-    <div><span>TVA 20%</span><strong>${tva.toFixed(2)} €</strong></div>
-    <div><span>Total TTC</span><strong>${totalTtc.toFixed(2)} €</strong></div>
-  </div>
-</section>
+        <section class="quote-finance-grid" aria-label="Résumé financier">
+          <article class="quote-finance-card">
+            <span>Total HT</span>
+            <strong>${total.toFixed(2)} €</strong>
+          </article>
+          <article class="quote-finance-card">
+            <span>TVA 20%</span>
+            <strong>${tva.toFixed(2)} €</strong>
+          </article>
+          <article class="quote-finance-card quote-finance-card-total">
+            <span>Total TTC</span>
+            <strong>${totalTtc.toFixed(2)} €</strong>
+          </article>
+        </section>
 
-<section class="quote-action-bar">
-  <form method="POST" action="/devis/${id}/status" class="quote-status-form">
-    <label>Modifier le statut</label>
-    <select name="status">${quoteStatusOptions(quote.status)}</select>
-    <button class="btn btn-primary" type="submit">Enregistrer</button>
-  </form>
+        <section class="quote-work-card quote-add-line-card">
+          <div class="modern-section-title">
+            ${clientPageIcon('add', 'clients-title-icon')}
+            <div>
+              <h2>Ajouter une ligne</h2>
+              <p>Matière, main-d'œuvre et coûts associés au devis.</p>
+            </div>
+          </div>
 
-  <div class="quote-action-buttons">
-    <form
-      method="POST"
-      action="/devis/${id}/accept"
-      onsubmit="return confirm('Accepter ce devis et créer la commande client ?');"
-    >
-      <button class="btn btn-primary" ${acceptDisabled ? 'disabled' : ''}>
-        ${acceptDisabled ? 'Devis accepté' : 'Accepter'}
-      </button>
-    </form>
+          <div class="quote-add-grid">
+            <article class="quote-cost-section">
+              <header>
+                ${clientPageIcon('database', 'quote-section-icon')}
+                <div>
+                  <h3>Matière</h3>
+                  <p>Sélectionnez une matière pour remplir automatiquement l'unité et le prix.</p>
+                </div>
+              </header>
 
-    <form
-      method="POST"
-      action="/devis/${id}/delete"
-      onsubmit="return confirm('⚠️ Supprimer définitivement ce devis ? Cette action est irréversible.');"
-    >
-      <button class="btn btn-danger">Supprimer</button>
-    </form>
-  </div>
-</section>
-
-<section class="panel-soft measurement-linked-section">
-  <h2>Prises de cotes liées</h2>
-  ${renderMeasurementCards(linkedMeasurements)}
-</section>
-
-<div class="quote-top-grid">
-
-  <div class="panel-soft">
-    <h2>📐 Relevé de cotes / Notes chantier</h2>
-
-    <form method="POST" action="/devis/${id}/notes">
-      <textarea
-        name="notes"
-        rows="10"
-        style="width:100%;min-height:250px"
-      >${escHtml(quote.notes || '')}</textarea>
-
-      <button type="submit">
-        💾 Enregistrer
-      </button>
-    </form>
-  </div>
-
-  <div class="panel-soft">
-    <h2>📷 Photos chantier</h2>
-
-    <form
-      method="POST"
-      action="/devis/${id}/photo"
-      enctype="multipart/form-data">
-
-      <input
-        type="file"
-        name="photo"
-        accept="image/*">
-
-      <button type="submit">
-        📷 Ajouter
-      </button>
-    </form>
-
-    <div class="photo-grid">
-      ${photosHtml}
-    </div>
-
-  </div>
-
-</div>
-
-<details class="tool-box" open>
-  <summary>📦 Ajouter une matière</summary>
-
-  <div class="panel-soft" style="margin-top:10px">
-
-        <form method="POST" action="/devis/line" class="orders-form" style="margin:0" id="quickMatForm">
+              <form method="POST" action="/devis/line" class="quote-line-modern-form" id="quickMatForm">
           <input type="hidden" name="quote_id" value="${id}">
           <input type="hidden" name="category" value="Matière">
 
-          <div class="orders-form-row">
-            <div class="orders-form-field">
+          <div class="quote-line-form-grid">
+            <div class="modern-field field-wide">
               <label>Recherche matière</label>
+              <div class="clients-input-shell">
+                ${clientPageIcon('search')}
               <input
                 id="quickMatLabel"
                 name="label"
@@ -5511,6 +5481,7 @@ const photosHtml = photos.map(photo => `
                 autocomplete="off"
                 required
               />
+              </div>
               <datalist id="materialsSuggest">
                 ${materials
                   .map((m) => `<option value="${escHtml(m.name || '')}"></option>`)
@@ -5519,13 +5490,18 @@ const photosHtml = photos.map(photo => `
 
             </div>
 
-            <div class="orders-form-field">
+            <div class="modern-field">
               <label>Qté</label>
+              <div class="clients-input-shell">
+                ${clientPageIcon('postal')}
               <input id="quickMatQty" name="qty" type="number" step="0.01" required placeholder="Ex: 6" />
+              </div>
             </div>
 
-            <div class="orders-form-field">
+            <div class="modern-field">
               <label>Unité</label>
+              <div class="clients-input-shell">
+                ${clientPageIcon('database')}
               <select id="quickMatUnit" name="unit" required>
                 <option value="ml">ml</option>
                 <option value="m²">m²</option>
@@ -5534,18 +5510,34 @@ const photosHtml = photos.map(photo => `
                 <option value="kg">kg</option>
                 <option value="u">u</option>
               </select>
+              </div>
             </div>
 
-            <div class="orders-form-field">
+            <div class="modern-field">
               <label>Prix unitaire (€)</label>
+              <div class="clients-input-shell">
+                ${clientPageIcon('postal')}
               <input id="quickMatPU" name="unit_price" type="number" step="0.01" required placeholder="Ex: 12.50" />
+              </div>
             </div>
-<div class="orders-form-field">
+<div class="modern-field">
   <label>Marge (%)</label>
+  <div class="clients-input-shell">
+    ${clientPageIcon('add')}
   <input id="matMargin" type="number" step="0.1" value="30">
+  </div>
 </div>
-            <div class="orders-form-actions" style="align-self:end">
-              <button type="submit">Ajouter</button>
+            <div class="quote-material-summary" id="quickMatSummary">
+              <span>Matière sélectionnée</span>
+              <strong id="quickMatSummaryName">Aucune matière</strong>
+              <div>
+                <small>Unité : <b id="quickMatSummaryUnit">—</b></small>
+                <small>PU : <b id="quickMatSummaryPrice">—</b></small>
+                <small>Total matière : <b id="quickMatSummaryTotal">—</b></small>
+              </div>
+            </div>
+            <div class="modern-form-actions field-wide">
+              <button type="submit" class="clients-submit-btn"><span>${clientPageIcon('add', 'clients-submit-icon')}</span>Ajouter au devis</button>
             </div>
           </div>
         </form>
@@ -5569,6 +5561,11 @@ const photosHtml = photos.map(photo => `
 const unit  = document.getElementById('quickMatUnit');
 const pu    = document.getElementById('quickMatPU');
 const margin = document.getElementById('matMargin');
+const qty = document.getElementById('quickMatQty');
+const summaryName = document.getElementById('quickMatSummaryName');
+const summaryUnit = document.getElementById('quickMatSummaryUnit');
+const summaryPrice = document.getElementById('quickMatSummaryPrice');
+const summaryTotal = document.getElementById('quickMatSummaryTotal');
 
 if (!label || !unit || !pu) return;
 
@@ -5598,12 +5595,24 @@ function setMaterialUnit(value){
   unit.value = nextUnit;
 }
 
+function updateMaterialSummary(found){
+  const q = Number(qty?.value || 0);
+  const p = Number(pu?.value || 0);
+  if (summaryName) summaryName.textContent = found?.name || label.value || 'Aucune matière';
+  if (summaryUnit) summaryUnit.textContent = unit.value || '—';
+  if (summaryPrice) summaryPrice.textContent = p > 0 ? p.toFixed(2) + ' €' : '—';
+  if (summaryTotal) summaryTotal.textContent = q > 0 && p > 0 ? (q * p).toFixed(2) + ' €' : '—';
+}
+
 function sync(){
 
   const k = (label.value || '').trim().toLowerCase();
   const found = MAT_INDEX.get(k);
 
-  if (!found) return;
+  if (!found) {
+    updateMaterialSummary(null);
+    return;
+  }
 
   if (found.unit){
     setMaterialUnit(found.unit);
@@ -5618,24 +5627,29 @@ function sync(){
 
     pu.value = salePrice.toFixed(2);
   }
+
+  updateMaterialSummary(found);
 }
 
 label.addEventListener('change', sync);
 label.addEventListener('blur', sync);
+unit.addEventListener('change', sync);
+pu.addEventListener('input', sync);
+if (qty) qty.addEventListener('input', sync);
 
 if (margin){
   margin.addEventListener('input', sync);
 }
 
+sync();
+
 })();
         </script>
-      </div>
-
-</details>
+            </article>
         
 
-<details class="tool-box">
-  <summary>📏 Calculateur de barres</summary>
+<details class="tool-box quote-support-tool">
+  <summary>Calculateur de barres</summary>
   <h2>Calculateur de barres</h2>
 
   <div class="bar-calc">
@@ -5664,17 +5678,17 @@ if (margin){
           <td><input type="number" min="1" value="1200"></td>
           <td><input type="number" min="1" value="1"></td>
           <td>
-            <button type="button" onclick="removeBarRow(this)">✖</button>
+            <button type="button" onclick="removeBarRow(this)">Supprimer</button>
           </td>
         </tr>
       </tbody>
     </table>
 
     <div style="margin-top:10px">
-      <button type="button" onclick="addBarRow()">➕ Ajouter une coupe</button>
+      <button type="button" onclick="addBarRow()">Ajouter une coupe</button>
       <button type="button" class="btn primary" onclick="calculateBars()">Calculer</button>
       <button type="button" class="btn secondary" onclick="printCuts()">
-  🖨️ Imprimer les coupes
+  Imprimer les coupes
 </button>
 <script>
 function printCuts() {
@@ -5721,7 +5735,7 @@ function addBarRow() {
   tr.innerHTML =
     '<td><input type="number" min="1" required></td>' +
     '<td><input type="number" min="1" value="1" required></td>' +
-    '<td><button type="button" onclick="removeBarRow(this)">✖</button></td>';
+    '<td><button type="button" onclick="removeBarRow(this)">Supprimer</button></td>';
 
   document.getElementById('cuts-body').appendChild(tr);
 }
@@ -5805,8 +5819,8 @@ function calculateBars() {
 </script>
 </details>
 
-<details class="tool-box">
-  <summary>📐 Calculateur de tôles</summary>
+<details class="tool-box quote-support-tool">
+  <summary>Calculateur de tôles</summary>
   <h2>Calculateur de tôles</h2>
 
   <label>Largeur tôle</label>
@@ -5827,14 +5841,14 @@ function calculateBars() {
         <td><input value="500"></td>
         <td><input value="300"></td>
         <td><input value="1"></td>
-        <td><button onclick="removeSheetRow(this)">✖</button></td>
+        <td><button onclick="removeSheetRow(this)">Supprimer</button></td>
       </tr>
     </tbody>
   </table>
 
-  <button onclick="addSheetRow()">➕ Ajouter une pièce</button>
+  <button onclick="addSheetRow()">Ajouter une pièce</button>
   <button onclick="calculate()">Calculer</button>
- <button onclick="printPlan()">🖨️ Imprimer</button>
+ <button onclick="printPlan()">Imprimer</button>
 
 <div id="result"></div>
 
@@ -5855,7 +5869,7 @@ function addSheetRow() {
     '<td><input></td>' +
     '<td><input></td>' +
     '<td><input value="1"></td>' +
-    '<td><button onclick="removeSheetRow(this)">✖</button></td>';
+    '<td><button onclick="removeSheetRow(this)">Supprimer</button></td>';
 
   document.getElementById('pieces').appendChild(tr);
 }
@@ -5925,7 +5939,7 @@ function calculate() {
       });
     }
   });
-  // ✅ AFFICHAGE DU NOMBRE DE TÔLES
+  // Affichage du nombre de tôles
   document.getElementById('result').innerHTML =
     '<h4>' + sheets.length + ' tôle(s) nécessaire(s)</h4>';
   draw(sheets, W, H, loss);
@@ -6013,18 +6027,24 @@ function printPlan() {
 
 
 
-<details class="tool-box">
-  <summary>👷 Ajouter main d'œuvre</summary>
+            <article class="quote-cost-section">
+              <header>
+                ${clientPageIcon('user', 'quote-section-icon')}
+                <div>
+                  <h3>Main-d'œuvre et autres coûts</h3>
+                  <p>Ajoutez une prestation, une pose, un traitement ou un forfait existant.</p>
+                </div>
+              </header>
 
-  <div class="panel-soft" style="margin-top:10px">
-
-  <form method="POST" action="/devis/line" class="orders-form" style="margin:0" id="prestForm">
+  <form method="POST" action="/devis/line" class="quote-line-modern-form" id="prestForm">
     <input type="hidden" name="quote_id" value="${id}">
     <input type="hidden" name="category" value="Prestation">
 
-    <div class="orders-form-row">
-      <div class="orders-form-field">
+    <div class="quote-line-form-grid">
+      <div class="modern-field">
         <label>Type</label>
+        <div class="clients-input-shell">
+          ${clientPageIcon('database')}
         <select id="prest_type" required>
           <option value="Main d’œuvre">Main d’œuvre</option>
           <option value="Pose">Pose</option>
@@ -6033,53 +6053,78 @@ function printPlan() {
           <option value="Thermolaquage">Thermolaquage</option>
           <option value="Matières">Matières</option>
         </select>
+        </div>
       </div>
 
-      <div class="orders-form-field">
+      <div class="modern-field field-wide">
         <label>Libellé</label>
+        <div class="clients-input-shell">
+          ${clientPageIcon('postal')}
         <input id="prest_label" name="label" required />
+        </div>
       </div>
-    </div>
 
-    <div class="orders-form-row">
-      <div class="orders-form-field">
+      <div class="modern-field">
         <label>Qté</label>
+        <div class="clients-input-shell">
+          ${clientPageIcon('add')}
         <input name="qty" type="number" step="0.01" value="1" required />
+        </div>
       </div>
 
-      <div class="orders-form-field">
+      <div class="modern-field">
         <label>Unité</label>
+        <div class="clients-input-shell">
+          ${clientPageIcon('database')}
         <select name="unit" required>
           <option value="h">h</option>
           <option value="forfait">forfait</option>
           <option value="u">u</option>
           <option value="kilos">kilos</option>
         </select>
+        </div>
       </div>
 
-      <div class="orders-form-field">
+      <div class="modern-field">
         <label>Coût unitaire (€)</label>
+        <div class="clients-input-shell">
+          ${clientPageIcon('postal')}
         <input id="prest_cost" type="number" step="0.01" value="0" required />
+        </div>
       </div>
 
-      <div class="orders-form-field">
+      <div class="modern-field">
         <label>Marge (%)</label>
+        <div class="clients-input-shell">
+          ${clientPageIcon('add')}
         <input id="prest_margin" type="number" step="0.1" value="0" />
+        </div>
       </div>
 
-      <div class="orders-form-field">
+      <div class="modern-field">
         <label>Prix unitaire (€)</label>
+        <div class="clients-input-shell">
+          ${clientPageIcon('postal')}
         <input id="prest_price" name="unit_price" type="number" step="0.01" required />
+        </div>
       </div>
 
-      <div class="orders-form-actions" style="align-self:end">
-        <button type="submit">Ajouter</button>
+      <div class="quote-material-summary">
+        <span>Total main-d'œuvre</span>
+        <strong id="prest_total_preview">—</strong>
+        <div>
+          <small>Prix unitaire : <b id="prest_unit_preview">—</b></small>
+        </div>
+      </div>
+
+      <div class="modern-form-actions field-wide">
+        <button type="submit" class="clients-submit-btn"><span>${clientPageIcon('add', 'clients-submit-icon')}</span>Ajouter au devis</button>
       </div>
     </div>
   </form>
-</div>
-
-</details>
+            </article>
+          </div>
+        </section>
 <script>
 (function () {
   var costInput = document.getElementById('prest_cost');
@@ -6087,6 +6132,9 @@ function printPlan() {
   var priceInput = document.getElementById('prest_price');
   var typeInput = document.getElementById('prest_type');
   var labelInput = document.getElementById('prest_label');
+  var qtyInput = document.querySelector('#prestForm input[name="qty"]');
+  var totalPreview = document.getElementById('prest_total_preview');
+  var unitPreview = document.getElementById('prest_unit_preview');
 
   if (!costInput || !marginInput || !priceInput) return;
 
@@ -6095,10 +6143,24 @@ function printPlan() {
     var margin = Number(marginInput.value || 0);
     var price = cost * (1 + margin / 100);
     priceInput.value = price.toFixed(2);
+    if (unitPreview) unitPreview.textContent = price.toFixed(2) + ' €';
+    if (totalPreview) {
+      var qty = Number(qtyInput?.value || 0);
+      totalPreview.textContent = qty > 0 ? (qty * price).toFixed(2) + ' €' : '—';
+    }
   }
 
   costInput.addEventListener('input', updatePrice);
   marginInput.addEventListener('input', updatePrice);
+  priceInput.addEventListener('input', function(){
+    var price = Number(priceInput.value || 0);
+    if (unitPreview) unitPreview.textContent = price > 0 ? price.toFixed(2) + ' €' : '—';
+    if (totalPreview) {
+      var qty = Number(qtyInput?.value || 0);
+      totalPreview.textContent = qty > 0 && price > 0 ? (qty * price).toFixed(2) + ' €' : '—';
+    }
+  });
+  if (qtyInput) qtyInput.addEventListener('input', updatePrice);
 
   typeInput.addEventListener('change', function () {
     if (!labelInput.value.trim()) {
@@ -6124,13 +6186,17 @@ function printPlan() {
     sync();
   })();
   </script>
-</div>
+<section class="quote-work-card quote-lines-section">
+  <div class="modern-list-head">
+    <h2>Lignes du devis</h2>
+    <span>${lines.length} ligne${lines.length > 1 ? 's' : ''}</span>
+  </div>
 
-<div class="quote-lines">
+  <div class="quote-lines quote-work-lines">
 
 ${lines.length ? lines.map(l => `
 
-<div class="quote-card">
+<article class="quote-card quote-work-line-card">
 
   <div class="quote-card-head">
 
@@ -6146,7 +6212,7 @@ ${lines.length ? lines.map(l => `
       <input type="hidden" name="quote_id" value="${id}">
       <input type="hidden" name="id" value="${l.id}">
 
-      <button class="delete-btn" aria-label="Supprimer">×</button>
+      <button class="delete-btn" aria-label="Supprimer">${clientPageIcon('trash', 'modern-action-icon')}</button>
 
     </form>
 <form
@@ -6182,12 +6248,63 @@ ${lines.length ? lines.map(l => `
     </div>
   </div>
 
-</div>
+</article>
 
-`).join('') : '<p>Aucune ligne dans ce devis</p>'}
+`).join('') : '<div class="empty-state">Aucune ligne dans ce devis.</div>'}
+
+  </div>
+</section>
+
+<section class="quote-work-card measurement-linked-section">
+  <div class="modern-section-title">
+    ${clientPageIcon('folder', 'clients-title-icon')}
+    <div>
+      <h2>Prises de cotes liées</h2>
+      <p>Documents rattachés à ce devis.</p>
+    </div>
+  </div>
+  ${renderMeasurementCards(linkedMeasurements)}
+</section>
+
+<section class="quote-secondary-grid">
+  <article class="quote-work-card">
+    <div class="modern-section-title">
+      ${clientPageIcon('postal', 'clients-title-icon')}
+      <div>
+        <h2>Relevé de cotes / Notes chantier</h2>
+        <p>Notes internes conservées avec le devis.</p>
+      </div>
+    </div>
+
+    <form method="POST" action="/devis/${id}/notes" class="quote-notes-form">
+      <textarea name="notes" rows="8">${escHtml(quote.notes || '')}</textarea>
+      <div class="modern-form-actions">
+        <button type="submit" class="clients-submit-btn"><span>${clientPageIcon('add', 'clients-submit-icon')}</span>Enregistrer</button>
+      </div>
+    </form>
+  </article>
+
+  <article class="quote-work-card">
+    <div class="modern-section-title">
+      ${clientPageIcon('folder', 'clients-title-icon')}
+      <div>
+        <h2>Photos chantier</h2>
+        <p>Ajoutez ou consultez les fichiers photo du devis.</p>
+      </div>
+    </div>
+
+    <form method="POST" action="/devis/${id}/photo" enctype="multipart/form-data" class="quote-photo-form">
+      <input type="file" name="photo" accept="image/*">
+      <button type="submit" class="modern-secondary-btn">Ajouter</button>
+    </form>
+
+    <div class="photo-grid quote-photo-grid">
+      ${photosHtml || '<div class="empty-state">Aucune photo.</div>'}
+    </div>
+  </article>
+</section>
 
 </div>
-   
 
       `
     )
