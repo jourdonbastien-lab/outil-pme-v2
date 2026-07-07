@@ -1,4 +1,9 @@
 /* RESET */
+:root{
+  --header-icon-color:#f97316;
+  --header-icon-bg:rgba(255,122,0,.12);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -3690,7 +3695,7 @@ button:hover {
 }
 
 .modern-list-head.modern-client-orders-head .clients-title-icon{
-  color:#f97316;
+  color:var(--header-icon-color);
 }
 
 .modern-list-head.modern-client-orders-head .clients-title-icon svg{
@@ -3788,7 +3793,7 @@ button:hover {
 }
 
 .modern-client-order-add-title .clients-title-icon{
-  color:#f97316;
+  color:var(--header-icon-color);
 }
 
 .modern-client-order-add-title .clients-title-icon svg{
@@ -4134,7 +4139,7 @@ button:hover {
   display:flex;
   align-items:center;
   justify-content:center;
-  color:#f97316;
+  color:var(--header-icon-color);
 }
 
 .supplier-modern-head .clients-title-icon svg{
@@ -4620,8 +4625,8 @@ button:hover {
   display:flex;
   align-items:center;
   justify-content:center;
-  background:rgba(255,122,0,.12);
-  color:#f97316;
+  background:var(--header-icon-bg);
+  color:var(--header-icon-color);
 }
 
 .app-dark-page-head .clients-title-icon svg,
@@ -6755,8 +6760,8 @@ a.mobile-bottom-item:visited,
 .materials-hero .clients-create-icon,
 .material-detail-hero .clients-create-icon,
 .quote-work-title-head .clients-title-icon{
-  background:rgba(255,122,0,.12);
-  color:#f97316;
+  background:var(--header-icon-bg);
+  color:var(--header-icon-color);
 }
 
 .materials-hero .materials-count{
@@ -6793,8 +6798,8 @@ a.mobile-bottom-item:visited,
 
 .clients-page-modern > form.clients-create-card:first-child .clients-title-icon,
 .modern-page > form.clients-create-card.modern-form-card:first-child .clients-title-icon{
-  background:rgba(255,122,0,.12);
-  color:#f97316;
+  background:var(--header-icon-bg);
+  color:var(--header-icon-color);
 }
 
 .clients-page-modern > form.clients-create-card:first-child .clients-input-shell,
@@ -6848,8 +6853,8 @@ a.mobile-bottom-item:visited,
   display:flex;
   align-items:center;
   justify-content:center;
-  background:rgba(255,122,0,.12);
-  color:#f97316;
+  background:var(--header-icon-bg);
+  color:var(--header-icon-color);
 }
 
 .app-dark-page-head .clients-title-icon svg,
