@@ -1103,6 +1103,7 @@ function navIcon(name) {
     materials: '<path d="M4 8 12 4l8 4-8 4z"/><path d="m4 12 8 4 8-4"/><path d="m4 16 8 4 8-4"/>',
     logibarre: '<path d="M4 14h16"/><path d="M6 10h12"/><path d="M8 18h8"/><path d="M5 14v3M19 11v3"/>',
     logitole: '<path d="M5 5h14v14H5z"/><path d="M8 8h8v8H8z"/><path d="M5 12h3M16 12h3"/>',
+    barreaudage: '<path d="M5 4v16M19 4v16"/><path d="M8 7v10M11 7v10M14 7v10M17 7v10"/><path d="M4 7h16M4 17h16"/>',
     logout: '<path d="M10 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path d="M14 8l4 4-4 4"/><path d="M18 12H9"/>',
   };
   const svg = icons[name] || icons.dashboard;
@@ -1125,6 +1126,7 @@ function mobileNavIcon(name) {
     materials: '<path d="M4 8 12 4l8 4-8 4z"/><path d="m4 12 8 4 8-4"/><path d="m4 16 8 4 8-4"/>',
     logibarre: '<path d="M4 14h16"/><path d="M6 10h12"/><path d="M8 18h8"/><path d="M5 14v3M19 11v3"/>',
     logitole: '<path d="M5 5h14v14H5z"/><path d="M8 8h8v8H8z"/><path d="M5 12h3M16 12h3"/>',
+    barreaudage: '<path d="M5 4v16M19 4v16"/><path d="M8 7v10M11 7v10M14 7v10M17 7v10"/><path d="M4 7h16M4 17h16"/>',
     logout: '<path d="M10 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path d="M14 8l4 4-4 4"/><path d="M18 12H9"/>',
   };
   const svg = icons[name] || icons.more;
@@ -1218,6 +1220,7 @@ function pageTemplate(req, title, content) {
         { href: '/outils/prises-cotes', label: 'Prises de cotes', icon: 'measurements' },
         { href: '/outils/logibarre', label: 'LogiBarre', icon: 'logibarre' },
         { href: '/outils/logitole', label: 'LogiTôle', icon: 'logitole' },
+        { href: '/outils/barreaudage', label: 'Barreaudage', icon: 'barreaudage' },
         { href: '/logout', label: 'Déconnexion', icon: 'logout' }
       ]
     : [
@@ -1229,6 +1232,7 @@ function pageTemplate(req, title, content) {
         { href: '/materials', label: 'Bibliothèque matière', icon: 'materials' },
         { href: '/outils/logibarre', label: 'LogiBarre', icon: 'logibarre' },
         { href: '/outils/logitole', label: 'LogiTôle', icon: 'logitole' },
+        { href: '/outils/barreaudage', label: 'Barreaudage', icon: 'barreaudage' },
         { href: '/logout', label: 'Déconnexion', icon: 'logout' }
       ];
   const renderBottomItem = (item) => {
@@ -1287,6 +1291,11 @@ ${isAtelier ? `
 
   <a href="/outils/logitole">
      ${navIcon('logitole')}<span class="nav-label">Logitôle</span>
+  </a>
+
+  <a href="/outils/barreaudage"
+     class="${req.path === '/outils/barreaudage' ? 'active' : ''}">
+     ${navIcon('barreaudage')}<span class="nav-label">Barreaudage</span>
   </a>
 
     <a href="/outils/prises-cotes"
@@ -1348,6 +1357,11 @@ ${isAtelier ? `
 
   <a href="/outils/logitole">
      ${navIcon('logitole')}<span class="nav-label">Logitôle</span>
+  </a>
+
+  <a href="/outils/barreaudage"
+     class="${req.path === '/outils/barreaudage' ? 'active' : ''}">
+     ${navIcon('barreaudage')}<span class="nav-label">Barreaudage</span>
   </a>
 
     <a href="/outils/prises-cotes"
@@ -7001,6 +7015,151 @@ function printBars() {
 }
 </script>
 
+    `)
+  );
+});
+
+
+/* ===================== Barreaudage ===================== */
+app.get('/outils/barreaudage', requireLogin, (req, res) => {
+  res.send(
+    pageTemplate(req, 'Barreaudage', `
+      <section class="panel workshop-calc-panel barreaudage-page">
+        <div class="panel-header">
+          <h2>Calcul barreaudage</h2>
+        </div>
+
+        <div class="barreaudage-calc">
+          <div class="workshop-param-grid barreaudage-param-grid">
+            <div class="workshop-field">
+              <label>Longueur totale entre poteaux (mm)</label>
+              <input id="railing-total-length" type="number" min="1" step="1" value="1500">
+            </div>
+
+            <div class="workshop-field">
+              <label>Largeur d'un barreau (mm)</label>
+              <input id="railing-bar-width" type="number" min="1" step="1" value="20">
+            </div>
+
+            <div class="workshop-field">
+              <label>Espacement maximum autorisé (mm)</label>
+              <input id="railing-max-space" type="number" min="1" step="1" value="110">
+            </div>
+
+            <div class="workshop-field">
+              <label>Nombre de barreaux optionnel</label>
+              <input id="railing-bar-count" type="number" min="1" step="1" placeholder="Auto">
+            </div>
+          </div>
+
+          <div class="workshop-actions barreaudage-actions">
+            <button type="button" class="btn primary workshop-calc-btn" onclick="calculateBarreaudage()">Calculer</button>
+            <button type="button" class="btn secondary workshop-print-btn" onclick="resetBarreaudage()">Réinitialiser</button>
+          </div>
+
+          <div id="railing-result" class="workshop-result barreaudage-result"></div>
+        </div>
+      </section>
+
+<script>
+function getRailingNumber(id) {
+  var value = String(document.getElementById(id).value || '').replace(',', '.');
+  return Number(value);
+}
+
+function formatRailingMm(value) {
+  if (!isFinite(value)) return '-';
+  return Math.round(value * 10) / 10 + ' mm';
+}
+
+function findMinimumBars(totalLength, barWidth, maxSpace) {
+  for (var count = 1; count <= 500; count++) {
+    var spacing = (totalLength - count * barWidth) / (count + 1);
+    if (spacing < 0) return count;
+    if (spacing <= maxSpace) return count;
+  }
+  return 500;
+}
+
+function buildRailingDiagram(totalLength, barWidth, barCount, spacing, maxSpace) {
+  var svgWidth = 760;
+  var svgHeight = 220;
+  var startX = 52;
+  var baseY = 76;
+  var visualWidth = 656;
+  var railHeight = 96;
+  var scale = totalLength > 0 ? visualWidth / totalLength : 1;
+  var postWidth = 14;
+  var barPx = Math.max(2, barWidth * scale);
+  var gapPx = Math.max(0, spacing * scale);
+  var html = '';
+
+  html += '<svg class="barreaudage-svg" viewBox="0 0 ' + svgWidth + ' ' + svgHeight + '" role="img" aria-label="Schéma barreaudage">';
+  html += '<rect x="0" y="0" width="' + svgWidth + '" height="' + svgHeight + '" rx="18" fill="#ffffff"/>';
+  html += '<line x1="' + startX + '" y1="' + (baseY + 16) + '" x2="' + (startX + visualWidth) + '" y2="' + (baseY + 16) + '" stroke="#d1d5db" stroke-width="2"/>';
+  html += '<line x1="' + startX + '" y1="' + (baseY + railHeight - 16) + '" x2="' + (startX + visualWidth) + '" y2="' + (baseY + railHeight - 16) + '" stroke="#d1d5db" stroke-width="2"/>';
+  html += '<rect x="' + (startX - postWidth) + '" y="' + baseY + '" width="' + postWidth + '" height="' + railHeight + '" rx="3" fill="#111827"/>';
+  html += '<rect x="' + (startX + visualWidth) + '" y="' + baseY + '" width="' + postWidth + '" height="' + railHeight + '" rx="3" fill="#111827"/>';
+
+  var x = startX + gapPx;
+  for (var i = 0; i < barCount; i++) {
+    html += '<rect x="' + x + '" y="' + (baseY + 8) + '" width="' + barPx + '" height="' + (railHeight - 16) + '" rx="3" fill="#f97316"/>';
+    x += barPx + gapPx;
+  }
+
+  html += '<line x1="' + startX + '" y1="190" x2="' + (startX + visualWidth) + '" y2="190" stroke="#f97316" stroke-width="1.5"/>';
+  html += '<path d="M' + startX + ' 190 l8 -5 v10z" fill="#f97316"/>';
+  html += '<path d="M' + (startX + visualWidth) + ' 190 l-8 -5 v10z" fill="#f97316"/>';
+  html += '<text x="' + (startX + visualWidth / 2) + '" y="184" text-anchor="middle" fill="#111827" font-size="18" font-family="Arial, Helvetica, sans-serif">' + Math.round(totalLength) + ' mm entre poteaux</text>';
+  html += '<text x="' + (startX + visualWidth / 2) + '" y="36" text-anchor="middle" fill="#475467" font-size="15" font-family="Arial, Helvetica, sans-serif">Espacement réel : ' + formatRailingMm(spacing) + ' / max ' + formatRailingMm(maxSpace) + '</text>';
+  html += '</svg>';
+  return html;
+}
+
+function calculateBarreaudage() {
+  var totalLength = getRailingNumber('railing-total-length');
+  var barWidth = getRailingNumber('railing-bar-width');
+  var maxSpace = getRailingNumber('railing-max-space');
+  var manualCountRaw = String(document.getElementById('railing-bar-count').value || '').trim();
+  var manualCount = manualCountRaw ? Number(manualCountRaw.replace(',', '.')) : 0;
+
+  if (!totalLength || totalLength <= 0 || !barWidth || barWidth <= 0 || !maxSpace || maxSpace <= 0) {
+    alert('Renseigne une longueur, une largeur de barreau et un espacement maximum valides.');
+    return;
+  }
+
+  var barCount = manualCount > 0 ? Math.floor(manualCount) : findMinimumBars(totalLength, barWidth, maxSpace);
+  var spaces = barCount + 1;
+  var occupied = barCount * barWidth;
+  var spacing = (totalLength - occupied) / spaces;
+  var isValid = spacing >= 0 && spacing <= maxSpace;
+  var result = document.getElementById('railing-result');
+  var statusClass = isValid ? 'ok' : 'warning';
+  var statusText = isValid ? 'OK' : 'Attention';
+  var detail = isValid
+    ? 'L\\'espacement réel ne dépasse pas le maximum autorisé.'
+    : 'L\\'espacement dépasse la limite ou les barreaux sont trop larges pour la longueur saisie.';
+
+  result.innerHTML =
+    '<div class="barreaudage-summary">' +
+      '<div class="barreaudage-status ' + statusClass + '">' + statusText + '</div>' +
+      '<div><span>Nombre de barreaux</span><strong>' + barCount + '</strong></div>' +
+      '<div><span>Nombre d\\'espaces</span><strong>' + spaces + '</strong></div>' +
+      '<div><span>Espacement réel</span><strong>' + formatRailingMm(spacing) + '</strong></div>' +
+      '<div><span>Longueur occupée</span><strong>' + formatRailingMm(occupied) + '</strong></div>' +
+    '</div>' +
+    '<p class="barreaudage-note">' + detail + '</p>' +
+    '<div class="barreaudage-diagram">' + buildRailingDiagram(totalLength, barWidth, barCount, spacing, maxSpace) + '</div>';
+}
+
+function resetBarreaudage() {
+  document.getElementById('railing-total-length').value = 1500;
+  document.getElementById('railing-bar-width').value = 20;
+  document.getElementById('railing-max-space').value = 110;
+  document.getElementById('railing-bar-count').value = '';
+  document.getElementById('railing-result').innerHTML = '';
+}
+</script>
     `)
   );
 });
