@@ -1090,6 +1090,20 @@ function navIcon(name) {
   return `<span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false">${svg}</svg></span>`;
 }
 
+function mobileNavIcon(name) {
+  const icons = {
+    home: '<path d="M4 11.5 12 4l8 7.5"/><path d="M6.5 10.5V20h11v-9.5"/><path d="M10 20v-5h4v5"/>',
+    clients: '<path d="M16 19v-1.3a3.3 3.3 0 0 0-3.3-3.3H7.3A3.3 3.3 0 0 0 4 17.7V19"/><path d="M10 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M20 19v-1a3 3 0 0 0-2.2-2.9"/><path d="M15.8 5.4a3 3 0 0 1 0 5.2"/>',
+    new: '<path d="M12 5v14M5 12h14"/>',
+    calendar: '<path d="M7 3v4M17 3v4M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h3M8 16h5"/>',
+    more: '<path d="M6 12h.01M12 12h.01M18 12h.01"/>',
+    orders: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h8M8 15h5"/>',
+    measurements: '<path d="M4 17 17 4l3 3L7 20z"/><path d="m14 7 3 3M11 10l2 2M8 13l3 3"/>',
+  };
+  const svg = icons[name] || icons.more;
+  return `<span class="mobile-bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false">${svg}</svg></span>`;
+}
+
 function pageTemplate(req, title, content) {
   const stats = req.navStats || { tasksTodo: 0, eventsToday: 0, clientOrders: 0, supplierOrders: 0 };
 
@@ -1101,18 +1115,18 @@ function pageTemplate(req, title, content) {
   };
   const bottomPrimaryLinks = isAtelier
     ? [
-        { href: '/dashboard', icon: '🏠', label: 'Accueil', active: isActivePath('/dashboard') },
-        { href: '/orders/clients', icon: '📦', label: 'Commandes', active: isActivePath('/orders/clients*') },
-        { action: 'new', icon: '+', label: 'Nouveau', primary: true },
-        { href: '/outils/prises-cotes', icon: '📋', label: 'Cotes', active: isActivePath('/outils/prises-cotes*') },
-        { action: 'more', icon: '⋯', label: 'Plus' }
+        { href: '/dashboard', icon: 'home', label: 'Accueil', active: isActivePath('/dashboard') },
+        { href: '/orders/clients', icon: 'orders', label: 'Commandes', active: isActivePath('/orders/clients*') },
+        { action: 'new', icon: 'new', label: 'Nouveau', primary: true },
+        { href: '/outils/prises-cotes', icon: 'measurements', label: 'Cotes', active: isActivePath('/outils/prises-cotes*') },
+        { action: 'more', icon: 'more', label: 'Plus' }
       ]
     : [
-        { href: '/dashboard', icon: '🏠', label: 'Accueil', active: isActivePath('/dashboard') },
-        { href: '/clients', icon: '👥', label: 'Clients', active: isActivePath('/clients*') },
-        { action: 'new', icon: '+', label: 'Nouveau', primary: true },
-        { href: '/agenda', icon: '📅', label: 'Agenda', active: isActivePath('/agenda') },
-        { action: 'more', icon: '⋯', label: 'Plus' }
+        { href: '/dashboard', icon: 'home', label: 'Accueil', active: isActivePath('/dashboard') },
+        { href: '/clients', icon: 'clients', label: 'Clients', active: isActivePath('/clients*') },
+        { action: 'new', icon: 'new', label: 'Nouveau', primary: true },
+        { href: '/agenda', icon: 'calendar', label: 'Agenda', active: isActivePath('/agenda') },
+        { action: 'more', icon: 'more', label: 'Plus' }
       ];
   const mobileNewLinks = isAtelier
     ? [
@@ -1145,9 +1159,9 @@ function pageTemplate(req, title, content) {
       ];
   const renderBottomItem = (item) => {
     if (item.href) {
-      return `<a class="mobile-bottom-item${item.active ? ' active' : ''}" href="${item.href}"><span>${item.icon}</span><small>${escHtml(item.label)}</small></a>`;
+      return `<a class="mobile-bottom-item${item.active ? ' active' : ''}" href="${item.href}">${mobileNavIcon(item.icon)}<small>${escHtml(item.label)}</small></a>`;
     }
-    return `<button class="mobile-bottom-item${item.primary ? ' mobile-bottom-primary' : ''}" type="button" data-mobile-sheet="${item.action}" aria-expanded="false"><span>${item.icon}</span><small>${escHtml(item.label)}</small></button>`;
+    return `<button class="mobile-bottom-item${item.primary ? ' mobile-bottom-primary' : ''}" type="button" data-mobile-sheet="${item.action}" aria-expanded="false">${mobileNavIcon(item.icon)}<small>${escHtml(item.label)}</small></button>`;
   };
   const renderSheetLinks = (links) => links.map((link) => `<a href="${link.href}">${escHtml(link.label)}</a>`).join('');
 

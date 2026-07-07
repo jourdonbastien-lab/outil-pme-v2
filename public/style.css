@@ -4457,11 +4457,11 @@ button:hover {
     z-index:10020;
     display:grid;
     grid-template-columns:repeat(5, minmax(0, 1fr));
-    gap:2px;
-    padding:8px 8px calc(8px + env(safe-area-inset-bottom));
+    gap:4px;
+    padding:9px 10px calc(9px + env(safe-area-inset-bottom));
     border-top:1px solid #e5e7eb;
     background:rgba(255,255,255,.96);
-    box-shadow:0 -10px 28px rgba(15,23,42,.14);
+    box-shadow:0 -12px 30px rgba(15,23,42,.13);
     backdrop-filter:blur(14px);
   }
 
@@ -4478,17 +4478,29 @@ button:hover {
     border:0;
     border-radius:14px;
     background:transparent;
-    color:#6b7280;
+    color:#1f2937;
     text-decoration:none;
     font:inherit;
     font-weight:800;
     line-height:1;
   }
 
-  .mobile-bottom-item span{
-    display:block;
-    font-size:21px;
-    line-height:1;
+  .mobile-bottom-icon{
+    display:grid;
+    place-items:center;
+    width:30px;
+    height:30px;
+    color:currentColor;
+  }
+
+  .mobile-bottom-icon svg{
+    width:22px;
+    height:22px;
+    fill:none;
+    stroke:currentColor;
+    stroke-width:1.9;
+    stroke-linecap:round;
+    stroke-linejoin:round;
   }
 
   .mobile-bottom-item small{
@@ -4499,6 +4511,7 @@ button:hover {
     white-space:nowrap;
     font-size:11px;
     font-weight:900;
+    color:currentColor;
   }
 
   .mobile-bottom-item.active{
@@ -4508,20 +4521,25 @@ button:hover {
 
   .mobile-bottom-primary{
     transform:translateY(-14px);
-    color:#111827;
+    color:#fff;
+    background:transparent;
   }
 
-  .mobile-bottom-primary span{
+  .mobile-bottom-primary .mobile-bottom-icon{
     display:grid;
     place-items:center;
     width:52px;
     height:52px;
     border-radius:50%;
     background:#ff7a00;
-    color:#111827;
-    font-size:32px;
-    font-weight:900;
+    color:#fff;
     box-shadow:0 10px 24px rgba(255,122,0,.36);
+  }
+
+  .mobile-bottom-primary .mobile-bottom-icon svg{
+    width:26px;
+    height:26px;
+    stroke-width:2.25;
   }
 
   .mobile-bottom-primary small{
