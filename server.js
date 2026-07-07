@@ -2030,12 +2030,20 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
-    if (label.includes('escalier')) return '▟';
-    if (label.includes('garde-corps') || label.includes('garde corps') || label.includes('barriere')) return '▥';
-    if (label.includes('portail')) return '╬';
-    if (label.includes('pergola')) return '⌂';
-    if (label.includes('verriere') || label.includes('fenetre')) return '▦';
-    return '▣';
+    const icons = {
+      stair: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M4 15h4v4M8 11h4v8M12 7h4v12M16 3h4v16"/></svg>',
+      rail: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V7M20 18V7M4 9h16M7 9v9M11 9v9M15 9v9M19 9v9"/></svg>',
+      gate: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V5M20 20V5M6 8h12M6 18h12M8 18V8M12 18V8M16 18V8"/></svg>',
+      pergola: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16M6 9l2-4h8l2 4M7 9v11M17 9v11M5 20h14M9 9v4M12 9v4M15 9v4"/></svg>',
+      window: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM12 4v16M5 12h14"/></svg>',
+      site: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M6 20V9l6-4 6 4v11M9 20v-6h6v6M8 11h8"/></svg>',
+    };
+    if (label.includes('escalier')) return icons.stair;
+    if (label.includes('garde-corps') || label.includes('garde corps') || label.includes('barriere')) return icons.rail;
+    if (label.includes('portail')) return icons.gate;
+    if (label.includes('pergola')) return icons.pergola;
+    if (label.includes('verriere') || label.includes('fenetre')) return icons.window;
+    return icons.site;
   };
 
   const kpis = [
@@ -2093,7 +2101,7 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
           return `
         <article class="prototype-order-card">
           <header>
-            <span class="prototype-order-icon">${escHtml(orderIconFor(order))}</span>
+            <span class="prototype-order-icon">${orderIconFor(order)}</span>
             <div>
               <strong>${escHtml(order.description || `Commande #${order.id}`)}</strong>
               <small>${escHtml(order.name || 'Client')}</small>
