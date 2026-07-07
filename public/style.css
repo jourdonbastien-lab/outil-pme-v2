@@ -45,21 +45,34 @@ html, body {
   color: #ddd;
   text-decoration: none;
   padding: 12px 14px;
-  border-radius: 6px;
+  border-radius: 10px;
   margin-bottom: 4px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 11px;
+  position: relative;
 }
 
 .sidebar nav a:hover {
   background: #1f1f1f;
+  color:#fff;
 }
 
 .sidebar nav a.active {
-  background: #ff7a00;
-  color: #000;
+  background: rgba(255,255,255,.08);
+  color: #fff;
   font-weight: bold;
+}
+
+.sidebar nav a.active::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:10px;
+  bottom:10px;
+  width:3px;
+  border-radius:999px;
+  background:#ff7a00;
 }
 
 .sidebar nav a.logout {
@@ -67,7 +80,41 @@ html, body {
   background: #1a1a1a;
 }
 
+.nav-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 24px;
+  width:24px;
+  height:24px;
+  color:#cbd5e1;
+}
+
+.nav-icon svg{
+  width:21px;
+  height:21px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.nav-label{
+  min-width:0;
+  flex:1 1 auto;
+}
+
+.sidebar nav a:hover .nav-icon{
+  color:#fff;
+}
+
+.sidebar nav a.active .nav-icon{
+  color:#ff7a00;
+}
+
 .nav-badge {
+  margin-left:auto;
   background: #ff7a00;
   color: #000;
   padding: 2px 8px;
@@ -876,7 +923,7 @@ body {
 }
 
 .sidebar a.active {
-  background: #2563eb;
+  background: rgba(255,255,255,.08);
   color: #fff;
 }
 
