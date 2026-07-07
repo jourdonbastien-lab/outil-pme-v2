@@ -3713,12 +3713,6 @@ button:hover {
   align-items:center;
 }
 
-.modern-client-order-new-link{
-  width:auto;
-  min-width:max-content;
-  text-decoration:none;
-}
-
 .clients-create-card.modern-client-order-form{
   max-width:none;
   border:1px solid rgba(255,255,255,.08);
@@ -5279,7 +5273,6 @@ a.btn-secondary,
 a.dash-card-button,
 a.clients-submit-btn,
 a.client-card-link,
-a.modern-client-order-new-link,
 a.modern-client-order-open,
 a.modern-secondary-btn,
 a.modern-danger-btn,
@@ -5313,9 +5306,6 @@ a.clients-submit-btn:visited,
 a.client-card-link:hover,
 a.client-card-link:focus,
 a.client-card-link:visited,
-a.modern-client-order-new-link:hover,
-a.modern-client-order-new-link:focus,
-a.modern-client-order-new-link:visited,
 a.modern-client-order-open:hover,
 a.modern-client-order-open:focus,
 a.modern-client-order-open:visited,
@@ -7158,10 +7148,6 @@ a.mobile-bottom-item:visited,
   .modern-client-orders-head{
     display:grid;
     gap:12px;
-  }
-
-  .modern-client-order-new-link{
-    width:100%;
   }
 
   .modern-client-order-add-toggle{

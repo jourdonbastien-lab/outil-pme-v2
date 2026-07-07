@@ -3876,10 +3876,6 @@ const isLate = endDate && endDate < todayIso;
               <span>${orders.length} commande${orders.length > 1 ? 's' : ''} en cours${!isAtelier ? ` · ${totalAmount.toFixed(2)} €` : ''}</span>
             </div>
           </div>
-          <a class="clients-submit-btn modern-client-order-new-link" href="#new-client-order">
-            <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-            Nouvelle commande
-          </a>
         </section>
 
         <section class="clients-create-card modern-form-card modern-client-order-form modern-client-order-add-card is-collapsed" id="new-client-order" data-client-order-add-card>
