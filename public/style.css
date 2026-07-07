@@ -3413,7 +3413,7 @@ button:hover {
   gap:18px;
 }
 
-.modern-client-orders-head{
+.modern-list-head.modern-client-orders-head{
   align-items:center;
   padding:20px;
   border:1px solid rgba(255,255,255,.08);
@@ -3424,15 +3424,15 @@ button:hover {
   box-shadow:0 16px 36px rgba(15,23,42,.16);
 }
 
-.modern-client-orders-head h1{
+.modern-list-head.modern-client-orders-head h1{
   margin:0;
   color:#fff;
   font-size:clamp(28px, 4vw, 42px);
   line-height:1.05;
 }
 
-.modern-client-orders-head .modern-list-head span,
-.modern-client-orders-head .clients-create-head span{
+.modern-list-head.modern-client-orders-head span,
+.modern-list-head.modern-client-orders-head .clients-create-head span{
   color:#9ca7b8;
 }
 
@@ -3446,7 +3446,7 @@ button:hover {
   text-decoration:none;
 }
 
-.modern-client-order-form{
+.clients-create-card.modern-client-order-form{
   max-width:none;
   border:1px solid rgba(255,255,255,.08);
   background:
@@ -3455,31 +3455,31 @@ button:hover {
   box-shadow:0 16px 36px rgba(15,23,42,.16);
 }
 
-.modern-client-order-form .clients-create-head h2{
+.clients-create-card.modern-client-order-form .clients-create-head h2{
   color:#fff;
 }
 
-.modern-client-order-form .clients-field span{
+.clients-create-card.modern-client-order-form .clients-field span{
   color:#cbd5e1;
 }
 
-.modern-client-order-form .clients-input-shell{
-  border-color:rgba(255,255,255,.12);
-  background:#151f30;
-  color:#fff;
+.clients-create-card.modern-client-order-form .clients-input-shell{
+  border-color:#d9dee7;
+  background:#f9fafb;
+  color:#f97316;
 }
 
-.modern-client-order-form .clients-input-shell svg{
+.clients-create-card.modern-client-order-form .clients-input-shell svg{
   stroke:#f97316;
 }
 
-.modern-client-order-form input,
-.modern-client-order-form select{
-  color:#fff;
+.clients-create-card.modern-client-order-form input,
+.clients-create-card.modern-client-order-form select{
+  color:#111827;
 }
 
-.modern-client-order-form input::placeholder{
-  color:#7f8ea3;
+.clients-create-card.modern-client-order-form input::placeholder{
+  color:#9ca3af;
 }
 
 .modern-client-orders-grid{
