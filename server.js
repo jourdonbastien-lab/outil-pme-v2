@@ -3831,6 +3831,19 @@ app.get('/orders/clients', requireLogin, (req, res) => {
     .all();
 
   const totalAmount = orders.reduce((sum, o) => sum + (o.price || 0), 0);
+  const chantierHoursTotals = db
+    .prepare(
+      `
+      SELECT client, order_name, COALESCE(SUM(minutes_total), 0) AS total_minutes
+      FROM chantier_hours
+      GROUP BY client, order_name
+    `
+    )
+    .all()
+    .reduce((map, row) => {
+      map.set(`${String(row.client || '')}\u0000${String(row.order_name || '')}`, Number(row.total_minutes || 0));
+      return map;
+    }, new Map());
 
   // datalist clients PC
   let pcFolders = [];
@@ -3857,15 +3870,11 @@ app.get('/orders/clients', requireLogin, (req, res) => {
             const dateLabel = (o.date || '').slice(0, 10);
             const priceLabel = (o.price || 0).toFixed(2) + ' €';
             const statusLabel = o.status || 'En cours';
-const realMinutes = db.prepare(`
-  SELECT COALESCE(SUM(minutes_total),0) AS total
-  FROM chantier_hours
-  WHERE client = ?
-  AND order_name = ?
-`).get(safeClientFolder, orderFolderName);
+const actualMinutes =
+  chantierHoursTotals.get(`${safeClientFolder}\u0000${orderFolderName}`) || 0;
 
 const actualHours =
-  Number(realMinutes.total || 0) / 60;
+  actualMinutes / 60;
 
 const plannedHours =
   Number(o.planned_hours || 0);
