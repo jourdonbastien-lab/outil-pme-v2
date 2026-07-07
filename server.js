@@ -1109,6 +1109,7 @@ function clientPageIcon(name, className = 'clients-ui-icon') {
     add: '<path d="M12 5v14M5 12h14"/>',
     user: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><path d="M4 20a8 8 0 0 1 16 0"/>',
     mail: '<path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>',
+    calendar: '<path d="M7 3v4M17 3v4M4 8h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h3M8 16h5"/>',
     location: '<path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11z"/><path d="M12 11.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
     postal: '<path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/>',
     building: '<path d="M6 21V5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v16"/><path d="M9 8h2M13 8h2M9 12h2M13 12h2M9 16h2M13 16h2M4 21h16"/>',
@@ -2380,116 +2381,111 @@ app.get('/api/weather', requireLogin, async (req, res) => {
 /* ===================== KS ===================== */
 
 app.get('/tasks', requireLogin, (req, res) => {
-  const rows = db
+  const tasks = db
     .prepare('SELECT * FROM tasks ORDER BY created_at DESC, id DESC')
-    .all()
-    .map(t => `
-      <tr>
-        <td>${escHtml(t.title)}</td>
-        <td>${escHtml(t.status)}</td>
-        <td>
-          ${
-            t.status !== 'Terminée'
-              ? `
+    .all();
+
+  const taskCards = tasks.length
+    ? tasks
+        .map((t) => {
+          const status = String(t.status || 'À faire');
+          const statusClass = status === 'Terminée' ? 'done' : status === 'En cours' ? 'progress' : 'todo';
+          return `
+        <article class="modern-task-card">
+          <div class="modern-task-main">
+            ${clientPageIcon('postal', 'modern-page-icon')}
+            <div>
+              <h2>${escHtml(t.title)}</h2>
+              <span class="modern-status-badge ${statusClass}">${escHtml(status)}</span>
+            </div>
+          </div>
+
+          <div class="modern-task-actions">
+            ${
+              status !== 'Terminée'
+                ? `
                 <form method="POST" action="/tasks/done">
                   <input type="hidden" name="id" value="${t.id}" />
-                  <button class="btn">Terminer</button>
-                </form>`
-              : `
-                <form method="POST" action="/tasks/delete"
+                  <button class="modern-secondary-btn" type="submit">Terminer</button>
+                </form>
+                `
+                : `
+                ${
+                  Number(t.to_invoice || 0) === 1
+                    ? `<div class="modern-invoice-badge">À facturer</div>`
+                    : `
+                    <form method="POST" action="/tasks/to-invoice">
+                      <input type="hidden" name="id" value="${t.id}" />
+                      <button class="modern-secondary-btn" type="submit">À facturer</button>
+                    </form>
+                    `
+                }
+
+                <form method="POST"
+                      action="/tasks/delete"
                       onsubmit="return confirm('Supprimer cette tâche ?');">
                   <input type="hidden" name="id" value="${t.id}" />
-                  <button class="btn danger">Supprimer</button>
-                </form>`
-          }
-        </td>
-      </tr>
-    `)
-    .join('');
+                  <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
+                </form>
+                `
+            }
+          </div>
+        </article>
+      `;
+        })
+        .join('')
+    : '<div class="empty-state">Aucune tâche</div>';
 
   res.send(
     pageTemplate(
       req,
       'Tâches',
       `
-      <div class="tasks-page">
+      <div class="modern-page">
+        <form method="POST" action="/tasks" class="clients-create-card modern-form-card">
+          <div class="clients-create-head">
+            ${clientPageIcon('postal', 'clients-title-icon')}
+            <h1>Tâches</h1>
+          </div>
 
-        <!-- FORMULAIRE EN HAUT -->
-        <form method="POST" action="/tasks" class="tasks-form">
-          <input name="title" placeholder="Nouvelle tâche" required />
-          <select name="status">
-            <option>À faire</option>
-            <option>En cours</option>
-            <option>Terminée</option>
-          </select>
-          <button class="btn primary">Ajouter</button>
+          <div class="modern-form-grid">
+            <label class="clients-field">
+              <span>Titre tâche</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('postal')}
+                <input name="title" placeholder="Nouvelle tâche" required />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Statut</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('add')}
+                <select name="status">
+                  <option>À faire</option>
+                  <option>En cours</option>
+                  <option>Terminée</option>
+                </select>
+              </div>
+            </label>
+          </div>
+
+          <button class="clients-submit-btn" type="submit">
+            <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+            Ajouter la tâche
+          </button>
         </form>
 
-        <!-- LISTE DES TÂCHES -->
-      <div class="tasks-cards">
-  ${
-    db.prepare('SELECT * FROM tasks ORDER BY created_at DESC, id DESC')
-      .all()
-      .map(t => `
-        <div class="task-card">
-
-          <div class="task-card-title">
-            ${escHtml(t.title)}
+        <section class="modern-list-head">
+          <div>
+            <h2>Liste des tâches</h2>
+            <span>${tasks.length} au total</span>
           </div>
+        </section>
 
-          <div class="task-card-status">
-            ${escHtml(t.status)}
-          </div>
-
-  <div class="task-card-actions">
-
-  ${
-    t.status !== 'Terminée'
-      ? `
-      <form method="POST" action="/tasks/done">
-        <input type="hidden" name="id" value="${t.id}" />
-        <button class="btn primary">
-          ✅ Terminer
-        </button>
-      </form>
-      `
-      : `
-      ${
-        Number(t.to_invoice || 0) === 1
-          ? `
-          <div class="task-badge-invoice">
-            💰 À facturer
-          </div>
-          `
-          : `
-          <form method="POST"
-                action="/tasks/to-invoice">
-            <input type="hidden" name="id" value="${t.id}" />
-            <button class="btn warning">
-              📄 À facturer
-            </button>
-          </form>
-          `
-      }
-
-      <form method="POST"
-            action="/tasks/delete"
-            onsubmit="return confirm('Supprimer cette tâche ?');">
-        <input type="hidden" name="id" value="${t.id}" />
-        <button class="btn danger">
-          🗑️ Supprimer
-        </button>
-      </form>
-      `
-  }
-
-</div>
-
+        <div class="modern-task-grid">
+          ${taskCards}
         </div>
-      `)
-      .join('')
-  }
-</div>
       </div>
       `
     )
@@ -5110,74 +5106,98 @@ app.get('/devis/new', requireLogin, (req, res) => {
       req,
       'Nouveau devis',
       `
-      <div class="page-head">
-        <h1>Nouveau devis</h1>
+      <div class="modern-page">
+        <form method="POST" action="/devis" class="clients-create-card modern-form-card quote-create-form" id="quoteForm">
+          <div class="clients-create-head">
+            ${clientPageIcon('postal', 'clients-title-icon')}
+            <h1>Nouveau devis</h1>
+          </div>
+
+          <h2 class="modern-section-title">Informations du devis</h2>
+
+          <div class="modern-form-grid">
+            <label class="clients-field">
+              <span>Client</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('user')}
+                <select id="existing_client" name="existing_client">
+                  ${clientSelectOptions}
+                </select>
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Objet du devis *</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('postal')}
+                <input name="title" required placeholder="Ex : Escalier quart tournant" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Date du devis</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('calendar')}
+                <input name="quote_date" type="date" value="${isoDate()}" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Statut</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('database')}
+                <select name="status" disabled>
+                  <option>Brouillon</option>
+                </select>
+              </div>
+            </label>
+          </div>
+
+          <h2 class="modern-section-title">Nouveau prospect</h2>
+
+          <div class="modern-form-grid">
+            <label class="clients-field">
+              <span>Nom du prospect *</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('user')}
+                <input name="prospect_name" id="prospect_name" placeholder="Nom du prospect" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Email</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('mail')}
+                <input name="prospect_email" id="prospect_email" type="email" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Téléphone</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('phone')}
+                <input name="prospect_phone" id="prospect_phone" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Adresse</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('location')}
+                <input name="prospect_address" id="prospect_address" />
+              </div>
+            </label>
+          </div>
+
+          <div class="modern-form-actions">
+            <button type="submit" class="clients-submit-btn">
+              <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+              Créer le devis
+            </button>
+            <a class="modern-cancel-link" href="/devis">Annuler</a>
+          </div>
+        </form>
       </div>
-
-      <form method="POST" action="/devis" class="orders-form quote-create-form" id="quoteForm">
-
-        <h2>Informations du devis</h2>
-
-        <div class="orders-form-row">
-          <div class="orders-form-field">
-            <label>Client</label>
-            <select
-              id="existing_client"
-              name="existing_client"
-              class="search"
-            >
-              ${clientSelectOptions}
-            </select>
-          </div>
-          <div class="orders-form-field">
-            <label>Objet du devis *</label>
-            <input name="title" required placeholder="Ex : Escalier quart tournant" />
-          </div>
-        </div>
-
-        <div class="orders-form-row">
-          <div class="orders-form-field">
-            <label>Date du devis</label>
-            <input name="quote_date" type="date" value="${isoDate()}" />
-          </div>
-          <div class="orders-form-field">
-            <label>Statut</label>
-            <select name="status" disabled>
-              <option>Brouillon</option>
-            </select>
-          </div>
-        </div>
-
-        <h2>Nouveau prospect</h2>
-
-        <div class="orders-form-row">
-          <div class="orders-form-field">
-            <label>Nom du prospect *</label>
-            <input name="prospect_name" id="prospect_name" placeholder="Nom du prospect" />
-          </div>
-          <div class="orders-form-field">
-            <label>Email</label>
-            <input name="prospect_email" id="prospect_email" type="email" />
-          </div>
-        </div>
-
-        <div class="orders-form-row">
-          <div class="orders-form-field">
-            <label>Téléphone</label>
-            <input name="prospect_phone" id="prospect_phone" />
-          </div>
-          <div class="orders-form-field">
-            <label>Adresse</label>
-            <input name="prospect_address" id="prospect_address" />
-          </div>
-        </div>
-
-        <div class="orders-form-actions">
-          <button type="submit" class="btn btn-primary">Créer le devis</button>
-          <a class="btn btn-secondary" href="/devis">Annuler</a>
-        </div>
-
-      </form>
 
       <script>
       (function(){

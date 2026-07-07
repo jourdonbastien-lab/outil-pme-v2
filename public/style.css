@@ -3847,7 +3847,8 @@ button:hover {
 }
 
 .clients-input-shell input,
-.clients-search-shell input{
+.clients-search-shell input,
+.clients-input-shell select{
   width:100%;
   min-width:0;
   border:0;
@@ -3860,6 +3861,12 @@ button:hover {
 .clients-input-shell input::placeholder,
 .clients-search-shell input::placeholder{
   color:#9ca3af;
+}
+
+.clients-input-shell select{
+  min-height:48px;
+  appearance:none;
+  cursor:pointer;
 }
 
 .clients-submit-btn{
@@ -4097,6 +4104,222 @@ button:hover {
   .client-name{
     font-size:19px;
     padding-right:4px;
+  }
+}
+
+/* =========================
+   Pages modernes réutilisant le style clients
+   ========================= */
+
+.modern-page{
+  display:grid;
+  gap:16px;
+}
+
+.modern-form-card{
+  max-width:980px;
+}
+
+.modern-form-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:13px;
+}
+
+.modern-section-title{
+  margin:18px 0 12px;
+  color:#111827;
+  font-size:16px;
+}
+
+.modern-form-actions{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-top:16px;
+}
+
+.modern-form-actions .clients-submit-btn{
+  width:auto;
+  min-width:190px;
+  margin-top:0;
+  padding:0 22px;
+}
+
+.modern-cancel-link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:44px;
+  padding:0 16px;
+  border-radius:999px;
+  background:#f3f4f6;
+  color:#374151;
+  font-weight:900;
+  text-decoration:none;
+}
+
+.modern-list-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:18px 20px;
+  border:1px solid #e5e7eb;
+  border-radius:22px;
+  background:#fff;
+  box-shadow:0 8px 24px rgba(15,23,42,.055);
+}
+
+.modern-list-head h2{
+  margin:0;
+  color:#111827;
+  font-size:22px;
+}
+
+.modern-list-head span{
+  display:block;
+  margin-top:4px;
+  color:#6b7280;
+  font-size:13px;
+  font-weight:800;
+}
+
+.modern-task-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+  gap:14px;
+}
+
+.modern-task-card{
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  gap:16px;
+  min-width:0;
+  padding:18px;
+  border:1px solid #e5e7eb;
+  border-radius:20px;
+  background:#fff;
+  box-shadow:0 8px 24px rgba(15,23,42,.06);
+}
+
+.modern-task-main{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+}
+
+.modern-page-icon{
+  display:grid;
+  place-items:center;
+  flex:0 0 42px;
+  width:42px;
+  height:42px;
+  border-radius:14px;
+  background:#fff3e6;
+  color:#c75f00;
+}
+
+.modern-page-icon svg,
+.modern-action-icon svg{
+  width:20px;
+  height:20px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.modern-task-card h2{
+  margin:0 0 9px;
+  color:#111827;
+  font-size:18px;
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+
+.modern-status-badge{
+  display:inline-flex;
+  padding:5px 9px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:900;
+}
+
+.modern-status-badge.todo{ background:#f3f4f6; color:#374151; }
+.modern-status-badge.progress{ background:#fff3e6; color:#9a4a00; }
+.modern-status-badge.done{ background:#dcfce7; color:#166534; }
+
+.modern-task-actions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:8px;
+}
+
+.modern-task-actions form{
+  margin:0;
+}
+
+.modern-secondary-btn,
+.modern-danger-btn,
+.modern-invoice-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  min-height:38px;
+  padding:0 13px;
+  border:0;
+  border-radius:999px;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.modern-secondary-btn{
+  background:#ff7a00;
+  color:#111827;
+}
+
+.modern-danger-btn{
+  background:#fee2e2;
+  color:#991b1b;
+}
+
+.modern-invoice-badge{
+  background:#eff6ff;
+  color:#1d4ed8;
+}
+
+.modern-action-icon{
+  display:grid;
+  place-items:center;
+}
+
+@media (max-width:768px){
+  .modern-form-grid,
+  .modern-task-grid{
+    grid-template-columns:1fr;
+  }
+
+  .modern-form-actions{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .modern-form-actions .clients-submit-btn,
+  .modern-cancel-link{
+    width:100%;
+  }
+
+  .modern-task-actions{
+    flex-direction:column;
+  }
+
+  .modern-task-actions button,
+  .modern-task-actions form{
+    width:100%;
   }
 }
 .quote-photo-card{
