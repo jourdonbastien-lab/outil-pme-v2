@@ -4367,25 +4367,17 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
     ? db.prepare('SELECT * FROM measurements WHERE client_order_id = ? ORDER BY updated_at DESC, id DESC').all(orderDb.id)
     : [];
 
-  const chantierSection = orderDb
+  const chantierHeroControl = orderDb
     ? (() => {
         const status = normalizeChantierStatus(orderDb.chantier_status);
         return `
-          <section class="pc-modern-panel chantier-detail-panel">
-            <div class="modern-section-title">
-              ${pcFolderIcon('Heure chantier', 'clients-title-icon')}
-              <div>
-                <h2>Suivi chantier</h2>
-              </div>
-            </div>
-            <form method="POST" action="/orders/client/${orderDb.id}/chantier" class="chantier-status-card-form">
-              <label>
-                <span>Étape actuelle</span>
-                <select name="chantier_status">${chantierStatusOptions(status)}</select>
-              </label>
-              <button class="clients-submit-btn" type="submit">Mettre à jour</button>
-            </form>
-          </section>
+          <form method="POST" action="/orders/client/${orderDb.id}/chantier" class="chantier-status-card-form">
+            <label>
+              <span>Étape chantier</span>
+              <select name="chantier_status">${chantierStatusOptions(status)}</select>
+            </label>
+            <button class="clients-submit-btn" type="submit">Mettre à jour</button>
+          </form>
         `;
       })()
     : '';
@@ -4399,6 +4391,7 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
           <p>${foldersToShow.length} dossier${foldersToShow.length > 1 ? 's' : ''}</p>
         </div>
         <div class="pc-modern-actions">
+          ${chantierHeroControl}
           <a class="modern-cancel-link" href="/clients/${encodeURIComponent(client)}">Retour client</a>
           <a class="clients-submit-btn" href="/pc-folders/${encodeURIComponent(client)}">Retour commandes</a>
         </div>
@@ -4407,8 +4400,6 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
       <section class="pc-modern-grid">
         ${cards}
       </section>
-
-      ${chantierSection}
 
       <section class="pc-modern-panel measurement-linked-section">
         <div class="modern-section-title">
