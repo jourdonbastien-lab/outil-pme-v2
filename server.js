@@ -4369,18 +4369,6 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
 
   const chantierSection = orderDb
     ? (() => {
-        const logged = db.prepare(`
-          SELECT COALESCE(SUM(minutes_total),0) AS total
-          FROM chantier_hours
-          WHERE client = ?
-          AND order_name = ?
-        `).get(orderDb.name, orderDb.description);
-        const planned = Number(orderDb.planned_hours || 0);
-        const done = Number(orderDb.done_hours || 0) || Number(logged.total || 0) / 60;
-        const diff = done - planned;
-        const progress = orderDb.chantier_progress
-          ? Math.max(0, Math.min(100, Math.round(Number(orderDb.chantier_progress || 0))))
-          : chantierProgress(done, planned);
         const status = normalizeChantierStatus(orderDb.chantier_status);
         return `
           <section class="pc-modern-panel chantier-detail-panel">
@@ -4390,31 +4378,12 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
                 <h2>Suivi chantier</h2>
               </div>
             </div>
-            <div class="chantier-hours-grid">
-              <div><span>Statut</span><strong>${escHtml(status)}</strong></div>
-              <div><span>Heures prévues</span><strong>${formatHours(planned)}</strong></div>
-              <div><span>Heures réalisées</span><strong>${formatHours(done)}</strong></div>
-              <div><span>Écart</span><strong class="${diff > 0 ? 'chantier-over' : ''}">${diff >= 0 ? '+' : ''}${formatHours(diff)}</strong></div>
-              <div><span>Avancement</span><strong>${progress}%</strong></div>
-              <div><span>Dates</span><strong>${escHtml(orderDb.chantier_start_date || '—')} → ${escHtml(orderDb.chantier_end_date || '—')}</strong></div>
-            </div>
-            <div class="chantier-progress" aria-label="Avancement ${progress}%">
-              <span style="width:${progress}%"></span>
-            </div>
-            ${orderDb.chantier_notes ? `<p>${escHtml(orderDb.chantier_notes)}</p>` : ''}
-            <form method="POST" action="/orders/client/${orderDb.id}/chantier" class="chantiers-form" style="margin-top:14px">
-              <div class="chantiers-form-grid">
-                <label><span>Statut</span><select name="chantier_status">${chantierStatusOptions(status)}</select></label>
-                <label><span>Heures prévues</span><input name="planned_hours" type="number" min="0" step="0.25" value="${planned}" /></label>
-                <label><span>Heures réalisées</span><input name="done_hours" type="number" min="0" step="0.25" value="${done}" /></label>
-                <label><span>Avancement (%)</span><input name="chantier_progress" type="number" min="0" max="100" step="1" value="${progress}" /></label>
-                <label><span>Date début</span><input name="chantier_start_date" type="date" value="${escHtml(orderDb.chantier_start_date || '')}" /></label>
-                <label><span>Date fin prévue</span><input name="chantier_end_date" type="date" value="${escHtml(orderDb.chantier_end_date || '')}" /></label>
-                <label class="chantiers-form-wide"><span>Notes chantier</span><textarea name="chantier_notes" rows="3">${escHtml(orderDb.chantier_notes || '')}</textarea></label>
-              </div>
-              <div class="chantiers-form-actions">
-                <button class="clients-submit-btn" type="submit">Enregistrer le suivi chantier</button>
-              </div>
+            <form method="POST" action="/orders/client/${orderDb.id}/chantier" class="chantier-status-card-form">
+              <label>
+                <span>Étape actuelle</span>
+                <select name="chantier_status">${chantierStatusOptions(status)}</select>
+              </label>
+              <button class="clients-submit-btn" type="submit">Mettre à jour</button>
             </form>
           </section>
         `;
@@ -4461,16 +4430,28 @@ app.post('/orders/client/:id/chantier', requireLogin, (req, res) => {
   const existing = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
   if (!existing) return res.status(404).send('Commande introuvable');
 
-  const chantierStatus = normalizeChantierStatus(req.body.chantier_status);
-  const plannedHours = parsePositiveNumber(req.body.planned_hours);
-  const doneHours = parsePositiveNumber(req.body.done_hours);
-  const progressRaw = Number(req.body.chantier_progress || 0);
+  const chantierStatus = normalizeChantierStatus(req.body.chantier_status || existing.chantier_status);
+  const plannedHours = Object.prototype.hasOwnProperty.call(req.body, 'planned_hours')
+    ? parsePositiveNumber(req.body.planned_hours)
+    : Number(existing.planned_hours || 0);
+  const doneHours = Object.prototype.hasOwnProperty.call(req.body, 'done_hours')
+    ? parsePositiveNumber(req.body.done_hours)
+    : Number(existing.done_hours || 0);
+  const progressRaw = Object.prototype.hasOwnProperty.call(req.body, 'chantier_progress')
+    ? Number(req.body.chantier_progress || 0)
+    : Number(existing.chantier_progress || 0);
   const chantierProgressValue = Number.isFinite(progressRaw)
     ? Math.max(0, Math.min(100, progressRaw))
     : chantierProgress(doneHours, plannedHours);
-  const startDate = String(req.body.chantier_start_date || '').trim() || null;
-  const endDate = String(req.body.chantier_end_date || '').trim() || null;
-  const notes = String(req.body.chantier_notes || '').trim() || null;
+  const startDate = Object.prototype.hasOwnProperty.call(req.body, 'chantier_start_date')
+    ? String(req.body.chantier_start_date || '').trim() || null
+    : existing.chantier_start_date || null;
+  const endDate = Object.prototype.hasOwnProperty.call(req.body, 'chantier_end_date')
+    ? String(req.body.chantier_end_date || '').trim() || null
+    : existing.chantier_end_date || null;
+  const notes = Object.prototype.hasOwnProperty.call(req.body, 'chantier_notes')
+    ? String(req.body.chantier_notes || '').trim() || null
+    : existing.chantier_notes || null;
 
   db.prepare(`
     UPDATE client_orders

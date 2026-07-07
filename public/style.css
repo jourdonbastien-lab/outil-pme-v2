@@ -8581,6 +8581,45 @@ a.mobile-bottom-item:visited,
   color:#b91c1c !important;
 }
 
+.chantier-status-card-form{
+  display:grid;
+  grid-template-columns:minmax(220px, 1fr) auto;
+  gap:12px;
+  align-items:end;
+  margin:0;
+}
+
+.chantier-status-card-form label{
+  display:grid;
+  gap:8px;
+  min-width:0;
+}
+
+.chantier-status-card-form label span{
+  color:#6b7280;
+  font-size:12px;
+  font-weight:900;
+}
+
+.chantier-status-card-form select{
+  width:100%;
+  min-height:48px;
+  padding:0 14px;
+  border:1px solid #d9dee7;
+  border-radius:16px;
+  background:#f9fafb;
+  color:#111827;
+  font-size:16px;
+  font-weight:800;
+}
+
+.chantier-status-card-form .clients-submit-btn{
+  width:auto;
+  min-height:48px;
+  margin:0;
+  white-space:nowrap;
+}
+
 .chantier-progress{
   height:9px;
   overflow:hidden;
@@ -8714,6 +8753,14 @@ a.mobile-bottom-item:visited,
 
   .chantier-hours-grid{
     grid-template-columns:1fr 1fr 1fr;
+  }
+
+  .chantier-status-card-form{
+    grid-template-columns:1fr;
+  }
+
+  .chantier-status-card-form .clients-submit-btn{
+    width:100%;
   }
 
   .chantier-hours-grid div{
