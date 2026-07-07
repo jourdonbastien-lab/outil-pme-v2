@@ -2014,27 +2014,10 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
           ELSE date
         END ASC,
         id DESC
-      LIMIT 8
+      LIMIT 3
     `)
     .all();
 
-  const quotesToFollow = db
-    .prepare(`
-      SELECT q.id, q.title, q.client_name, q.status, q.created_at,
-             COALESCE((SELECT SUM(total) FROM quote_lines WHERE quote_id = q.id), 0) AS total_ht
-      FROM quotes
-      q
-      WHERE COALESCE(NULLIF(TRIM(q.status), ''), 'Brouillon') IN ('Brouillon', 'Envoyé', 'Accepté')
-      ORDER BY q.id DESC
-      LIMIT 6
-    `)
-    .all();
-
-  const formatMoney = (value) => {
-    const n = Number(value || 0);
-    if (!Number.isFinite(n) || n <= 0) return '—';
-    return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € HT`;
-  };
   const formatDateShort = (value) => {
     const raw = String(value || '').slice(0, 10);
     if (!raw) return '—';
@@ -2044,86 +2027,40 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
   };
 
   const kpis = [
-    { label: 'Commandes en cours', value: openClientOrders, href: '/orders/clients' },
-    { label: 'Heures prévues restantes', value: formatHours(remainingHours), href: '/orders/clients' },
-    { label: 'Devis à suivre', value: quotesToFollowCount, href: '/devis' },
-    { label: 'Fournisseurs en attente', value: waitingSupplierOrders, href: '/orders/suppliers' },
+    { icon: 'C', label: 'Commandes en cours', value: openClientOrders, href: '/orders/clients' },
+    { icon: 'H', label: 'Heures prévues restantes', value: formatHours(remainingHours), href: '/orders/clients' },
+    { icon: 'D', label: 'Devis à suivre', value: quotesToFollowCount, href: '/devis' },
+    { icon: 'F', label: 'Fournisseurs en attente', value: waitingSupplierOrders, href: '/orders/suppliers' },
   ]
     .map(
       (item) => `
       <a class="prototype-kpi-card" href="${item.href}">
-        <strong>${escHtml(item.value)}</strong>
-        <span>${escHtml(item.label)}</span>
-        <em>Voir</em>
+        <span class="prototype-kpi-icon">${escHtml(item.icon)}</span>
+        <span class="prototype-kpi-body">
+          <strong>${escHtml(item.value)}</strong>
+          <small>${escHtml(item.label)}</small>
+          <em>Voir ›</em>
+        </span>
       </a>
     `
     )
     .join('');
 
-  const quickActions = [
-    { label: 'Nouveau devis', href: '/devis/new' },
-    { label: 'Nouvelle commande', href: '/orders/clients' },
-    { label: 'Nouveau client', href: '/clients' },
-    { label: 'Prise de cote', href: '/outils/prises-cotes' },
-    { label: 'Bibliothèque matière', href: '/materials' },
+  const todaySummary = [
+    { icon: 'P', label: 'Planning du jour', value: todayEvents.length },
+    { icon: 'T', label: 'Tâches ouvertes', value: openTasks },
+    { icon: 'R', label: 'En retard', value: overdueOrders.length },
   ]
-    .map((action) => `<a class="prototype-action" href="${action.href}">${escHtml(action.label)}</a>`)
+    .map(
+      (item) => `
+      <article class="prototype-today-stat">
+        <span>${escHtml(item.icon)}</span>
+        <strong>${escHtml(item.label)}</strong>
+        <small>${escHtml(item.value)}</small>
+      </article>
+    `
+    )
     .join('');
-
-  const priorityTasksHtml = priorityTasks.length
-    ? priorityTasks
-        .map(
-          (task) => `
-        <li class="dash-list-item">
-          <span>
-            <strong>${escHtml(task.title || 'Sans titre')}</strong>
-            <small>${escHtml(task.status || 'À faire')}</small>
-          </span>
-          <a class="dash-mini-link" href="/tasks">Ouvrir</a>
-        </li>
-      `
-        )
-        .join('')
-    : '<li class="prototype-empty">Aucune tâche ouverte</li>';
-
-  const todayEventsHtml = todayEvents.length
-    ? todayEvents
-        .map((event) => {
-          const hour = String(event.start_date || '').slice(11, 16);
-          const endHour = String(event.end_date || '').slice(11, 16);
-          return `
-        <li class="dash-list-item">
-          <span>
-            <strong>${escHtml(event.title || 'Événement')}</strong>
-            <small>${escHtml(event.type || 'Agenda')}${hour ? ' · ' + escHtml(hour) : ''}${endHour ? ' - ' + escHtml(endHour) : ''}</small>
-          </span>
-          <a class="dash-mini-link" href="/agenda">Voir</a>
-        </li>
-      `;
-        })
-        .join('')
-    : '<li class="prototype-empty">Aucun événement aujourd’hui</li>';
-
-  const overdueOrdersHtml = overdueOrders.length
-    ? overdueOrders
-        .map((order) => {
-          const safeClientFolder = safeName(order.name || 'Client');
-          const orderFolderName = safeName(
-            order.description && order.description.trim() !== '' ? order.description : `Commande_${order.id}`
-          );
-          const orderUrl = `/pc-folders/${encodeURIComponent(safeClientFolder)}/${encodeURIComponent(orderFolderName)}`;
-          return `
-        <li class="prototype-alert-item">
-          <span>
-            <strong>${escHtml(order.description || `Commande #${order.id}`)}</strong>
-            <small>${escHtml(order.name || 'Client')} · fin prévue ${escHtml(formatDateShort(order.chantier_end_date))}</small>
-          </span>
-          <a class="dash-mini-link" href="${orderUrl}">Ouvrir</a>
-        </li>
-      `;
-        })
-        .join('')
-    : '<li class="prototype-empty">Aucune commande en retard</li>';
 
   const orderChantiersHtml = orderChantiers.length
     ? orderChantiers
@@ -2144,53 +2081,29 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
           return `
         <article class="prototype-order-card">
           <header>
+            <span class="prototype-order-icon">C</span>
             <div>
-              <small>${escHtml(order.name || 'Client')}</small>
               <strong>${escHtml(order.description || `Commande #${order.id}`)}</strong>
+              <small>${escHtml(order.name || 'Client')}</small>
             </div>
             <span class="prototype-status">${escHtml(order.chantier_status || order.status || 'En cours')}</span>
+            <b>${progress}%</b>
+            <a class="prototype-chevron" href="${orderUrl}" aria-label="Ouvrir la commande">›</a>
           </header>
-          <div class="prototype-progress-row">
-            <span>Avancement</span>
-            <strong>${progress}%</strong>
-          </div>
           <div class="prototype-progress" aria-label="Avancement chantier ${progress}%">
             <span style="width:${progress}%"></span>
           </div>
           <div class="prototype-order-metrics">
-            <span><small>Prévu</small><strong>${escHtml(formatHours(planned))}</strong></span>
-            <span><small>Réalisé</small><strong>${escHtml(formatHours(done))}</strong></span>
-            <span><small>Écart</small><strong>${escHtml(formatHours(gap))}</strong></span>
-          </div>
-          <div class="prototype-order-footer">
-            <span class="${isLate ? 'prototype-late-badge' : 'prototype-date-badge'}">${isLate ? 'Retard' : 'Fin prévue'} · ${escHtml(formatDateShort(endDate))}</span>
-            <a class="prototype-open-button" href="${orderUrl}">Ouvrir</a>
+            <span><strong>${escHtml(formatHours(planned))}</strong><small>Prévues</small></span>
+            <span><strong>${escHtml(formatHours(done))}</strong><small>Réalisées</small></span>
+            <span><strong>${escHtml(formatHours(gap))}</strong><small>Écart</small></span>
+            <span class="${isLate ? 'prototype-metric-late' : ''}"><strong>${escHtml(formatDateShort(endDate))}</strong><small>Fin prévue</small></span>
           </div>
         </article>
       `;
         })
         .join('')
     : '<p class="prototype-empty">Aucune commande / chantier actif</p>';
-
-  const quotesHtml = quotesToFollow.length
-    ? quotesToFollow
-        .map(
-          (quote) => `
-        <li class="prototype-quote-item">
-          <span>
-            <strong>${escHtml(quote.title || `Devis #${quote.id}`)}</strong>
-            <small>${escHtml(quote.client_name || 'Client non renseigné')}</small>
-          </span>
-          <span class="prototype-quote-meta">
-            <em>${escHtml(quote.status || 'Brouillon')}</em>
-            <strong>${escHtml(formatMoney(quote.total_ht))}</strong>
-          </span>
-          <a class="dash-mini-link" href="/devis/${quote.id}">Ouvrir</a>
-        </li>
-      `
-        )
-        .join('')
-    : '<li class="prototype-empty">Aucun devis à relancer</li>';
 
   res.send(
     dashboardTemplate(
@@ -2203,9 +2116,6 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
             <h1>Bonjour ${escHtml(userName)}</h1>
             <p>${escHtml(todayLabel)} · Voici l’état de l’activité aujourd’hui.</p>
           </div>
-          <div class="prototype-actions">
-            ${quickActions}
-          </div>
         </section>
 
         <section class="prototype-kpi-grid" aria-label="Indicateurs principaux">
@@ -2215,58 +2125,22 @@ app.get('/dashboard-prototype', requireLogin, (req, res) => {
         <section class="prototype-main-layout">
           <article class="prototype-panel prototype-orders-panel">
             <div class="prototype-panel-head">
-              <div>
-                <span>Cœur activité</span>
-                <h2>Commandes / chantiers actifs</h2>
-              </div>
-              <a href="/orders/clients">Voir tout</a>
+              <h2>Commandes / chantiers actifs</h2>
+              <a href="/orders/clients">Voir tout ›</a>
             </div>
             <div class="prototype-orders-grid">
               ${orderChantiersHtml}
             </div>
           </article>
 
-          <aside class="prototype-today-column">
-            <article class="prototype-panel">
-              <div class="prototype-panel-head">
-                <div>
-                  <span>Terrain</span>
-                  <h2>À faire aujourd’hui</h2>
-                </div>
-              </div>
-              <h3>Planning</h3>
-              <ul class="prototype-list">${todayEventsHtml}</ul>
-              <h3>Tâches ouvertes</h3>
-              <ul class="prototype-list">${priorityTasksHtml}</ul>
-              <h3>Commandes en retard</h3>
-              <ul class="prototype-list">${overdueOrdersHtml}</ul>
-            </article>
-
-            <article class="prototype-panel">
-              <div class="prototype-panel-head">
-                <div>
-                  <span>Commercial</span>
-                  <h2>Devis à relancer</h2>
-                </div>
-                <a href="/devis">Voir tout</a>
-              </div>
-              <ul class="prototype-list prototype-quotes-list">
-                ${quotesHtml}
-              </ul>
-            </article>
-          </aside>
-        </section>
-
-        <section class="prototype-panel prototype-actions-panel">
-          <div class="prototype-panel-head">
-            <div>
-              <span>Actions rapides</span>
-              <h2>Créer ou ouvrir rapidement</h2>
+          <article class="prototype-panel prototype-today-panel">
+            <div class="prototype-panel-head">
+              <h2>À faire aujourd’hui</h2>
             </div>
-          </div>
-          <div class="prototype-actions prototype-actions-wide">
-            ${quickActions}
-          </div>
+            <div class="prototype-today-grid">
+              ${todaySummary}
+            </div>
+          </article>
         </section>
       </div>
       `
