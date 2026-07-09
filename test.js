@@ -3,35 +3,46 @@
 const assert = require('assert');
 const { parseEbpQuoteText } = require('./lib/ebpQuoteParser');
 
-const ebpQuoteText = `
-SARL A2 METAL
-A2 METAL
-Zone de l'Atlantique
-44800 SAINT-HERBLAIN
-
-MULTI SERVICE BOVIN
-La Quantinière
-49800 TRELAZE
-Code client Mode de règlement
-DE001000
-Date 02/07/2026
-
-Description Qté P.U. HT Montant HT TVA
-Fabrication de coffre pour rotor
-1 3 956,88 3 956,88 20,00
-
-Total HT Net 3 956,88
-Total TVA 791,38
-Total TTC 4 748,26
-
-Bon pour accord
-Conditions générales
-Total TTC 9 999,99
-`;
+const ebpQuoteText = [
+  'Siret : 000 000 000 00000',
+  '1 sur 2',
+  'MULTI SERVICE BOVIN',
+  'La Quantiniere',
+  '49800 TRELAZE',
+  'Mode de reglementCode client',
+  'CL00707',
+  'Date',
+  '02/07/2026',
+  'Numero',
+  'DE001000',
+  'Date de validite',
+  '01/08/2026',
+  'Devis',
+  'SARL A2 METAL',
+  '',
+  'TVAMontant HTP.U. HTQteDescription',
+  '0,00',
+  '0,00\u00A00,00',
+  '0,00',
+  'Fabrication de coffre pour rotor',
+  'Dimensions: 720 x 260 x 280 mm',
+  '',
+  'Total HT Net',
+  'Total TVA',
+  'Total TTC',
+  'Net a payer',
+  '3\u202F956,88',
+  '791,38',
+  '4\u00A0748,26',
+  '4\u00A0748,26 EUR',
+  '',
+  'Conditions generales',
+  'Total TTC 9 999,99',
+].join('\n');
 
 const result = parseEbpQuoteText(ebpQuoteText);
 
-assert.strictEqual(result.recognized, true, 'Le devis EBP doit être reconnu');
+assert.strictEqual(result.matched, true, 'Le devis EBP doit etre reconnu');
 assert.strictEqual(result.analysisUsed, 'Parser EBP');
 assert.strictEqual(result.client_name, 'MULTI SERVICE BOVIN');
 assert.strictEqual(result.quote_number, 'DE001000');
