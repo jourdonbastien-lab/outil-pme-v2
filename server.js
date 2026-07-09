@@ -1461,8 +1461,9 @@ function chantierProgress(doneHours, plannedHours) {
   return Math.max(0, Math.min(100, Math.round((done / planned) * 100)));
 }
 
-function clientOrderStageProgress(status) {
+function getProgressFromChantierStatus(status) {
   const normalized = normalizeChantierStatus(status);
+  if (normalized === 'En pose') return 75;
   if (normalized === 'En fabrication') return 50;
   if (normalized === 'Facturé' || normalized === 'Terminé') return 100;
   return 0;
@@ -2681,15 +2682,7 @@ function renderDashboardPrototype(req, res) {
           const done = hasTrackedHours
             ? Number(order.done_hours_calc || 0)
             : Number(order.done_hours || 0);
-          const progress = hasTrackedHours
-            ? (planned > 0
-                ? Math.max(0, Math.min(100, Math.round((done / planned) * 100)))
-                : (Number.isFinite(Number(order.chantier_progress))
-                    ? Math.max(0, Math.min(100, Math.round(Number(order.chantier_progress))))
-                    : chantierProgress(done, planned)))
-            : (Number.isFinite(Number(order.chantier_progress))
-                ? Math.max(0, Math.min(100, Math.round(Number(order.chantier_progress))))
-                : chantierProgress(done, planned));
+          const progress = getProgressFromChantierStatus(order.chantier_status);
           const gap = done - planned;
           const endDate = String(order.chantier_end_date || '').slice(0, 10);
           const isLate = endDate && endDate < todayIso;
@@ -4467,7 +4460,7 @@ const plannedHours =
   Number(o.planned_hours || 0);
 
 const chantierStatus = normalizeChantierStatus(o.chantier_status);
-const progress = clientOrderStageProgress(chantierStatus);
+const progress = getProgressFromChantierStatus(chantierStatus);
 const isOverHours = plannedHours > 0 && actualHours > plannedHours;
 
 const endDate = String(o.chantier_end_date || '').slice(0, 10);
@@ -5579,12 +5572,7 @@ app.post('/orders/client/:id/chantier', requireLogin, (req, res) => {
   const doneHours = Object.prototype.hasOwnProperty.call(req.body, 'done_hours')
     ? parsePositiveNumber(req.body.done_hours)
     : Number(existing.done_hours || 0);
-  const progressRaw = Object.prototype.hasOwnProperty.call(req.body, 'chantier_progress')
-    ? Number(req.body.chantier_progress || 0)
-    : Number(existing.chantier_progress || 0);
-  const chantierProgressValue = Number.isFinite(progressRaw)
-    ? Math.max(0, Math.min(100, progressRaw))
-    : chantierProgress(doneHours, plannedHours);
+  const chantierProgressValue = getProgressFromChantierStatus(chantierStatus);
   const startDate = Object.prototype.hasOwnProperty.call(req.body, 'chantier_start_date')
     ? String(req.body.chantier_start_date || '').trim() || null
     : existing.chantier_start_date || null;
