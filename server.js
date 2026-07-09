@@ -311,7 +311,7 @@ function buildClientCandidates() {
     map.get(key).sources.add(source);
   };
 
-  db.prepare('SELECT name FROM clients WHERE name IS NOT NULL AND TRIM(name) != ""').all().forEach((row) => {
+  db.prepare("SELECT name FROM clients WHERE name IS NOT NULL AND TRIM(name) != ''").all().forEach((row) => {
     push(row.name, 'sqlite');
   });
 
@@ -380,6 +380,128 @@ function pickAmountWithLabel(text, labels) {
   return null;
 }
 
+function normalizeOcrLine(line) {
+  return String(line || '')
+    .replace(/[|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractLabeledValue(lines, labels) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = normalizeOcrLine(lines[i]);
+    if (!line) continue;
+    const normalized = normalizeSearchText(line);
+    for (const label of labels) {
+      const normalizedLabel = normalizeSearchText(label);
+      if (!normalizedLabel) continue;
+
+      if (normalized.startsWith(normalizedLabel)) {
+        const remainder = line.slice(label.length).replace(/^\s*[:\-–—]\s*/, '').trim();
+        if (remainder) return remainder;
+        if (lines[i + 1]) {
+          const next = normalizeOcrLine(lines[i + 1]);
+          if (next && !/^\d+[\s\S]*$/.test(next)) return next;
+        }
+      }
+
+      const index = normalized.indexOf(normalizedLabel);
+      if (index >= 0 && index < 14) {
+        const after = line.slice(Math.min(line.length, label.length + index)).replace(/^.*?[:\-–—]\s*/, '').trim();
+        if (after) return after;
+      }
+    }
+  }
+  return '';
+}
+
+function pickBestAmountFromText(text, labels) {
+  const raw = String(text || '');
+  const amountPattern = /([0-9]{1,3}(?:[ .\u00A0][0-9]{3})*(?:,[0-9]{1,2})?|[0-9]+(?:,[0-9]{1,2})?)/g;
+  for (const label of labels) {
+    const labelMatch = raw.match(new RegExp(`${label}`, 'i'));
+    if (!labelMatch) continue;
+
+    const snippetStart = Math.max(0, raw.toLowerCase().indexOf(labelMatch[0].toLowerCase()));
+    const snippet = raw.slice(snippetStart, snippetStart + 140);
+    const values = Array.from(snippet.matchAll(amountPattern)).map((m) => parseFrenchAmount(m[1])).filter((v) => v !== null);
+    if (values.length) return values[0];
+  }
+  return null;
+}
+
+function isLikelyCompanyLine(line) {
+  const normalized = normalizeSearchText(line);
+  if (!normalized) return false;
+  return /(sarl|sas|sa|eurl|entreprise|metallerie|métallerie|ferronnerie|batiment|bâtiment|construction|industrie|artisan)/i.test(line)
+    || /^((\d{1,4}\s+)?(rue|avenue|bd|boulevard|route|zone|zi|zac)\b)/i.test(line)
+    || /(tel|tél|telephone|mobile|mail|@)/i.test(line);
+}
+
+function guessClientFromLines(lines) {
+  const labels = [
+    'client',
+    'nom du client',
+    'client facture',
+    'client facturation',
+    'raison sociale',
+    'destinataire',
+    'adresse facturation',
+    'adresse de facturation',
+    'adresse livraison',
+    'facture à',
+    'commande pour',
+    'devis pour',
+  ];
+
+  const labeled = extractLabeledValue(lines, labels);
+  if (labeled && !isLikelyCompanyLine(labeled)) return labeled;
+
+  for (const line of lines) {
+    const normalized = normalizeOcrLine(line);
+    if (!normalized) continue;
+    if (/^client\b/i.test(normalized)) {
+      const cleaned = normalized.replace(/^client\b[:\-–—]*/i, '').trim();
+      if (cleaned && !isLikelyCompanyLine(cleaned)) return cleaned;
+    }
+  }
+
+  const candidateLines = lines.filter((line) => {
+    const normalized = normalizeOcrLine(line);
+    if (!normalized) return false;
+    if (isLikelyCompanyLine(normalized)) return false;
+    if (/^(devis|facture|bon de commande|commande|offre|total|ht|ttc|date|objet|intitul|reference|référence)/i.test(normalized)) return false;
+    return /[A-Za-zÀ-ÿ]{2,}/.test(normalized) && normalized.length <= 80;
+  });
+
+  return candidateLines[0] || '';
+}
+
+function guessTitleFromLines(lines) {
+  const titleLabels = [
+    'objet',
+    'intitule',
+    'intitulé',
+    'désignation',
+    'designation',
+    'travaux',
+    'prestation',
+    'chantier',
+  ];
+
+  const labeled = extractLabeledValue(lines, titleLabels);
+  if (labeled) return labeled;
+
+  const useful = lines.filter((line) => {
+    const normalized = normalizeOcrLine(line);
+    if (!normalized) return false;
+    if (/^(devis|client|facture|adresse|date|page|référence|reference|tel|tél|siret|sas|sarl|montant|total)/i.test(normalized)) return false;
+    return /[A-Za-zÀ-ÿ]{3,}/.test(normalized);
+  });
+
+  return useful.find((line) => /(escalier|portail|garde-corps|garde corps|cloture|clôture|pergola|verriere|vérrière|terrasse|rampe|main courante)/i.test(line)) || useful[0] || '';
+}
+
 function extractEbpFieldsFromText(text) {
   const raw = String(text || '');
   const lines = raw
@@ -387,38 +509,49 @@ function extractEbpFieldsFromText(text) {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  let clientName = '';
-  const clientMatch = raw.match(/(?:client|nom(?:\s+du\s+client)?)\s*[:\-]\s*([^\n\r]+)/i);
-  if (clientMatch) clientName = clientMatch[1].trim();
+  const clientName = guessClientFromLines(lines);
 
   let quoteNumber = '';
-  const quoteMatch = raw.match(/devis\s*(?:n[°o]|numero|num)?\s*[:#\-]?\s*([A-Z0-9][A-Z0-9\-\/_]*)/i);
-  if (quoteMatch) quoteNumber = quoteMatch[1].trim();
+  const quotePatterns = [
+    /devis\s*(?:n[°o]|numero|num|ref(?:erence)?|réf(?:érence)?)?\s*[:#\-–—]?\s*([A-Z0-9][A-Z0-9\-\/_]*)/i,
+    /(?:ref(?:erence)?|réf(?:érence)?)\s*devis\s*[:#\-–—]?\s*([A-Z0-9][A-Z0-9\-\/_]*)/i,
+  ];
+  for (const pattern of quotePatterns) {
+    const match = raw.match(pattern);
+    if (match) {
+      quoteNumber = match[1].trim();
+      break;
+    }
+  }
 
   let quoteDate = '';
-  const dateMatch = raw.match(/(?:date|du)\s*[:\-]?\s*(\d{2}[\/\-.]\d{2}[\/\-.]\d{2,4}|\d{4}[\-\/]\d{2}[\-\/]\d{2})/i);
-  if (dateMatch) {
+  const datePatterns = [
+    /(?:date|du)\s*[:\-–—]?\s*(\d{2}[\/\-.]\d{2}[\/\-.]\d{2,4}|\d{4}[\-\/]\d{2}[\-\/]\d{2})/i,
+    /(?:édité le|emis le|émis le|date de création)\s*[:\-–—]?\s*(\d{2}[\/\-.]\d{2}[\/\-.]\d{2,4}|\d{4}[\-\/]\d{2}[\-\/]\d{2})/i,
+  ];
+  for (const pattern of datePatterns) {
+    const dateMatch = raw.match(pattern);
+    if (!dateMatch) continue;
     const d = dateMatch[1].replace(/\./g, '/');
     const fr = d.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/);
     const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (fr) {
       const year = fr[3].length === 2 ? `20${fr[3]}` : fr[3];
       quoteDate = `${year}-${fr[2]}-${fr[1]}`;
-    } else if (iso) {
+      break;
+    }
+    if (iso) {
       quoteDate = `${iso[1]}-${iso[2]}-${iso[3]}`;
+      break;
     }
   }
 
-  let title = '';
-  const titleMatch = raw.match(/(?:objet|intitule|intitul[eé]|designation)\s*[:\-]\s*([^\n\r]+)/i);
-  if (titleMatch) title = titleMatch[1].trim();
-  if (!title) {
-    const fallback = lines.find((line) => /(?:portail|escalier|garde|pergola|verriere|cloture|terrasse)/i.test(line));
-    if (fallback) title = fallback;
-  }
+  const title = guessTitleFromLines(lines) || '';
 
-  const amountHt = pickAmountWithLabel(raw, ['total\\s*ht', 'montant\\s*ht', '\\bht\\b']);
-  const amountTtc = pickAmountWithLabel(raw, ['total\\s*ttc', 'montant\\s*ttc', '\\bttc\\b']);
+  const amountHt = pickBestAmountFromText(raw, ['total ht', 'montant ht', 'sous total ht', 'net ht', 'base ht', 'prix ht'])
+    ?? pickAmountWithLabel(raw, ['total\s*ht', 'montant\s*ht', 'sous\s*total\s*ht', 'net\s*ht', 'base\s*ht', '\bht\b']);
+  const amountTtc = pickBestAmountFromText(raw, ['total ttc', 'montant ttc', 'net a payer', 'net à payer', 'total general', 'total général'])
+    ?? pickAmountWithLabel(raw, ['total\s*ttc', 'montant\s*ttc', 'net\s*a\s*payer', 'net\s*à\s*payer', 'total\s*g[ée]n[ée]ral', '\bttc\b']);
 
   return {
     client_name: clientName,
