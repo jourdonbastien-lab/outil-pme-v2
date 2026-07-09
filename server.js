@@ -4753,41 +4753,6 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
             </section>
 
             <section class="clients-create-card modern-form-card modern-client-order-form">
-              ${warning ? `<p class="info">${escHtml(warning)}</p>` : ''}
-
-              <section class="panel-soft" style="margin-bottom:16px;">
-                <div class="panel-header">
-                  <h2>Détection OCR / PDF</h2>
-                </div>
-                <div class="modern-form-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
-                  <div class="clients-field"><span>Analyse utilisée</span><strong>${escHtml(analysisUsed)}</strong></div>
-                  <div class="clients-field"><span>Client détecté</span><strong>${escHtml(detectedClientLabel)}</strong></div>
-                  <div class="clients-field"><span>Client proposé</span><strong>${escHtml(proposedClientLabel)}</strong></div>
-                  <div class="clients-field"><span>Numéro devis</span><strong>${escHtml(detectedNumberLabel)}</strong></div>
-                  <div class="clients-field"><span>Date</span><strong>${escHtml(detectedDateLabel)}</strong></div>
-                  <div class="clients-field"><span>Intitulé</span><strong>${escHtml(detectedTitleLabel)}</strong></div>
-                  <div class="clients-field"><span>Montant HT</span><strong>${escHtml(detectedAmountHtLabel)}</strong></div>
-                  <div class="clients-field"><span>Montant TTC</span><strong>${escHtml(detectedAmountTtcLabel)}</strong></div>
-                  <div class="clients-field"><span>Source prioritaire</span><strong>${escHtml(analysis.source === 'pdf' ? 'PDF texte sélectionnable' : 'OCR image')}</strong></div>
-                  <div class="clients-field"><span>Longueur PDF</span><strong>${escHtml(String(pdfTextLength))} caractères</strong></div>
-                  <div class="clients-field"><span>Longueur OCR</span><strong>${escHtml(String(ocrTextLength))} caractères</strong></div>
-                </div>
-              </section>
-
-              <section class="panel-soft" style="margin-bottom:16px;">
-                <div class="panel-header">
-                  <h2>Debug Parser EBP</h2>
-                </div>
-                <div class="modern-form-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
-                  <div class="clients-field"><span>matched</span><strong>${escHtml(String(Boolean(parserDiagnostic.matched)))}</strong></div>
-                  <div class="clients-field"><span>Raison du refus</span><strong>${escHtml(parserDiagnostic.reason || 'Aucune')}</strong></div>
-                  <div class="clients-field"><span>Marqueurs trouvés</span><strong>${escHtml((parserDiagnostic.markersFound || []).join(', ') || '—')}</strong></div>
-                  <div class="clients-field"><span>Marqueurs manquants</span><strong>${escHtml((parserDiagnostic.markersMissing || []).join(', ') || '—')}</strong></div>
-                  <div class="clients-field"><span>Longueur envoyée à parseEbpQuoteText</span><strong>${escHtml(String(parserDiagnostic.inputLength || 0))}</strong></div>
-                  <div class="clients-field"><span>Longueur zone primaire EBP</span><strong>${escHtml(String(parserDiagnostic.primaryTextLength || 0))}</strong></div>
-                </div>
-              </section>
-
               <form method="POST" action="/orders/clients/scan-ebp/create" class="modern-client-order-add-form">
                 <input type="hidden" name="scan_file" value="${escHtml(path.basename(req.file.filename))}" />
                 <input type="hidden" name="scan_original_name" value="${escHtml(req.file.originalname || req.file.filename)}" />
@@ -4868,36 +4833,6 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
                     </div>
                   </label>
                 </div>
-
-                <details>
-                  <summary>Texte PDF brut réellement analysé</summary>
-                  <div style="margin-top:12px;">
-                    <p class="info">Fichier debug serveur: ${escHtml(EBP_SCAN_LAST_PDF_TEXT_PATH)}</p>
-                    <pre style="white-space:pre-wrap;max-height:360px;overflow:auto;">${escHtml(pdfText || 'Aucun texte PDF détecté')}</pre>
-                  </div>
-                </details>
-
-                <details>
-                  <summary>Texte extrait du PDF</summary>
-                  <div style="margin-top:12px;">
-                    <div class="clients-field" style="margin-bottom:12px;">
-                      <span>Statut PDF</span>
-                      <strong>${escHtml(analysis.source === 'pdf' ? (pdfTooShort ? 'Texte PDF trop court' : 'Texte PDF utilisé') : (pdfText ? 'Texte PDF trouvé mais OCR prioritaire' : 'Aucun texte PDF détecté'))}</strong>
-                    </div>
-                    <pre style="white-space:pre-wrap;max-height:360px;overflow:auto;">${escHtml(pdfText || 'Aucun texte PDF détecté')}</pre>
-                  </div>
-                </details>
-
-                <details>
-                  <summary>Texte détecté OCR</summary>
-                  <div style="margin-top:12px;">
-                    <div class="clients-field" style="margin-bottom:12px;">
-                      <span>Statut OCR</span>
-                      <strong>${escHtml(ocrTooShort ? 'Texte OCR vide ou trop court' : (ocrText ? 'Texte OCR détecté' : 'Aucun texte OCR détecté'))}</strong>
-                    </div>
-                    <pre style="white-space:pre-wrap;max-height:360px;overflow:auto;">${escHtml(ocrText || 'Aucun texte OCR détecté')}</pre>
-                  </div>
-                </details>
 
                 <div class="modern-form-actions">
                   <button type="submit" class="clients-submit-btn">
