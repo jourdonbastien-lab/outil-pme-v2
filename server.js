@@ -10,6 +10,7 @@ const { google } = require('googleapis');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
 const { readDatabaseConfig } = require('./lib/databaseConfig');
+const { parseEbpQuoteText } = require('./lib/ebpQuoteParser');
 const app = express();
 
 function tryRequire(moduleName) {
@@ -504,6 +505,11 @@ function guessTitleFromLines(lines) {
 }
 
 function extractEbpFieldsFromText(text) {
+  const parsedEbp = parseEbpQuoteText(text);
+  if (parsedEbp.recognized) {
+    return parsedEbp;
+  }
+
   const raw = String(text || '');
   const lines = raw
     .split(/\r?\n/)
@@ -555,6 +561,9 @@ function extractEbpFieldsFromText(text) {
     ?? pickAmountWithLabel(raw, ['total\s*ttc', 'montant\s*ttc', 'net\s*a\s*payer', 'net\s*à\s*payer', 'total\s*g[ée]n[ée]ral', '\bttc\b']);
 
   return {
+    recognized: false,
+    analysisUsed: 'Analyse générique',
+    parserName: 'Analyse générique',
     client_name: clientName,
     amount_ht: amountHt,
     amount_ttc: amountTtc,
@@ -4676,6 +4685,7 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
       const dateProposed = fields.quote_date || isoDate();
       const amountHt = fields.amount_ht !== null ? String(fields.amount_ht) : '';
       const amountTtc = fields.amount_ttc !== null ? String(fields.amount_ttc) : '';
+      const analysisUsed = fields.analysisUsed || fields.parserName || 'Analyse générique';
       const warning = analysis.warning
         || (analysis.source === 'pdf' && pdfTooShort ? 'Le PDF est peu textuel: vérifiez les champs détectés.' : '')
         || (analysis.source === 'ocr' && ocrTooShort ? 'OCR vide ou trop court: vérifiez le fichier, puis corrigez les champs manuellement.' : '')
@@ -4720,6 +4730,7 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
                   <h2>Détection OCR / PDF</h2>
                 </div>
                 <div class="modern-form-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+                  <div class="clients-field"><span>Analyse utilisée</span><strong>${escHtml(analysisUsed)}</strong></div>
                   <div class="clients-field"><span>Client détecté</span><strong>${escHtml(detectedClientLabel)}</strong></div>
                   <div class="clients-field"><span>Client proposé</span><strong>${escHtml(proposedClientLabel)}</strong></div>
                   <div class="clients-field"><span>Numéro devis</span><strong>${escHtml(detectedNumberLabel)}</strong></div>
