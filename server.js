@@ -12,6 +12,18 @@ const nodemailer = require('nodemailer');
 const { readDatabaseConfig } = require('./lib/databaseConfig');
 const app = express();
 
+function tryRequire(moduleName) {
+  try {
+    return require(moduleName);
+  } catch {
+    return null;
+  }
+}
+
+const pdfParse = tryRequire('pdf-parse');
+const tesseractJs = tryRequire('tesseract.js');
+const heicConvert = tryRequire('heic-convert');
+
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
   const envContent = fs.readFileSync(envFilePath, 'utf8');
@@ -217,6 +229,7 @@ const CLIENT_ORDER_FILES_DIR = resolveStoragePath(
 const QUOTE_PHOTO_DIR = resolveStoragePath(process.env.OUTIL_PME_QUOTE_PHOTO_DIR, path.join(STORAGE_DIR, 'quote_photos'));
 const SKETCHES_DIR = resolveStoragePath(process.env.OUTIL_PME_SKETCHES_DIR, path.join(STORAGE_DIR, 'sketches'));
 const PDF_STORAGE_DIR = resolveStoragePath(process.env.OUTIL_PME_PDF_DIR, path.join(STORAGE_DIR, 'pdf'));
+const EBP_SCAN_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_SCAN_DIR, path.join(STORAGE_DIR, 'ebp_scans'));
 
 ensureDir(STORAGE_DIR);
 ensureDir(DATA_DIR);
@@ -226,6 +239,7 @@ ensureDir(CLIENT_ORDER_FILES_DIR);
 ensureDir(QUOTE_PHOTO_DIR);
 ensureDir(SKETCHES_DIR);
 ensureDir(PDF_STORAGE_DIR);
+ensureDir(EBP_SCAN_DIR);
 
 const MEASUREMENTS_PUBLIC_DIR = path.join(__dirname, 'modules', 'measurements', 'public');
 const MEASUREMENT_SHEETS = {
@@ -272,6 +286,207 @@ function findClientOrderByFolder(clientFolder, orderFolder) {
     .prepare('SELECT * FROM client_orders ORDER BY id DESC')
     .all()
     .find((row) => safeName(row.name) === safeClientFolder && clientOrderFolderName(row) === safeOrderFolder);
+}
+
+function normalizeSearchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function buildClientCandidates() {
+  const map = new Map();
+  const push = (name, source) => {
+    const raw = String(name || '').trim();
+    if (!raw) return;
+    const key = normalizeSearchText(raw);
+    if (!key) return;
+    if (!map.has(key)) {
+      map.set(key, { name: raw, sources: new Set([source]) });
+      return;
+    }
+    map.get(key).sources.add(source);
+  };
+
+  db.prepare('SELECT name FROM clients WHERE name IS NOT NULL AND TRIM(name) != ""').all().forEach((row) => {
+    push(row.name, 'sqlite');
+  });
+
+  try {
+    fs.readdirSync(CLIENT_PC_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .forEach((entry) => {
+        push(entry.name, 'storage');
+      });
+  } catch {}
+
+  return Array.from(map.values()).map((item) => ({
+    name: item.name,
+    sources: Array.from(item.sources),
+  }));
+}
+
+function scoreClientMatch(detected, candidate) {
+  const a = normalizeSearchText(detected);
+  const b = normalizeSearchText(candidate);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.86;
+  const aTokens = new Set(a.split(' ').filter(Boolean));
+  const bTokens = new Set(b.split(' ').filter(Boolean));
+  if (!aTokens.size || !bTokens.size) return 0;
+  let common = 0;
+  for (const token of aTokens) {
+    if (bTokens.has(token)) common += 1;
+  }
+  return common / Math.max(aTokens.size, bTokens.size);
+}
+
+function findBestClientMatch(detectedName) {
+  const candidates = buildClientCandidates();
+  if (!String(detectedName || '').trim()) {
+    return { best: null, candidates };
+  }
+  let best = null;
+  for (const candidate of candidates) {
+    const score = scoreClientMatch(detectedName, candidate.name);
+    if (!best || score > best.score) best = { ...candidate, score };
+  }
+  if (!best || best.score < 0.55) return { best: null, candidates };
+  return { best, candidates };
+}
+
+function parseFrenchAmount(raw) {
+  const cleaned = String(raw || '')
+    .replace(/\s+/g, '')
+    .replace(/€/g, '')
+    .replace(',', '.');
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? round2(n) : null;
+}
+
+function pickAmountWithLabel(text, labels) {
+  const raw = String(text || '');
+  for (const label of labels) {
+    const re = new RegExp(`${label}[^0-9]{0,24}([0-9][0-9 .,'\\u00A0]*)`, 'i');
+    const match = raw.match(re);
+    if (!match) continue;
+    const amount = parseFrenchAmount(match[1]);
+    if (amount !== null) return amount;
+  }
+  return null;
+}
+
+function extractEbpFieldsFromText(text) {
+  const raw = String(text || '');
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let clientName = '';
+  const clientMatch = raw.match(/(?:client|nom(?:\s+du\s+client)?)\s*[:\-]\s*([^\n\r]+)/i);
+  if (clientMatch) clientName = clientMatch[1].trim();
+
+  let quoteNumber = '';
+  const quoteMatch = raw.match(/devis\s*(?:n[°o]|numero|num)?\s*[:#\-]?\s*([A-Z0-9][A-Z0-9\-\/_]*)/i);
+  if (quoteMatch) quoteNumber = quoteMatch[1].trim();
+
+  let quoteDate = '';
+  const dateMatch = raw.match(/(?:date|du)\s*[:\-]?\s*(\d{2}[\/\-.]\d{2}[\/\-.]\d{2,4}|\d{4}[\-\/]\d{2}[\-\/]\d{2})/i);
+  if (dateMatch) {
+    const d = dateMatch[1].replace(/\./g, '/');
+    const fr = d.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/);
+    const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (fr) {
+      const year = fr[3].length === 2 ? `20${fr[3]}` : fr[3];
+      quoteDate = `${year}-${fr[2]}-${fr[1]}`;
+    } else if (iso) {
+      quoteDate = `${iso[1]}-${iso[2]}-${iso[3]}`;
+    }
+  }
+
+  let title = '';
+  const titleMatch = raw.match(/(?:objet|intitule|intitul[eé]|designation)\s*[:\-]\s*([^\n\r]+)/i);
+  if (titleMatch) title = titleMatch[1].trim();
+  if (!title) {
+    const fallback = lines.find((line) => /(?:portail|escalier|garde|pergola|verriere|cloture|terrasse)/i.test(line));
+    if (fallback) title = fallback;
+  }
+
+  const amountHt = pickAmountWithLabel(raw, ['total\\s*ht', 'montant\\s*ht', '\\bht\\b']);
+  const amountTtc = pickAmountWithLabel(raw, ['total\\s*ttc', 'montant\\s*ttc', '\\bttc\\b']);
+
+  return {
+    client_name: clientName,
+    amount_ht: amountHt,
+    amount_ttc: amountTtc,
+    quote_number: quoteNumber,
+    quote_date: quoteDate,
+    title: title,
+  };
+}
+
+async function extractTextFromPdfBuffer(buffer) {
+  if (!pdfParse) return { text: '', warning: 'pdf-parse indisponible: OCR PDF désactivé.' };
+  try {
+    const result = await pdfParse(buffer);
+    return { text: String(result?.text || ''), warning: '' };
+  } catch {
+    return { text: '', warning: 'Lecture PDF impossible. Vérifiez le fichier ou complétez manuellement.' };
+  }
+}
+
+async function extractTextFromImageBuffer(buffer, mimeType) {
+  if (!tesseractJs) {
+    return { text: '', warning: 'tesseract.js indisponible: OCR image désactivé.' };
+  }
+  let imageBuffer = buffer;
+  if ((mimeType || '').includes('heic') || (mimeType || '').includes('heif')) {
+    if (!heicConvert) {
+      return { text: '', warning: 'HEIC détecté mais conversion indisponible. Utilisez JPG/PNG ou installez heic-convert.' };
+    }
+    try {
+      imageBuffer = await heicConvert({
+        buffer,
+        format: 'JPEG',
+        quality: 0.92,
+      });
+    } catch {
+      return { text: '', warning: 'Conversion HEIC impossible. Utilisez JPG/PNG/PDF ou corrigez manuellement.' };
+    }
+  }
+  try {
+    const worker = await tesseractJs.createWorker('fra+eng');
+    const result = await worker.recognize(imageBuffer);
+    await worker.terminate();
+    return { text: String(result?.data?.text || ''), warning: '' };
+  } catch {
+    return { text: '', warning: 'OCR image impossible. Complétez manuellement les champs.' };
+  }
+}
+
+async function analyzeEbpFile(filePath, mimeType) {
+  const buffer = fs.readFileSync(filePath);
+  const lowerMime = String(mimeType || '').toLowerCase();
+  if (lowerMime.includes('pdf')) return extractTextFromPdfBuffer(buffer);
+  return extractTextFromImageBuffer(buffer, lowerMime);
+}
+
+function uniqueFilePath(baseDir, desiredFileName) {
+  const cleanName = safeSegment(desiredFileName || 'document.pdf');
+  const ext = path.extname(cleanName);
+  const stem = path.basename(cleanName, ext) || 'document';
+  let candidate = cleanName;
+  let i = 2;
+  while (fs.existsSync(safeResolveInside(baseDir, candidate))) {
+    candidate = `${stem}_${i}${ext}`;
+    i += 1;
+  }
+  return safeResolveInside(baseDir, candidate);
 }
 /* ===================== DB INIT ===================== */
 
@@ -672,6 +887,44 @@ const quotePhotoStorage = multer.diskStorage({
 
 const quotePhotoUpload =
   multer({ storage: quotePhotoStorage });
+
+const EBP_SCAN_ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif', '.pdf']);
+const EBP_SCAN_ALLOWED_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/heic',
+  'image/heif',
+  'application/pdf',
+]);
+
+const ebpScanStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    try {
+      ensureDir(EBP_SCAN_DIR);
+      cb(null, EBP_SCAN_DIR);
+    } catch (e) {
+      cb(e);
+    }
+  },
+  filename(req, file, cb) {
+    const original = String(file.originalname || 'scan');
+    const ext = path.extname(original).toLowerCase();
+    const safeBase = safeSegment(path.basename(original, ext) || 'scan-ebp');
+    const safeExt = EBP_SCAN_ALLOWED_EXT.has(ext) ? ext : '.bin';
+    cb(null, `${Date.now()}-${safeBase}${safeExt}`);
+  },
+});
+
+const ebpScanUpload = multer({
+  storage: ebpScanStorage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const ext = path.extname(String(file.originalname || '')).toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    if (EBP_SCAN_ALLOWED_EXT.has(ext) || EBP_SCAN_ALLOWED_MIME.has(mime)) return cb(null, true);
+    cb(new Error('Format non supporté. Utilisez JPG, PNG, HEIC ou PDF.'));
+  },
+});
 /* ===================== MIDDLEWARES ===================== */
 
 app.use(express.urlencoded({ extended: true }));
@@ -4092,6 +4345,10 @@ const isLate = endDate && endDate < todayIso;
                   <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
                   Créer la commande
                 </button>
+                <a class="clients-submit-btn" href="/orders/clients/scan-ebp">
+                  <span>${clientPageIcon('quotes', 'clients-submit-icon')}</span>
+                  Scanner devis EBP
+                </a>
                 <a class="modern-cancel-link" href="/clients">Voir clients</a>
               </div>
 
@@ -4133,6 +4390,311 @@ const isLate = endDate && endDate < todayIso;
       `
     )
   );
+});
+
+app.get('/orders/clients/scan-ebp', requireLogin, (req, res) => {
+  const error = String(req.query.error || '').trim();
+  const message = String(req.query.message || '').trim();
+  res.send(
+    pageTemplate(
+      req,
+      'Scanner devis EBP',
+      `
+      <div class="modern-page modern-client-orders-page">
+        <section class="modern-list-head modern-client-orders-head">
+          <div class="clients-create-head">
+            ${clientPageIcon('quotes', 'clients-title-icon')}
+            <div>
+              <h1>Scanner un devis EBP</h1>
+              <span>Upload JPG, PNG, HEIC ou PDF puis validez les champs avant création.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="clients-create-card modern-form-card modern-client-order-form">
+          ${error ? `<p class="error">${escHtml(error)}</p>` : ''}
+          ${message ? `<p class="info">${escHtml(message)}</p>` : ''}
+
+          <form method="POST" action="/orders/clients/scan-ebp/analyze" enctype="multipart/form-data" class="modern-client-order-add-form">
+            <div class="modern-form-grid">
+              <label class="clients-field">
+                <span>Fichier devis EBP</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('folder')}
+                  <input type="file" name="scan_file" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif,application/pdf,.pdf" capture="environment" required />
+                </div>
+              </label>
+            </div>
+
+            <div class="modern-form-actions">
+              <button type="submit" class="clients-submit-btn">
+                <span>${clientPageIcon('search', 'clients-submit-icon')}</span>
+                Analyser le document
+              </button>
+              <a class="modern-cancel-link" href="/orders/clients">Retour commandes</a>
+            </div>
+          </form>
+        </section>
+      </div>
+      `
+    )
+  );
+});
+
+app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
+  ebpScanUpload.single('scan_file')(req, res, async (err) => {
+    if (err) {
+      return res.redirect(`/orders/clients/scan-ebp?error=${encodeURIComponent(err.message || 'Upload impossible')}`);
+    }
+    if (!req.file) {
+      return res.redirect('/orders/clients/scan-ebp?error=Aucun+fichier+recu');
+    }
+
+    try {
+      const scanPath = safeResolveInside(EBP_SCAN_DIR, path.basename(req.file.filename));
+      const ocrResult = await analyzeEbpFile(scanPath, req.file.mimetype);
+      const fields = extractEbpFieldsFromText(ocrResult.text);
+      const matched = findBestClientMatch(fields.client_name);
+      const best = matched.best;
+      const candidates = matched.candidates
+        .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+
+      const descriptionProposed =
+        fields.title
+        || (fields.quote_number ? `Devis EBP ${fields.quote_number}` : 'Commande depuis devis EBP');
+      const clientProposed = best?.name || fields.client_name || '';
+      const dateProposed = fields.quote_date || isoDate();
+      const amountHt = fields.amount_ht !== null ? String(fields.amount_ht) : '';
+      const amountTtc = fields.amount_ttc !== null ? String(fields.amount_ttc) : '';
+      const warning = ocrResult.warning || (!ocrResult.text.trim() ? 'OCR incertain: vérifiez et corrigez les champs.' : '');
+
+      const optionsHtml = candidates
+        .map((c) => {
+          const selected = clientProposed && normalizeSearchText(c.name) === normalizeSearchText(clientProposed) ? ' selected' : '';
+          const sourceLabel = c.sources.join('+');
+          return `<option value="${escHtml(c.name)}"${selected}>${escHtml(c.name)} (${escHtml(sourceLabel)})</option>`;
+        })
+        .join('');
+
+      return res.send(
+        pageTemplate(
+          req,
+          'Validation scan devis EBP',
+          `
+          <div class="modern-page modern-client-orders-page">
+            <section class="modern-list-head modern-client-orders-head">
+              <div class="clients-create-head">
+                ${clientPageIcon('quotes', 'clients-title-icon')}
+                <div>
+                  <h1>Validation avant création</h1>
+                  <span>Aucune commande n'est créée automatiquement. Vérifiez les champs ci-dessous.</span>
+                </div>
+              </div>
+            </section>
+
+            <section class="clients-create-card modern-form-card modern-client-order-form">
+              ${warning ? `<p class="info">${escHtml(warning)}</p>` : ''}
+              <form method="POST" action="/orders/clients/scan-ebp/create" class="modern-client-order-add-form">
+                <input type="hidden" name="scan_file" value="${escHtml(path.basename(req.file.filename))}" />
+                <input type="hidden" name="scan_original_name" value="${escHtml(req.file.originalname || req.file.filename)}" />
+
+                <div class="modern-form-grid">
+                  <label class="clients-field">
+                    <span>Client détecté</span>
+                    <div class="clients-input-shell">
+                      ${clientPageIcon('user')}
+                      <input name="detected_client" value="${escHtml(fields.client_name || '')}" />
+                    </div>
+                  </label>
+
+                  <label class="clients-field">
+                    <span>Client existant proposé</span>
+                    <div class="clients-input-shell">
+                      ${clientPageIcon('clients')}
+                      <select name="existing_client">
+                        <option value="">-- Aucun / créer nouveau --</option>
+                        ${optionsHtml}
+                      </select>
+                    </div>
+                  </label>
+
+                  <label class="clients-field">
+                    <span>Client final (modifiable)</span>
+                    <div class="clients-input-shell">
+                      ${clientPageIcon('user')}
+                      <input name="client_name" value="${escHtml(clientProposed)}" required />
+                    </div>
+                  </label>
+
+                  <label class="clients-field">
+                    <span>Numéro devis</span>
+                    <div class="clients-input-shell">
+                      ${clientPageIcon('quotes')}
+                      <input name="quote_number" value="${escHtml(fields.quote_number || '')}" />
+                    </div>
+                  </label>
+
+                  <label class="clients-field">
+                    <span>Date devis / commande</span>
+                    <div class="clients-input-shell">
+                      ${clientPageIcon('calendar')}
+                      <input type="date" name="quote_date" value="${escHtml(dateProposed)}" />
+                    </div>
+                  </label>
+
+                  <label class="clients-field">
+                    <span>Intitulé commande proposé</span>
+                    <div class="clients-input-shell">
+                      ${clientPageIcon('folder')}
+                      <input name="description" value="${escHtml(descriptionProposed)}" required />
+                    </div>
+                  </label>
+
+                  <label class="clients-field">
+                    <span>Montant HT (€)</span>
+                    <div class="clients-input-shell">
+                      ${clientPageIcon('postal')}
+                      <input name="amount_ht" type="number" step="0.01" value="${escHtml(amountHt)}" />
+                    </div>
+                  </label>
+
+                  <label class="clients-field">
+                    <span>Montant TTC (€)</span>
+                    <div class="clients-input-shell">
+                      ${clientPageIcon('postal')}
+                      <input name="amount_ttc" type="number" step="0.01" value="${escHtml(amountTtc)}" />
+                    </div>
+                  </label>
+
+                  <label class="clients-field">
+                    <span>Si client introuvable</span>
+                    <div class="clients-input-shell" style="display:flex;gap:8px;align-items:center;">
+                      <input id="create_client_if_missing" type="checkbox" name="create_client_if_missing" value="1" checked />
+                      <label for="create_client_if_missing" style="margin:0;">Créer le client automatiquement après validation</label>
+                    </div>
+                  </label>
+                </div>
+
+                <details>
+                  <summary>Aperçu texte OCR</summary>
+                  <pre style="white-space:pre-wrap;max-height:320px;overflow:auto;">${escHtml((ocrResult.text || '').slice(0, 12000) || 'Aucun texte détecté')}</pre>
+                </details>
+
+                <div class="modern-form-actions">
+                  <button type="submit" class="clients-submit-btn">
+                    <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+                    Créer la commande (validation manuelle)
+                  </button>
+                  <a class="modern-cancel-link" href="/orders/clients/scan-ebp">Recommencer</a>
+                </div>
+              </form>
+            </section>
+          </div>
+          `
+        )
+      );
+    } catch (e) {
+      return res.redirect(`/orders/clients/scan-ebp?error=${encodeURIComponent(e.message || 'Analyse impossible')}`);
+    }
+  });
+});
+
+app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
+  try {
+    const scannedFileName = path.basename(String(req.body.scan_file || ''));
+    const scannedOriginalName = path.basename(String(req.body.scan_original_name || scannedFileName));
+    if (!scannedFileName) {
+      return res.status(400).send('Fichier scanné manquant');
+    }
+
+    const scanPath = safeResolveInside(EBP_SCAN_DIR, scannedFileName);
+    if (!fs.existsSync(scanPath)) {
+      return res.status(400).send('Fichier scanné introuvable. Relancez le scan.');
+    }
+
+    const selectedExisting = String(req.body.existing_client || '').trim();
+    const manualClient = String(req.body.client_name || '').trim();
+    const finalClientName = selectedExisting || manualClient;
+    if (!finalClientName) {
+      return res.status(400).send('Nom client requis');
+    }
+
+    const createIfMissing = String(req.body.create_client_if_missing || '') === '1';
+    const existingClientDb = db.prepare('SELECT id, name FROM clients WHERE lower(name) = lower(?) LIMIT 1').get(finalClientName);
+    const safeClientFolder = safeName(finalClientName);
+    const existingClientFolder = fs.existsSync(safeResolveInside(CLIENT_PC_DIR, safeClientFolder));
+
+    if (!existingClientDb && !existingClientFolder && !createIfMissing) {
+      return res.status(400).send('Client introuvable. Cochez "Créer le client" ou sélectionnez un client existant.');
+    }
+
+    if (!existingClientDb && createIfMissing) {
+      db.prepare(
+        `
+        INSERT INTO clients (name, address, postal_code, city, email, phone, created_at)
+        VALUES (?, NULL, NULL, NULL, NULL, NULL, ?)
+      `
+      ).run(finalClientName, new Date().toISOString());
+    }
+
+    const description = String(req.body.description || '').trim() || 'Commande depuis devis EBP';
+    const quoteDate = String(req.body.quote_date || '').trim() || isoDate();
+    const amountTtc = parseDecimalInput(req.body.amount_ttc, 0);
+    const amountHt = parseDecimalInput(req.body.amount_ht, 0);
+    const price = amountTtc > 0 ? amountTtc : amountHt;
+
+    const info = db.prepare(
+      `
+      INSERT INTO client_orders (
+        name,
+        description,
+        date,
+        price,
+        planned_hours,
+        chantier_status,
+        chantier_start_date,
+        chantier_end_date,
+        status,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 'En cours', ?)
+    `
+    ).run(
+      finalClientName,
+      description,
+      quoteDate,
+      price,
+      0,
+      'À préparer',
+      new Date().toISOString()
+    );
+
+    const orderId = info.lastInsertRowid;
+
+    const internalDir = safeResolveInside(CLIENT_ORDER_FILES_DIR, String(orderId));
+    ensureDir(internalDir);
+
+    const clientDir = safeResolveInside(CLIENT_PC_DIR, safeClientFolder);
+    ensureDir(clientDir);
+
+    const orderFolderName = safeName(description && description.trim() !== '' ? description : `Commande_${orderId}`);
+    const pcOrderDir = safeResolveInside(clientDir, orderFolderName);
+    ensureDir(pcOrderDir);
+    ensureStandardSubfolders(pcOrderDir);
+
+    const devisDir = safeResolveInside(pcOrderDir, 'Devis');
+    ensureDir(devisDir);
+    const destinationPath = uniqueFilePath(devisDir, scannedOriginalName || scannedFileName);
+    fs.copyFileSync(scanPath, destinationPath);
+
+    try {
+      fs.unlinkSync(scanPath);
+    } catch {}
+
+    return res.redirect(`/pc-folders/${encodeURIComponent(safeClientFolder)}/${encodeURIComponent(orderFolderName)}`);
+  } catch (e) {
+    return res.status(500).send(`Erreur création depuis scan EBP: ${escHtml(e.message || 'inconnue')}`);
+  }
 });
 
 app.post('/orders/client', requireLogin, (req, res) => {
