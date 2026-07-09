@@ -23,6 +23,7 @@ function tryRequire(moduleName) {
 const pdfParse = tryRequire('pdf-parse');
 const tesseractJs = tryRequire('tesseract.js');
 const heicConvert = tryRequire('heic-convert');
+const sharp = tryRequire('sharp');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -564,23 +565,22 @@ function extractEbpFieldsFromText(text) {
 }
 
 async function extractTextFromPdfBuffer(buffer) {
-  if (!pdfParse) return { text: '', warning: 'pdf-parse indisponible: OCR PDF désactivé.' };
+  if (!pdfParse) return { text: '', wordCount: 0, warning: 'pdf-parse indisponible: extraction PDF désactivée.' };
   try {
     const result = await pdfParse(buffer);
-    return { text: String(result?.text || ''), warning: '' };
+    const text = String(result?.text || '');
+    const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+    return { text, wordCount, warning: '' };
   } catch {
-    return { text: '', warning: 'Lecture PDF impossible. Vérifiez le fichier ou complétez manuellement.' };
+    return { text: '', wordCount: 0, warning: 'Lecture PDF impossible. Vérifiez le fichier ou complétez manuellement.' };
   }
 }
 
-async function extractTextFromImageBuffer(buffer, mimeType) {
-  if (!tesseractJs) {
-    return { text: '', warning: 'tesseract.js indisponible: OCR image désactivé.' };
-  }
+async function preprocessImageBufferForOcr(buffer, mimeType) {
   let imageBuffer = buffer;
   if ((mimeType || '').includes('heic') || (mimeType || '').includes('heif')) {
     if (!heicConvert) {
-      return { text: '', warning: 'HEIC détecté mais conversion indisponible. Utilisez JPG/PNG ou installez heic-convert.' };
+      return { buffer: null, warning: 'HEIC détecté mais conversion indisponible. Utilisez JPG/PNG ou installez heic-convert.' };
     }
     try {
       imageBuffer = await heicConvert({
@@ -589,24 +589,93 @@ async function extractTextFromImageBuffer(buffer, mimeType) {
         quality: 0.92,
       });
     } catch {
-      return { text: '', warning: 'Conversion HEIC impossible. Utilisez JPG/PNG/PDF ou corrigez manuellement.' };
+      return { buffer: null, warning: 'Conversion HEIC impossible. Utilisez JPG/PNG/PDF ou corrigez manuellement.' };
     }
   }
+
+  if (!sharp) {
+    return { buffer: imageBuffer, warning: '' };
+  }
+
+  try {
+    const prepared = await sharp(imageBuffer)
+      .rotate()
+      .resize({ width: 2400, withoutEnlargement: true })
+      .grayscale()
+      .normalize()
+      .sharpen()
+      .toBuffer();
+    return { buffer: prepared, warning: '' };
+  } catch {
+    return { buffer: imageBuffer, warning: 'Prétraitement image ignoré, OCR lancé sur l’image brute.' };
+  }
+}
+
+async function extractTextFromImageBuffer(buffer, mimeType) {
+  if (!tesseractJs) {
+    return { text: '', wordCount: 0, warning: 'tesseract.js indisponible: OCR image désactivé.' };
+  }
+  const preprocessed = await preprocessImageBufferForOcr(buffer, mimeType);
+  if (!preprocessed.buffer) return { text: '', wordCount: 0, warning: preprocessed.warning };
+  const imageBuffer = preprocessed.buffer;
   try {
     const worker = await tesseractJs.createWorker('fra+eng');
     const result = await worker.recognize(imageBuffer);
     await worker.terminate();
-    return { text: String(result?.data?.text || ''), warning: '' };
+    const text = String(result?.data?.text || '');
+    const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+    return { text, wordCount, warning: preprocessed.warning || '' };
   } catch {
-    return { text: '', warning: 'OCR image impossible. Complétez manuellement les champs.' };
+    return { text: '', wordCount: 0, warning: preprocessed.warning || 'OCR image impossible. Complétez manuellement les champs.' };
   }
 }
 
 async function analyzeEbpFile(filePath, mimeType) {
   const buffer = fs.readFileSync(filePath);
   const lowerMime = String(mimeType || '').toLowerCase();
-  if (lowerMime.includes('pdf')) return extractTextFromPdfBuffer(buffer);
-  return extractTextFromImageBuffer(buffer, lowerMime);
+  const isPdf = lowerMime.includes('pdf') || path.extname(String(filePath || '')).toLowerCase() === '.pdf';
+
+  if (isPdf) {
+    const pdfResult = await extractTextFromPdfBuffer(buffer);
+    const pdfTextLength = String(pdfResult.text || '').trim().replace(/\s+/g, ' ').length;
+    const hasEnoughText = pdfResult.wordCount >= 15 || pdfTextLength >= 100;
+    if (hasEnoughText) {
+      return {
+        source: 'pdf',
+        pdfText: pdfResult.text,
+        ocrText: '',
+        text: pdfResult.text,
+        warning: '',
+        ocrWarning: '',
+        pdfWordCount: pdfResult.wordCount,
+        ocrWordCount: 0,
+      };
+    }
+
+    const ocrResult = await extractTextFromImageBuffer(buffer, lowerMime);
+    return {
+      source: 'ocr',
+      pdfText: pdfResult.text,
+      ocrText: ocrResult.text,
+      text: ocrResult.text || pdfResult.text,
+      warning: pdfResult.warning || ocrResult.warning || 'PDF peu textuel: OCR utilisé en secours.',
+      ocrWarning: ocrResult.warning || '',
+      pdfWordCount: pdfResult.wordCount,
+      ocrWordCount: ocrResult.wordCount,
+    };
+  }
+
+  const ocrResult = await extractTextFromImageBuffer(buffer, lowerMime);
+  return {
+    source: 'ocr',
+    pdfText: '',
+    ocrText: ocrResult.text,
+    text: ocrResult.text,
+    warning: ocrResult.warning || '',
+    ocrWarning: ocrResult.warning || '',
+    pdfWordCount: 0,
+    ocrWordCount: ocrResult.wordCount,
+  };
 }
 
 function uniqueFilePath(baseDir, desiredFileName) {
@@ -4547,6 +4616,7 @@ app.get('/orders/clients/scan-ebp', requireLogin, (req, res) => {
         <section class="clients-create-card modern-form-card modern-client-order-form">
           ${error ? `<p class="error">${escHtml(error)}</p>` : ''}
           ${message ? `<p class="info">${escHtml(message)}</p>` : ''}
+          <p class="info">Importer le PDF EBP plutôt qu’une photo recommandé. Si le PDF contient du texte sélectionnable, l’analyse sera plus fiable.</p>
 
           <form method="POST" action="/orders/clients/scan-ebp/analyze" enctype="multipart/form-data" class="modern-client-order-add-form">
             <div class="modern-form-grid">
@@ -4554,7 +4624,7 @@ app.get('/orders/clients/scan-ebp', requireLogin, (req, res) => {
                 <span>Fichier devis EBP</span>
                 <div class="clients-input-shell">
                   ${clientPageIcon('folder')}
-                  <input type="file" name="scan_file" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif,application/pdf,.pdf" capture="environment" required />
+                  <input type="file" name="scan_file" accept="image/*,.pdf,application/pdf" required />
                 </div>
               </label>
             </div>
@@ -4585,11 +4655,15 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
 
     try {
       const scanPath = safeResolveInside(EBP_SCAN_DIR, path.basename(req.file.filename));
-      const ocrResult = await analyzeEbpFile(scanPath, req.file.mimetype);
-      const ocrText = String(ocrResult.text || '').trim();
+      const analysis = await analyzeEbpFile(scanPath, req.file.mimetype);
+      const ocrText = String(analysis.ocrText || '').trim();
+      const pdfText = String(analysis.pdfText || '').trim();
+      const extractedText = String(analysis.text || '').trim();
       const ocrTextLength = ocrText.replace(/\s+/g, ' ').length;
+      const pdfTextLength = pdfText.replace(/\s+/g, ' ').length;
       const ocrTooShort = ocrTextLength < 40;
-      const fields = extractEbpFieldsFromText(ocrResult.text);
+      const pdfTooShort = pdfTextLength < 40;
+      const fields = extractEbpFieldsFromText(extractedText);
       const matched = findBestClientMatch(fields.client_name);
       const best = matched.best;
       const candidates = matched.candidates
@@ -4602,9 +4676,10 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
       const dateProposed = fields.quote_date || isoDate();
       const amountHt = fields.amount_ht !== null ? String(fields.amount_ht) : '';
       const amountTtc = fields.amount_ttc !== null ? String(fields.amount_ttc) : '';
-      const warning = ocrResult.warning
-        || (ocrTooShort ? 'OCR vide ou trop court: vérifiez le fichier, puis corrigez les champs manuellement.' : '')
-        || (!ocrText ? 'OCR incertain: vérifiez et corrigez les champs.' : '');
+      const warning = analysis.warning
+        || (analysis.source === 'pdf' && pdfTooShort ? 'Le PDF est peu textuel: vérifiez les champs détectés.' : '')
+        || (analysis.source === 'ocr' && ocrTooShort ? 'OCR vide ou trop court: vérifiez le fichier, puis corrigez les champs manuellement.' : '')
+        || (!extractedText ? 'Analyse incertaine: vérifiez et corrigez les champs.' : '');
       const detectedClientLabel = fields.client_name || '—';
       const proposedClientLabel = clientProposed || '—';
       const detectedNumberLabel = fields.quote_number || '—';
@@ -4642,7 +4717,7 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
 
               <section class="panel-soft" style="margin-bottom:16px;">
                 <div class="panel-header">
-                  <h2>Détection OCR</h2>
+                  <h2>Détection OCR / PDF</h2>
                 </div>
                 <div class="modern-form-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
                   <div class="clients-field"><span>Client détecté</span><strong>${escHtml(detectedClientLabel)}</strong></div>
@@ -4652,6 +4727,8 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
                   <div class="clients-field"><span>Intitulé</span><strong>${escHtml(detectedTitleLabel)}</strong></div>
                   <div class="clients-field"><span>Montant HT</span><strong>${escHtml(detectedAmountHtLabel)}</strong></div>
                   <div class="clients-field"><span>Montant TTC</span><strong>${escHtml(detectedAmountTtcLabel)}</strong></div>
+                  <div class="clients-field"><span>Source prioritaire</span><strong>${escHtml(analysis.source === 'pdf' ? 'PDF texte sélectionnable' : 'OCR image')}</strong></div>
+                  <div class="clients-field"><span>Longueur PDF</span><strong>${escHtml(String(pdfTextLength))} caractères</strong></div>
                   <div class="clients-field"><span>Longueur OCR</span><strong>${escHtml(String(ocrTextLength))} caractères</strong></div>
                 </div>
               </section>
@@ -4738,13 +4815,24 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
                 </div>
 
                 <details>
+                  <summary>Texte extrait du PDF</summary>
+                  <div style="margin-top:12px;">
+                    <div class="clients-field" style="margin-bottom:12px;">
+                      <span>Statut PDF</span>
+                      <strong>${escHtml(analysis.source === 'pdf' ? (pdfTooShort ? 'Texte PDF trop court' : 'Texte PDF utilisé') : (pdfText ? 'Texte PDF trouvé mais OCR prioritaire' : 'Aucun texte PDF détecté'))}</strong>
+                    </div>
+                    <pre style="white-space:pre-wrap;max-height:360px;overflow:auto;">${escHtml(pdfText || 'Aucun texte PDF détecté')}</pre>
+                  </div>
+                </details>
+
+                <details>
                   <summary>Texte détecté OCR</summary>
                   <div style="margin-top:12px;">
                     <div class="clients-field" style="margin-bottom:12px;">
                       <span>Statut OCR</span>
-                      <strong>${escHtml(ocrTooShort ? 'Texte vide ou trop court' : (ocrText ? 'Texte détecté' : 'Aucun texte détecté'))}</strong>
+                      <strong>${escHtml(ocrTooShort ? 'Texte OCR vide ou trop court' : (ocrText ? 'Texte OCR détecté' : 'Aucun texte OCR détecté'))}</strong>
                     </div>
-                    <pre style="white-space:pre-wrap;max-height:360px;overflow:auto;">${escHtml(ocrText || 'Aucun texte détecté')}</pre>
+                    <pre style="white-space:pre-wrap;max-height:360px;overflow:auto;">${escHtml(ocrText || 'Aucun texte OCR détecté')}</pre>
                   </div>
                 </details>
 
