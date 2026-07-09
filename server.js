@@ -2010,16 +2010,30 @@ function renderDashboardPrototype(req, res) {
 
   const orderChantiers = db
     .prepare(`
-      SELECT id, name, description, date, status, planned_hours, done_hours,
-             chantier_status, chantier_progress, chantier_start_date, chantier_end_date
-      FROM client_orders
-      WHERE status != 'Terminée'
+      SELECT
+        co.id,
+        co.name,
+        co.description,
+        co.date,
+        co.status,
+        co.planned_hours,
+        co.done_hours,
+        co.chantier_status,
+        co.chantier_progress,
+        co.chantier_start_date,
+        co.chantier_end_date,
+        ROUND(COALESCE(SUM(ch.minutes_total), 0) / 60.0, 2) AS done_hours_calc,
+        COUNT(ch.id) AS chantier_hours_count
+      FROM client_orders co
+      LEFT JOIN chantier_hours ch ON ch.client_order_id = co.id
+      WHERE co.status != 'Terminée'
+      GROUP BY co.id
       ORDER BY
         CASE
-          WHEN chantier_end_date IS NOT NULL AND TRIM(chantier_end_date) != '' THEN chantier_end_date
-          ELSE date
+          WHEN co.chantier_end_date IS NOT NULL AND TRIM(co.chantier_end_date) != '' THEN co.chantier_end_date
+          ELSE co.date
         END ASC,
-        id DESC
+        co.id DESC
       LIMIT 3
     `)
     .all();
@@ -2125,10 +2139,19 @@ function renderDashboardPrototype(req, res) {
           );
           const orderUrl = `/pc-folders/${encodeURIComponent(safeClientFolder)}/${encodeURIComponent(orderFolderName)}`;
           const planned = Number(order.planned_hours || 0);
-          const done = Number(order.done_hours || 0);
-          const progress = Number.isFinite(Number(order.chantier_progress))
-            ? Math.max(0, Math.min(100, Math.round(Number(order.chantier_progress))))
-            : chantierProgress(done, planned);
+          const hasTrackedHours = Number(order.chantier_hours_count || 0) > 0;
+          const done = hasTrackedHours
+            ? Number(order.done_hours_calc || 0)
+            : Number(order.done_hours || 0);
+          const progress = hasTrackedHours
+            ? (planned > 0
+                ? Math.max(0, Math.min(100, Math.round((done / planned) * 100)))
+                : (Number.isFinite(Number(order.chantier_progress))
+                    ? Math.max(0, Math.min(100, Math.round(Number(order.chantier_progress))))
+                    : chantierProgress(done, planned)))
+            : (Number.isFinite(Number(order.chantier_progress))
+                ? Math.max(0, Math.min(100, Math.round(Number(order.chantier_progress))))
+                : chantierProgress(done, planned));
           const gap = done - planned;
           const endDate = String(order.chantier_end_date || '').slice(0, 10);
           const isLate = endDate && endDate < todayIso;
