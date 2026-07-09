@@ -4586,6 +4586,9 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
     try {
       const scanPath = safeResolveInside(EBP_SCAN_DIR, path.basename(req.file.filename));
       const ocrResult = await analyzeEbpFile(scanPath, req.file.mimetype);
+      const ocrText = String(ocrResult.text || '').trim();
+      const ocrTextLength = ocrText.replace(/\s+/g, ' ').length;
+      const ocrTooShort = ocrTextLength < 40;
       const fields = extractEbpFieldsFromText(ocrResult.text);
       const matched = findBestClientMatch(fields.client_name);
       const best = matched.best;
@@ -4599,7 +4602,16 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
       const dateProposed = fields.quote_date || isoDate();
       const amountHt = fields.amount_ht !== null ? String(fields.amount_ht) : '';
       const amountTtc = fields.amount_ttc !== null ? String(fields.amount_ttc) : '';
-      const warning = ocrResult.warning || (!ocrResult.text.trim() ? 'OCR incertain: vérifiez et corrigez les champs.' : '');
+      const warning = ocrResult.warning
+        || (ocrTooShort ? 'OCR vide ou trop court: vérifiez le fichier, puis corrigez les champs manuellement.' : '')
+        || (!ocrText ? 'OCR incertain: vérifiez et corrigez les champs.' : '');
+      const detectedClientLabel = fields.client_name || '—';
+      const proposedClientLabel = clientProposed || '—';
+      const detectedNumberLabel = fields.quote_number || '—';
+      const detectedDateLabel = fields.quote_date || '—';
+      const detectedTitleLabel = fields.title || '—';
+      const detectedAmountHtLabel = amountHt || '—';
+      const detectedAmountTtcLabel = amountTtc || '—';
 
       const optionsHtml = candidates
         .map((c) => {
@@ -4627,6 +4639,23 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
 
             <section class="clients-create-card modern-form-card modern-client-order-form">
               ${warning ? `<p class="info">${escHtml(warning)}</p>` : ''}
+
+              <section class="panel-soft" style="margin-bottom:16px;">
+                <div class="panel-header">
+                  <h2>Détection OCR</h2>
+                </div>
+                <div class="modern-form-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+                  <div class="clients-field"><span>Client détecté</span><strong>${escHtml(detectedClientLabel)}</strong></div>
+                  <div class="clients-field"><span>Client proposé</span><strong>${escHtml(proposedClientLabel)}</strong></div>
+                  <div class="clients-field"><span>Numéro devis</span><strong>${escHtml(detectedNumberLabel)}</strong></div>
+                  <div class="clients-field"><span>Date</span><strong>${escHtml(detectedDateLabel)}</strong></div>
+                  <div class="clients-field"><span>Intitulé</span><strong>${escHtml(detectedTitleLabel)}</strong></div>
+                  <div class="clients-field"><span>Montant HT</span><strong>${escHtml(detectedAmountHtLabel)}</strong></div>
+                  <div class="clients-field"><span>Montant TTC</span><strong>${escHtml(detectedAmountTtcLabel)}</strong></div>
+                  <div class="clients-field"><span>Longueur OCR</span><strong>${escHtml(String(ocrTextLength))} caractères</strong></div>
+                </div>
+              </section>
+
               <form method="POST" action="/orders/clients/scan-ebp/create" class="modern-client-order-add-form">
                 <input type="hidden" name="scan_file" value="${escHtml(path.basename(req.file.filename))}" />
                 <input type="hidden" name="scan_original_name" value="${escHtml(req.file.originalname || req.file.filename)}" />
@@ -4709,8 +4738,14 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
                 </div>
 
                 <details>
-                  <summary>Aperçu texte OCR</summary>
-                  <pre style="white-space:pre-wrap;max-height:320px;overflow:auto;">${escHtml((ocrResult.text || '').slice(0, 12000) || 'Aucun texte détecté')}</pre>
+                  <summary>Texte détecté OCR</summary>
+                  <div style="margin-top:12px;">
+                    <div class="clients-field" style="margin-bottom:12px;">
+                      <span>Statut OCR</span>
+                      <strong>${escHtml(ocrTooShort ? 'Texte vide ou trop court' : (ocrText ? 'Texte détecté' : 'Aucun texte détecté'))}</strong>
+                    </div>
+                    <pre style="white-space:pre-wrap;max-height:360px;overflow:auto;">${escHtml(ocrText || 'Aucun texte détecté')}</pre>
+                  </div>
                 </details>
 
                 <div class="modern-form-actions">
