@@ -232,6 +232,8 @@ const QUOTE_PHOTO_DIR = resolveStoragePath(process.env.OUTIL_PME_QUOTE_PHOTO_DIR
 const SKETCHES_DIR = resolveStoragePath(process.env.OUTIL_PME_SKETCHES_DIR, path.join(STORAGE_DIR, 'sketches'));
 const PDF_STORAGE_DIR = resolveStoragePath(process.env.OUTIL_PME_PDF_DIR, path.join(STORAGE_DIR, 'pdf'));
 const EBP_SCAN_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_SCAN_DIR, path.join(STORAGE_DIR, 'ebp_scans'));
+const EBP_SCAN_TMP_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_SCAN_TMP_DIR, path.join(STORAGE_DIR, 'tmp', 'ebp-scans'));
+const EBP_SCAN_LAST_PDF_TEXT_PATH = safeResolveInside(EBP_SCAN_TMP_DIR, 'last-pdf-text.txt');
 
 ensureDir(STORAGE_DIR);
 ensureDir(DATA_DIR);
@@ -242,6 +244,7 @@ ensureDir(QUOTE_PHOTO_DIR);
 ensureDir(SKETCHES_DIR);
 ensureDir(PDF_STORAGE_DIR);
 ensureDir(EBP_SCAN_DIR);
+ensureDir(EBP_SCAN_TMP_DIR);
 
 const MEASUREMENTS_PUBLIC_DIR = path.join(__dirname, 'modules', 'measurements', 'public');
 const MEASUREMENT_SHEETS = {
@@ -562,6 +565,20 @@ function extractEbpFieldsFromText(text) {
 
   return {
     recognized: false,
+    matched: false,
+    reason: parsedEbp.reason || 'Format EBP non reconnu',
+    markersFound: parsedEbp.markersFound || [],
+    markersMissing: parsedEbp.markersMissing || [],
+    inputLength: parsedEbp.inputLength || String(text || '').length,
+    primaryTextLength: parsedEbp.primaryTextLength || 0,
+    diagnostic: parsedEbp.diagnostic || {
+      matched: false,
+      reason: parsedEbp.reason || 'Format EBP non reconnu',
+      markersFound: parsedEbp.markersFound || [],
+      markersMissing: parsedEbp.markersMissing || [],
+      inputLength: parsedEbp.inputLength || String(text || '').length,
+      primaryTextLength: parsedEbp.primaryTextLength || 0,
+    },
     analysisUsed: 'Analyse générique',
     parserName: 'Analyse générique',
     client_name: clientName,
@@ -646,6 +663,11 @@ async function analyzeEbpFile(filePath, mimeType) {
 
   if (isPdf) {
     const pdfResult = await extractTextFromPdfBuffer(buffer);
+    try {
+      fs.writeFileSync(EBP_SCAN_LAST_PDF_TEXT_PATH, String(pdfResult.text || ''), 'utf8');
+    } catch (e) {
+      console.warn('Impossible d\'écrire le debug PDF EBP:', e.message);
+    }
     const pdfTextLength = String(pdfResult.text || '').trim().replace(/\s+/g, ' ').length;
     const hasEnoughText = pdfResult.wordCount >= 15 || pdfTextLength >= 100;
     if (hasEnoughText) {
@@ -4673,6 +4695,14 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
       const ocrTooShort = ocrTextLength < 40;
       const pdfTooShort = pdfTextLength < 40;
       const fields = extractEbpFieldsFromText(extractedText);
+      const parserDiagnostic = fields.diagnostic || {
+        matched: Boolean(fields.matched || fields.recognized),
+        reason: fields.reason || '',
+        markersFound: fields.markersFound || [],
+        markersMissing: fields.markersMissing || [],
+        inputLength: fields.inputLength || extractedText.length,
+        primaryTextLength: fields.primaryTextLength || 0,
+      };
       const matched = findBestClientMatch(fields.client_name);
       const best = matched.best;
       const candidates = matched.candidates
@@ -4741,6 +4771,20 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
                   <div class="clients-field"><span>Source prioritaire</span><strong>${escHtml(analysis.source === 'pdf' ? 'PDF texte sélectionnable' : 'OCR image')}</strong></div>
                   <div class="clients-field"><span>Longueur PDF</span><strong>${escHtml(String(pdfTextLength))} caractères</strong></div>
                   <div class="clients-field"><span>Longueur OCR</span><strong>${escHtml(String(ocrTextLength))} caractères</strong></div>
+                </div>
+              </section>
+
+              <section class="panel-soft" style="margin-bottom:16px;">
+                <div class="panel-header">
+                  <h2>Debug Parser EBP</h2>
+                </div>
+                <div class="modern-form-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));">
+                  <div class="clients-field"><span>matched</span><strong>${escHtml(String(Boolean(parserDiagnostic.matched)))}</strong></div>
+                  <div class="clients-field"><span>Raison du refus</span><strong>${escHtml(parserDiagnostic.reason || 'Aucune')}</strong></div>
+                  <div class="clients-field"><span>Marqueurs trouvés</span><strong>${escHtml((parserDiagnostic.markersFound || []).join(', ') || '—')}</strong></div>
+                  <div class="clients-field"><span>Marqueurs manquants</span><strong>${escHtml((parserDiagnostic.markersMissing || []).join(', ') || '—')}</strong></div>
+                  <div class="clients-field"><span>Longueur envoyée à parseEbpQuoteText</span><strong>${escHtml(String(parserDiagnostic.inputLength || 0))}</strong></div>
+                  <div class="clients-field"><span>Longueur zone primaire EBP</span><strong>${escHtml(String(parserDiagnostic.primaryTextLength || 0))}</strong></div>
                 </div>
               </section>
 
@@ -4824,6 +4868,14 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
                     </div>
                   </label>
                 </div>
+
+                <details>
+                  <summary>Texte PDF brut réellement analysé</summary>
+                  <div style="margin-top:12px;">
+                    <p class="info">Fichier debug serveur: ${escHtml(EBP_SCAN_LAST_PDF_TEXT_PATH)}</p>
+                    <pre style="white-space:pre-wrap;max-height:360px;overflow:auto;">${escHtml(pdfText || 'Aucun texte PDF détecté')}</pre>
+                  </div>
+                </details>
 
                 <details>
                   <summary>Texte extrait du PDF</summary>
