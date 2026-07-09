@@ -233,6 +233,8 @@ const SKETCHES_DIR = resolveStoragePath(process.env.OUTIL_PME_SKETCHES_DIR, path
 const PDF_STORAGE_DIR = resolveStoragePath(process.env.OUTIL_PME_PDF_DIR, path.join(STORAGE_DIR, 'pdf'));
 const EBP_SCAN_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_SCAN_DIR, path.join(STORAGE_DIR, 'ebp_scans'));
 const EBP_SCAN_TMP_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_SCAN_TMP_DIR, path.join(STORAGE_DIR, 'tmp', 'ebp-scans'));
+const EBP_INCOMING_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_INCOMING_DIR, path.join(STORAGE_DIR, 'incoming-ebp'));
+const EBP_INCOMING_PROCESSED_DIR = safeResolveInside(EBP_INCOMING_DIR, 'traites');
 const EBP_SCAN_LAST_PDF_TEXT_PATH = safeResolveInside(EBP_SCAN_TMP_DIR, 'last-pdf-text.txt');
 
 ensureDir(STORAGE_DIR);
@@ -245,6 +247,8 @@ ensureDir(SKETCHES_DIR);
 ensureDir(PDF_STORAGE_DIR);
 ensureDir(EBP_SCAN_DIR);
 ensureDir(EBP_SCAN_TMP_DIR);
+ensureDir(EBP_INCOMING_DIR);
+ensureDir(EBP_INCOMING_PROCESSED_DIR);
 
 const MEASUREMENTS_PUBLIC_DIR = path.join(__dirname, 'modules', 'measurements', 'public');
 const MEASUREMENT_SHEETS = {
@@ -720,6 +724,54 @@ function uniqueFilePath(baseDir, desiredFileName) {
     i += 1;
   }
   return safeResolveInside(baseDir, candidate);
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} octets`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} Ko`;
+  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} Mo`;
+  return `${(value / (1024 * 1024 * 1024)).toFixed(2)} Go`;
+}
+
+function formatDateTimeLabel(rawDate) {
+  if (!rawDate) return '—';
+  const date = new Date(rawDate);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function safeIncomingPdfName(rawName) {
+  const baseName = path.basename(String(rawName || '').trim());
+  if (!baseName) return '';
+  if (path.extname(baseName).toLowerCase() !== '.pdf') return '';
+  return baseName;
+}
+
+function listIncomingEbpPdfFiles() {
+  ensureDir(EBP_INCOMING_DIR);
+  const entries = fs.readdirSync(EBP_INCOMING_DIR, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (path.extname(entry.name).toLowerCase() !== '.pdf') continue;
+    const filePath = safeResolveInside(EBP_INCOMING_DIR, entry.name);
+    const stats = fs.statSync(filePath);
+    files.push({
+      name: entry.name,
+      addedAt: stats.birthtime || stats.mtime,
+      size: stats.size,
+    });
+  }
+
+  return files.sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime());
 }
 /* ===================== DB INIT ===================== */
 
@@ -4582,6 +4634,10 @@ const isLate = endDate && endDate < todayIso;
                   <span>${clientPageIcon('quotes', 'clients-submit-icon')}</span>
                   Scanner devis EBP
                 </a>
+                <a class="clients-submit-btn" href="/orders/clients/incoming-ebp">
+                  <span>${clientPageIcon('folder', 'clients-submit-icon')}</span>
+                  Devis EBP à traiter
+                </a>
                 <a class="modern-cancel-link" href="/clients">Voir clients</a>
               </div>
 
@@ -4625,6 +4681,285 @@ const isLate = endDate && endDate < todayIso;
   );
 });
 
+async function renderEbpScanValidationPage(req, res, options) {
+  const scanFileName = path.basename(String(options.scanFileName || ''));
+  const scanOriginalName = path.basename(String(options.scanOriginalName || scanFileName));
+  const mimeType = String(options.mimeType || 'application/pdf').trim();
+  const scanSource = String(options.scanSource || 'upload').trim().toLowerCase();
+  const incomingFileName = path.basename(String(options.incomingFileName || '')).trim();
+
+  const scanPath = safeResolveInside(EBP_SCAN_DIR, scanFileName);
+  const analysis = await analyzeEbpFile(scanPath, mimeType);
+  const ocrText = String(analysis.ocrText || '').trim();
+  const pdfText = String(analysis.pdfText || '').trim();
+  const extractedText = String(analysis.text || '').trim();
+  const ocrTextLength = ocrText.replace(/\s+/g, ' ').length;
+  const pdfTextLength = pdfText.replace(/\s+/g, ' ').length;
+  const ocrTooShort = ocrTextLength < 40;
+  const pdfTooShort = pdfTextLength < 40;
+  const fields = extractEbpFieldsFromText(extractedText);
+  const matched = findBestClientMatch(fields.client_name);
+  const best = matched.best;
+  const candidates = matched.candidates
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+
+  const descriptionProposed =
+    fields.title
+    || (fields.quote_number ? `Devis EBP ${fields.quote_number}` : 'Commande depuis devis EBP');
+  const clientProposed = best?.name || fields.client_name || '';
+  const dateProposed = fields.quote_date || isoDate();
+  const amountHt = fields.amount_ht !== null ? String(fields.amount_ht) : '';
+  const amountTtc = fields.amount_ttc !== null ? String(fields.amount_ttc) : '';
+  const warning = analysis.warning
+    || (analysis.source === 'pdf' && pdfTooShort ? 'Le PDF est peu textuel: vérifiez les champs détectés.' : '')
+    || (analysis.source === 'ocr' && ocrTooShort ? 'OCR vide ou trop court: vérifiez le fichier, puis corrigez les champs manuellement.' : '')
+    || (!extractedText ? 'Analyse incertaine: vérifiez et corrigez les champs.' : '');
+
+  const optionsHtml = candidates
+    .map((c) => {
+      const selected = clientProposed && normalizeSearchText(c.name) === normalizeSearchText(clientProposed) ? ' selected' : '';
+      const sourceLabel = c.sources.join('+');
+      return `<option value="${escHtml(c.name)}"${selected}>${escHtml(c.name)} (${escHtml(sourceLabel)})</option>`;
+    })
+    .join('');
+
+  return res.send(
+    pageTemplate(
+      req,
+      'Validation scan devis EBP',
+      `
+      <div class="modern-page modern-client-orders-page">
+        <section class="modern-list-head modern-client-orders-head">
+          <div class="clients-create-head">
+            ${clientPageIcon('quotes', 'clients-title-icon')}
+            <div>
+              <h1>Validation avant création</h1>
+              <span>Aucune commande n'est créée automatiquement. Vérifiez les champs ci-dessous.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="clients-create-card modern-form-card modern-client-order-form">
+          ${warning ? `<p class="info">${escHtml(warning)}</p>` : ''}
+
+          <form method="POST" action="/orders/clients/scan-ebp/create" class="modern-client-order-add-form">
+            <input type="hidden" name="scan_file" value="${escHtml(scanFileName)}" />
+            <input type="hidden" name="scan_original_name" value="${escHtml(scanOriginalName || scanFileName)}" />
+            <input type="hidden" name="scan_source" value="${escHtml(scanSource)}" />
+            ${scanSource === 'incoming' ? `<input type="hidden" name="incoming_file" value="${escHtml(incomingFileName)}" />` : ''}
+
+            <div class="modern-form-grid">
+              <label class="clients-field">
+                <span>Client détecté</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('user')}
+                  <input name="detected_client" value="${escHtml(fields.client_name || '')}" />
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Client existant proposé</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('clients')}
+                  <select name="existing_client">
+                    <option value="">-- Aucun / créer nouveau --</option>
+                    ${optionsHtml}
+                  </select>
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Client final (modifiable)</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('user')}
+                  <input name="client_name" value="${escHtml(clientProposed)}" required />
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Numéro devis</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('quotes')}
+                  <input name="quote_number" value="${escHtml(fields.quote_number || '')}" />
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Date devis / commande</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('calendar')}
+                  <input type="date" name="quote_date" value="${escHtml(dateProposed)}" />
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Intitulé commande proposé</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('folder')}
+                  <input name="description" value="${escHtml(descriptionProposed)}" required />
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Montant HT (€)</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('postal')}
+                  <input name="amount_ht" type="number" step="0.01" value="${escHtml(amountHt)}" />
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Montant TTC (€)</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('postal')}
+                  <input name="amount_ttc" type="number" step="0.01" value="${escHtml(amountTtc)}" />
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Si client introuvable</span>
+                <div class="clients-input-shell" style="display:flex;gap:8px;align-items:center;">
+                  <input id="create_client_if_missing" type="checkbox" name="create_client_if_missing" value="1" checked />
+                  <label for="create_client_if_missing" style="margin:0;">Créer le client automatiquement après validation</label>
+                </div>
+              </label>
+            </div>
+
+            <div class="modern-form-actions">
+              <button type="submit" class="clients-submit-btn">
+                <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+                Créer la commande (validation manuelle)
+              </button>
+              <a class="modern-cancel-link" href="/orders/clients/scan-ebp">Recommencer</a>
+            </div>
+          </form>
+        </section>
+      </div>
+      `
+    )
+  );
+}
+
+app.get('/orders/clients/incoming-ebp', requireLogin, (req, res) => {
+  const error = String(req.query.error || '').trim();
+  const message = String(req.query.message || '').trim();
+  const files = listIncomingEbpPdfFiles();
+
+  const rows = files.length
+    ? files.map((file) => {
+      const openUrl = `/orders/clients/incoming-ebp/open?file=${encodeURIComponent(file.name)}`;
+      return `
+        <tr>
+          <td>${escHtml(file.name)}</td>
+          <td>${escHtml(formatDateTimeLabel(file.addedAt))}</td>
+          <td>${escHtml(formatFileSize(file.size))}</td>
+          <td>
+            <div class="modern-form-actions" style="justify-content:flex-start;gap:8px;">
+              <a class="modern-cancel-link" href="${openUrl}" target="_blank" rel="noopener">Ouvrir</a>
+              <form method="POST" action="/orders/clients/scan-ebp/analyze-incoming" style="margin:0;">
+                <input type="hidden" name="incoming_file" value="${escHtml(file.name)}" />
+                <button type="submit" class="clients-submit-btn">
+                  <span>${clientPageIcon('search', 'clients-submit-icon')}</span>
+                  Scanner ce devis
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('')
+    : '<tr><td colspan="4" class="empty">Aucun PDF à traiter dans le dossier incoming.</td></tr>';
+
+  res.send(
+    pageTemplate(
+      req,
+      'Devis EBP à traiter',
+      `
+      <div class="modern-page modern-client-orders-page">
+        <section class="modern-list-head modern-client-orders-head">
+          <div class="clients-create-head">
+            ${clientPageIcon('quotes', 'clients-title-icon')}
+            <div>
+              <h1>Devis EBP à traiter</h1>
+              <span>Dossier source: ${escHtml(EBP_INCOMING_DIR)}</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="clients-create-card modern-form-card modern-client-order-form">
+          ${error ? `<p class="error">${escHtml(error)}</p>` : ''}
+          ${message ? `<p class="info">${escHtml(message)}</p>` : ''}
+
+          <div style="overflow:auto;">
+            <table class="modern-list-table">
+              <thead>
+                <tr>
+                  <th>Fichier PDF</th>
+                  <th>Date d'ajout</th>
+                  <th>Taille</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="modern-form-actions">
+            <a class="modern-cancel-link" href="/orders/clients">Retour commandes</a>
+            <a class="clients-submit-btn" href="/orders/clients/scan-ebp">
+              <span>${clientPageIcon('quotes', 'clients-submit-icon')}</span>
+              Scanner via upload
+            </a>
+          </div>
+        </section>
+      </div>
+      `
+    )
+  );
+});
+
+app.get('/orders/clients/incoming-ebp/open', requireLogin, (req, res) => {
+  const incomingFileName = safeIncomingPdfName(req.query.file || '');
+  if (!incomingFileName) return res.status(400).send('Nom de fichier PDF invalide');
+
+  const filePath = safeResolveInside(EBP_INCOMING_DIR, incomingFileName);
+  if (!fs.existsSync(filePath)) return res.status(404).send('Fichier introuvable');
+
+  const inlineName = safeSegment(incomingFileName || 'devis.pdf');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${inlineName}"`);
+  return res.sendFile(filePath);
+});
+
+app.post('/orders/clients/scan-ebp/analyze-incoming', requireLogin, async (req, res) => {
+  try {
+    const incomingFileName = safeIncomingPdfName(req.body.incoming_file || '');
+    if (!incomingFileName) {
+      return res.redirect('/orders/clients/incoming-ebp?error=Nom+de+fichier+PDF+invalide');
+    }
+
+    const incomingPath = safeResolveInside(EBP_INCOMING_DIR, incomingFileName);
+    if (!fs.existsSync(incomingPath)) {
+      return res.redirect('/orders/clients/incoming-ebp?error=Fichier+incoming+introuvable');
+    }
+
+    const scanPath = uniqueFilePath(EBP_SCAN_DIR, incomingFileName);
+    fs.copyFileSync(incomingPath, scanPath);
+
+    return await renderEbpScanValidationPage(req, res, {
+      scanFileName: path.basename(scanPath),
+      scanOriginalName: incomingFileName,
+      mimeType: 'application/pdf',
+      scanSource: 'incoming',
+      incomingFileName,
+    });
+  } catch (e) {
+    return res.redirect(`/orders/clients/incoming-ebp?error=${encodeURIComponent(e.message || 'Analyse impossible')}`);
+  }
+});
+
 app.get('/orders/clients/scan-ebp', requireLogin, (req, res) => {
   const error = String(req.query.error || '').trim();
   const message = String(req.query.message || '').trim();
@@ -4665,6 +5000,10 @@ app.get('/orders/clients/scan-ebp', requireLogin, (req, res) => {
                 <span>${clientPageIcon('search', 'clients-submit-icon')}</span>
                 Analyser le document
               </button>
+              <a class="clients-submit-btn" href="/orders/clients/incoming-ebp">
+                <span>${clientPageIcon('folder', 'clients-submit-icon')}</span>
+                Devis EBP à traiter
+              </a>
               <a class="modern-cancel-link" href="/orders/clients">Retour commandes</a>
             </div>
           </form>
@@ -4685,168 +5024,12 @@ app.post('/orders/clients/scan-ebp/analyze', requireLogin, (req, res) => {
     }
 
     try {
-      const scanPath = safeResolveInside(EBP_SCAN_DIR, path.basename(req.file.filename));
-      const analysis = await analyzeEbpFile(scanPath, req.file.mimetype);
-      const ocrText = String(analysis.ocrText || '').trim();
-      const pdfText = String(analysis.pdfText || '').trim();
-      const extractedText = String(analysis.text || '').trim();
-      const ocrTextLength = ocrText.replace(/\s+/g, ' ').length;
-      const pdfTextLength = pdfText.replace(/\s+/g, ' ').length;
-      const ocrTooShort = ocrTextLength < 40;
-      const pdfTooShort = pdfTextLength < 40;
-      const fields = extractEbpFieldsFromText(extractedText);
-      const parserDiagnostic = fields.diagnostic || {
-        matched: Boolean(fields.matched || fields.recognized),
-        reason: fields.reason || '',
-        markersFound: fields.markersFound || [],
-        markersMissing: fields.markersMissing || [],
-        inputLength: fields.inputLength || extractedText.length,
-        primaryTextLength: fields.primaryTextLength || 0,
-      };
-      const matched = findBestClientMatch(fields.client_name);
-      const best = matched.best;
-      const candidates = matched.candidates
-        .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-
-      const descriptionProposed =
-        fields.title
-        || (fields.quote_number ? `Devis EBP ${fields.quote_number}` : 'Commande depuis devis EBP');
-      const clientProposed = best?.name || fields.client_name || '';
-      const dateProposed = fields.quote_date || isoDate();
-      const amountHt = fields.amount_ht !== null ? String(fields.amount_ht) : '';
-      const amountTtc = fields.amount_ttc !== null ? String(fields.amount_ttc) : '';
-      const analysisUsed = fields.analysisUsed || fields.parserName || 'Analyse générique';
-      const warning = analysis.warning
-        || (analysis.source === 'pdf' && pdfTooShort ? 'Le PDF est peu textuel: vérifiez les champs détectés.' : '')
-        || (analysis.source === 'ocr' && ocrTooShort ? 'OCR vide ou trop court: vérifiez le fichier, puis corrigez les champs manuellement.' : '')
-        || (!extractedText ? 'Analyse incertaine: vérifiez et corrigez les champs.' : '');
-      const detectedClientLabel = fields.client_name || '—';
-      const proposedClientLabel = clientProposed || '—';
-      const detectedNumberLabel = fields.quote_number || '—';
-      const detectedDateLabel = fields.quote_date || '—';
-      const detectedTitleLabel = fields.title || '—';
-      const detectedAmountHtLabel = amountHt || '—';
-      const detectedAmountTtcLabel = amountTtc || '—';
-
-      const optionsHtml = candidates
-        .map((c) => {
-          const selected = clientProposed && normalizeSearchText(c.name) === normalizeSearchText(clientProposed) ? ' selected' : '';
-          const sourceLabel = c.sources.join('+');
-          return `<option value="${escHtml(c.name)}"${selected}>${escHtml(c.name)} (${escHtml(sourceLabel)})</option>`;
-        })
-        .join('');
-
-      return res.send(
-        pageTemplate(
-          req,
-          'Validation scan devis EBP',
-          `
-          <div class="modern-page modern-client-orders-page">
-            <section class="modern-list-head modern-client-orders-head">
-              <div class="clients-create-head">
-                ${clientPageIcon('quotes', 'clients-title-icon')}
-                <div>
-                  <h1>Validation avant création</h1>
-                  <span>Aucune commande n'est créée automatiquement. Vérifiez les champs ci-dessous.</span>
-                </div>
-              </div>
-            </section>
-
-            <section class="clients-create-card modern-form-card modern-client-order-form">
-              <form method="POST" action="/orders/clients/scan-ebp/create" class="modern-client-order-add-form">
-                <input type="hidden" name="scan_file" value="${escHtml(path.basename(req.file.filename))}" />
-                <input type="hidden" name="scan_original_name" value="${escHtml(req.file.originalname || req.file.filename)}" />
-
-                <div class="modern-form-grid">
-                  <label class="clients-field">
-                    <span>Client détecté</span>
-                    <div class="clients-input-shell">
-                      ${clientPageIcon('user')}
-                      <input name="detected_client" value="${escHtml(fields.client_name || '')}" />
-                    </div>
-                  </label>
-
-                  <label class="clients-field">
-                    <span>Client existant proposé</span>
-                    <div class="clients-input-shell">
-                      ${clientPageIcon('clients')}
-                      <select name="existing_client">
-                        <option value="">-- Aucun / créer nouveau --</option>
-                        ${optionsHtml}
-                      </select>
-                    </div>
-                  </label>
-
-                  <label class="clients-field">
-                    <span>Client final (modifiable)</span>
-                    <div class="clients-input-shell">
-                      ${clientPageIcon('user')}
-                      <input name="client_name" value="${escHtml(clientProposed)}" required />
-                    </div>
-                  </label>
-
-                  <label class="clients-field">
-                    <span>Numéro devis</span>
-                    <div class="clients-input-shell">
-                      ${clientPageIcon('quotes')}
-                      <input name="quote_number" value="${escHtml(fields.quote_number || '')}" />
-                    </div>
-                  </label>
-
-                  <label class="clients-field">
-                    <span>Date devis / commande</span>
-                    <div class="clients-input-shell">
-                      ${clientPageIcon('calendar')}
-                      <input type="date" name="quote_date" value="${escHtml(dateProposed)}" />
-                    </div>
-                  </label>
-
-                  <label class="clients-field">
-                    <span>Intitulé commande proposé</span>
-                    <div class="clients-input-shell">
-                      ${clientPageIcon('folder')}
-                      <input name="description" value="${escHtml(descriptionProposed)}" required />
-                    </div>
-                  </label>
-
-                  <label class="clients-field">
-                    <span>Montant HT (€)</span>
-                    <div class="clients-input-shell">
-                      ${clientPageIcon('postal')}
-                      <input name="amount_ht" type="number" step="0.01" value="${escHtml(amountHt)}" />
-                    </div>
-                  </label>
-
-                  <label class="clients-field">
-                    <span>Montant TTC (€)</span>
-                    <div class="clients-input-shell">
-                      ${clientPageIcon('postal')}
-                      <input name="amount_ttc" type="number" step="0.01" value="${escHtml(amountTtc)}" />
-                    </div>
-                  </label>
-
-                  <label class="clients-field">
-                    <span>Si client introuvable</span>
-                    <div class="clients-input-shell" style="display:flex;gap:8px;align-items:center;">
-                      <input id="create_client_if_missing" type="checkbox" name="create_client_if_missing" value="1" checked />
-                      <label for="create_client_if_missing" style="margin:0;">Créer le client automatiquement après validation</label>
-                    </div>
-                  </label>
-                </div>
-
-                <div class="modern-form-actions">
-                  <button type="submit" class="clients-submit-btn">
-                    <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-                    Créer la commande (validation manuelle)
-                  </button>
-                  <a class="modern-cancel-link" href="/orders/clients/scan-ebp">Recommencer</a>
-                </div>
-              </form>
-            </section>
-          </div>
-          `
-        )
-      );
+      return await renderEbpScanValidationPage(req, res, {
+        scanFileName: req.file.filename,
+        scanOriginalName: req.file.originalname || req.file.filename,
+        mimeType: req.file.mimetype,
+        scanSource: 'upload',
+      });
     } catch (e) {
       return res.redirect(`/orders/clients/scan-ebp?error=${encodeURIComponent(e.message || 'Analyse impossible')}`);
     }
@@ -4857,6 +5040,8 @@ app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
   try {
     const scannedFileName = path.basename(String(req.body.scan_file || ''));
     const scannedOriginalName = path.basename(String(req.body.scan_original_name || scannedFileName));
+    const scanSource = String(req.body.scan_source || 'upload').trim().toLowerCase();
+    const incomingFileName = safeIncomingPdfName(req.body.incoming_file || '');
     if (!scannedFileName) {
       return res.status(400).send('Fichier scanné manquant');
     }
@@ -4940,6 +5125,24 @@ app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
     ensureDir(devisDir);
     const destinationPath = uniqueFilePath(devisDir, scannedOriginalName || scannedFileName);
     fs.copyFileSync(scanPath, destinationPath);
+
+    if (scanSource === 'incoming') {
+      if (!incomingFileName) {
+        return res.status(400).send('Fichier incoming invalide');
+      }
+
+      const incomingPath = safeResolveInside(EBP_INCOMING_DIR, incomingFileName);
+      if (fs.existsSync(incomingPath)) {
+        ensureDir(EBP_INCOMING_PROCESSED_DIR);
+        const treatedPath = uniqueFilePath(EBP_INCOMING_PROCESSED_DIR, incomingFileName);
+        try {
+          fs.renameSync(incomingPath, treatedPath);
+        } catch {
+          fs.copyFileSync(incomingPath, treatedPath);
+          fs.unlinkSync(incomingPath);
+        }
+      }
+    }
 
     try {
       fs.unlinkSync(scanPath);
