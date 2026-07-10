@@ -4459,6 +4459,45 @@ app.get('/orders/clients', requireLogin, (req, res) => {
 
   const pcFoldersOptions = pcFolders.map((name) => `<option value="${escHtml(name)}"></option>`).join('');
 
+  const buildPoseAgendaTitle = (order) => {
+    const chantierName = String(order.description || '').trim() || `Commande #${order.id}`;
+    return `Pose - ${String(order.name || '').trim()} - ${chantierName}`;
+  };
+
+  const poseAgendaEvents = db
+    .prepare(`
+      SELECT id, title, start_date, end_date
+      FROM events
+      WHERE type = 'pose'
+      ORDER BY datetime(start_date) DESC, id DESC
+    `)
+    .all();
+
+  const poseAgendaByOrderId = new Map();
+  orders.forEach((order) => {
+    const status = normalizeChantierStatus(order.chantier_status);
+    if (status !== 'En pose') return;
+    const baseTitle = buildPoseAgendaTitle(order);
+    const existing = poseAgendaEvents.find((evt) => {
+      const title = String(evt.title || '');
+      return title === baseTitle || title.startsWith(`${baseTitle} · `);
+    });
+    if (existing) poseAgendaByOrderId.set(Number(order.id), existing);
+  });
+
+  const poseAgendaStatus = String(req.query.poseAgendaStatus || '').trim();
+  const poseAgendaOrderId = Number(req.query.poseAgendaOrderId || 0);
+  const poseAgendaFlash =
+    poseAgendaStatus === 'created'
+      ? 'Événement de pose ajouté à l’agenda.'
+      : poseAgendaStatus === 'exists'
+        ? (poseAgendaOrderId > 0
+            ? `Un événement de pose existe déjà pour la commande #${poseAgendaOrderId}.`
+            : 'Un événement de pose existe déjà pour cette commande.')
+        : poseAgendaStatus === 'error'
+          ? 'Impossible d’ajouter l’événement de pose. Vérifiez les champs.'
+          : '';
+
   const todayIso = isoDate();
 
   const cards =
@@ -4489,6 +4528,9 @@ const isOverHours = plannedHours > 0 && actualHours > plannedHours;
 
 const endDate = String(o.chantier_end_date || '').slice(0, 10);
 const isLate = endDate && endDate < todayIso;
+const isPoseStatus = chantierStatus === 'En pose';
+const existingPoseEvent = poseAgendaByOrderId.get(Number(o.id));
+const poseAgendaTitle = buildPoseAgendaTitle(o);
             return `
               <article class="order-card modern-client-order-card">
                 <header class="modern-client-order-head">
@@ -4524,6 +4566,71 @@ const isLate = endDate && endDate < todayIso;
                     <span>Heures</span>
                     <b aria-hidden="true">›</b>
                   </a>
+                  ${isPoseStatus ? `
+                  ${existingPoseEvent
+                    ? `
+                  <a class="modern-client-order-open" href="/agenda">
+                    ${clientPageIcon('calendar', 'modern-client-order-open-icon')}
+                    <span>Voir dans l'agenda</span>
+                    <b aria-hidden="true">›</b>
+                  </a>
+                  <span class="modern-status-badge done">Pose déjà planifiée</span>
+                    `
+                    : `
+                  <details class="modern-client-order-agenda-inline">
+                    <summary class="modern-client-order-open" style="cursor:pointer; list-style:none;">
+                      ${clientPageIcon('calendar', 'modern-client-order-open-icon')}
+                      <span>Ajouter à l’agenda</span>
+                      <b aria-hidden="true">›</b>
+                    </summary>
+                    <form method="POST" action="/orders/client/${o.id}/add-agenda-pose" class="modern-client-order-add-form" style="margin-top:10px;">
+                      <input type="hidden" name="client" value="${escHtml(o.name || '')}">
+                      <input type="hidden" name="order_name" value="${escHtml(o.description || '')}">
+                      <input type="hidden" name="title" value="${escHtml(poseAgendaTitle)}">
+                      <div class="modern-form-grid">
+                        <label class="clients-field">
+                          <span>Date de pose</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('calendar')}
+                            <input type="date" name="pose_date" required>
+                          </div>
+                        </label>
+                        <label class="clients-field">
+                          <span>Heure de début</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('calendar')}
+                            <input type="time" name="start_time" required>
+                          </div>
+                        </label>
+                        <label class="clients-field">
+                          <span>Heure de fin</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('calendar')}
+                            <input type="time" name="end_time" required>
+                          </div>
+                        </label>
+                        <label class="clients-field">
+                          <span>Lieu / adresse (facultatif)</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('location')}
+                            <input name="place" placeholder="Adresse de pose">
+                          </div>
+                        </label>
+                        <label class="clients-field">
+                          <span>Note (facultatif)</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('tasks')}
+                            <input name="note" placeholder="Infos chantier / équipe">
+                          </div>
+                        </label>
+                      </div>
+                      <div class="modern-form-actions">
+                        <button type="submit" class="clients-submit-btn">Valider</button>
+                      </div>
+                    </form>
+                  </details>
+                    `}
+                  ` : ''}
                   <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');">
                     <input type="hidden" name="id" value="${o.id}" />
                     <button type="submit" class="modern-order-done-btn" title="Terminer">${clientPageIcon('check', 'modern-action-icon')} Terminer</button>
@@ -4552,6 +4659,8 @@ const isLate = endDate && endDate < todayIso;
             </div>
           </div>
         </section>
+
+        ${poseAgendaFlash ? `<section class="clients-create-card modern-form-card"><p class="info">${escHtml(poseAgendaFlash)}</p></section>` : ''}
 
         <section class="clients-create-card modern-form-card modern-client-order-form modern-client-order-add-card is-collapsed" id="new-client-order" data-client-order-add-card>
           <button type="button" class="modern-client-order-add-toggle" aria-expanded="false" aria-controls="client-order-add-panel" data-client-order-add-toggle>
@@ -9152,6 +9261,75 @@ app.post('/orders/suppliers/delete', requireLogin, (req, res) => {
   `).run(id);
 
   res.redirect('/orders/suppliers');
+});
+app.post('/orders/client/:id/add-agenda-pose', requireLogin, (req, res) => {
+  const orderId = Number(req.params.id || 0);
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    return res.redirect('/orders/clients?poseAgendaStatus=error');
+  }
+
+  const order = db
+    .prepare('SELECT id, name, description, chantier_status FROM client_orders WHERE id = ? LIMIT 1')
+    .get(orderId);
+
+  if (!order) {
+    return res.redirect('/orders/clients?poseAgendaStatus=error');
+  }
+
+  const chantierStatus = normalizeChantierStatus(order.chantier_status);
+  if (chantierStatus !== 'En pose') {
+    return res.redirect('/orders/clients?poseAgendaStatus=error');
+  }
+
+  const poseDate = String(req.body.pose_date || '').trim();
+  const startTime = String(req.body.start_time || '').trim();
+  const endTime = String(req.body.end_time || '').trim();
+  const place = String(req.body.place || '').trim();
+  const note = String(req.body.note || '').trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(poseDate) || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
+    return res.redirect(`/orders/clients?poseAgendaStatus=error&poseAgendaOrderId=${orderId}`);
+  }
+  if (startTime >= endTime) {
+    return res.redirect(`/orders/clients?poseAgendaStatus=error&poseAgendaOrderId=${orderId}`);
+  }
+
+  const orderName = String(order.description || '').trim() || `Commande #${order.id}`;
+  const clientName = String(order.name || '').trim();
+  const baseTitle = `Pose - ${clientName} - ${orderName}`;
+  const detailParts = [];
+  if (place) detailParts.push(`Lieu: ${place}`);
+  if (note) detailParts.push(`Note: ${note}`);
+  const title = detailParts.length ? `${baseTitle} · ${detailParts.join(' · ')}` : baseTitle;
+
+  const startIso = `${poseDate}T${startTime}`;
+  const endIso = `${poseDate}T${endTime}`;
+
+  const duplicate = db
+    .prepare(
+      `
+      SELECT id
+      FROM events
+      WHERE type = 'pose'
+        AND start_date = ?
+        AND (title = ? OR title LIKE ?)
+      LIMIT 1
+    `
+    )
+    .get(startIso, baseTitle, `${baseTitle} · %`);
+
+  if (duplicate) {
+    return res.redirect(`/orders/clients?poseAgendaStatus=exists&poseAgendaOrderId=${orderId}`);
+  }
+
+  db.prepare(
+    `
+    INSERT INTO events (title, type, start_date, end_date, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `
+  ).run(title, 'pose', startIso, endIso, new Date().toISOString());
+
+  return res.redirect(`/orders/clients?poseAgendaStatus=created&poseAgendaOrderId=${orderId}`);
 });
 app.post('/agenda/add', requireLogin, (req, res) => {
   const { title, type, start_date, end_date } = req.body;
