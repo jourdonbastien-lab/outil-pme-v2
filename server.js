@@ -168,6 +168,30 @@ function fmtMinutes(mins) {
   return `${h}h${String(m).padStart(2, '0')}`;
 }
 
+function formatChantierDurationLabel(minutes) {
+  const total = Math.max(0, Number(minutes || 0));
+  const hours = Math.floor(total / 60);
+  const remainingMinutes = total % 60;
+  if (!remainingMinutes) return `${hours} h`;
+  return `${hours} h ${String(remainingMinutes).padStart(2, '0')}`;
+}
+
+function parseChantierHoursDuration(hoursValue, minutesValue) {
+  const hoursRaw = String(hoursValue ?? '').trim();
+  const minutesRaw = String(minutesValue ?? '').trim();
+  if (!/^\d+$/.test(hoursRaw)) return { error: 'Heures invalides' };
+  if (!/^(0|15|30|45)$/.test(minutesRaw)) return { error: 'Minutes invalides' };
+
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+  const minutesTotal = hours * 60 + minutes;
+
+  if (hours < 0) return { error: 'Heures invalides' };
+  if (minutesTotal <= 0) return { error: 'La durée doit être supérieure à 0 minute' };
+
+  return { hours, minutes, minutesTotal };
+}
+
 // Poids tôle : mm + densité "g/cm3" (acier ~7.85)
 function calcSheetKg({ th_mm, w_mm, l_mm, density }) {
   const th = Number(th_mm) || 0;
@@ -5883,12 +5907,10 @@ const isOver =
             <article class="pc-modern-hour-card">
               <header>
                 <strong>${escHtml(r.work_date)}</strong>
-                <span>${fmtMinutes(r.minutes_total || 0)}</span>
+                <span>${escHtml(formatChantierDurationLabel(r.minutes_total || 0))}</span>
               </header>
               <div class="pc-modern-hour-meta">
-                <span>Début <strong>${escHtml(r.start_time || '—')}</strong></span>
-                <span>Fin <strong>${escHtml(r.end_time || '—')}</strong></span>
-                <span>Pause <strong>${Number(r.break_minutes || 0)} min</strong></span>
+                <span>Durée <strong>${escHtml(formatChantierDurationLabel(r.minutes_total || 0))}</strong></span>
               </div>
               ${r.note ? `<p>${escHtml(r.note)}</p>` : ''}
                 <form method="POST" action="/chantier-hours/delete" onsubmit="return confirm('Supprimer cette ligne ?');" style="margin:0">
@@ -5956,7 +5978,7 @@ const isOver =
       <section class="pc-modern-panel">
         <div class="modern-section-title">
           ${pcFolderIcon('Heure chantier', 'clients-title-icon')}
-          <div><h2>Ajouter une ligne</h2></div>
+          <div><h2>Ajouter une durée</h2></div>
         </div>
         <form method="POST" action="/chantier-hours/add" class="hours-form">
           <input type="hidden" name="client" value="${escHtml(client)}">
@@ -5970,18 +5992,23 @@ const isOver =
             </div>
 
             <div class="field">
-              <label>Début</label>
-              <input type="time" name="start_time" required>
+              <label>Heures</label>
+              <input type="number" name="work_hours" min="0" step="1" inputmode="numeric" value="0" required data-chantier-hours-input>
             </div>
 
             <div class="field">
-              <label>Fin</label>
-              <input type="time" name="end_time" required>
+              <label>Minutes</label>
+              <select name="work_minutes" required data-chantier-minutes-select>
+                <option value="0">0</option>
+                <option value="15">15</option>
+                <option value="30">30</option>
+                <option value="45">45</option>
+              </select>
             </div>
 
             <div class="field">
-              <label>Pause (min)</label>
-              <input type="number" name="break_minutes" min="0" step="5" value="0">
+              <label>Total</label>
+              <strong data-chantier-duration-total aria-live="polite">0 h</strong>
             </div>
 
             <div class="field field-wide">
@@ -5994,6 +6021,28 @@ const isOver =
             </div>
           </div>
         </form>
+        <script>
+          (function() {
+            const form = document.querySelector('.hours-form');
+            if (!form) return;
+            const hoursInput = form.querySelector('[data-chantier-hours-input]');
+            const minutesSelect = form.querySelector('[data-chantier-minutes-select]');
+            const totalNode = form.querySelector('[data-chantier-duration-total]');
+            if (!hoursInput || !minutesSelect || !totalNode) return;
+
+            const updateTotal = () => {
+              const hours = Math.max(0, parseInt(hoursInput.value || '0', 10) || 0);
+              const minutes = parseInt(minutesSelect.value || '0', 10) || 0;
+              const totalMinutes = (hours * 60) + minutes;
+              totalNode.textContent = hours + ' h' + (minutes ? ' ' + String(minutes).padStart(2, '0') : '');
+              totalNode.dataset.totalMinutes = String(totalMinutes);
+            };
+
+            hoursInput.addEventListener('input', updateTotal);
+            minutesSelect.addEventListener('change', updateTotal);
+            updateTotal();
+          })();
+        </script>
       </section>
 
       <section class="pc-modern-panel">
@@ -6018,26 +6067,23 @@ app.post('/chantier-hours/add', requireLogin, (req, res) => {
     : null;
   const clientOrderId = linkedOrder ? requestedOrderId : null;
   const work_date = String(req.body.work_date || '').trim();
-  const start_time = String(req.body.start_time || '').trim();
-  const end_time = String(req.body.end_time || '').trim();
-  const break_minutes = parseInt(req.body.break_minutes || '0', 10) || 0;
+  const work_hours = req.body.work_hours;
+  const work_minutes = req.body.work_minutes;
   const note = String(req.body.note || '').trim();
 
   if (!client || !order || !work_date) return res.status(400).send('Données manquantes');
 
-  const s = toMinutes(start_time);
-  const e = toMinutes(end_time);
-  if (s === null || e === null) return res.status(400).send('Heures invalides');
-  if (e <= s) return res.status(400).send('Fin doit être après début');
+  const duration = parseChantierHoursDuration(work_hours, work_minutes);
+  if (duration.error) return res.status(400).send(duration.error);
 
-  const minutes_total = Math.max(0, e - s - break_minutes);
+  const minutes_total = duration.minutesTotal;
 
   db.prepare(
     `
     INSERT INTO chantier_hours (client, order_name, client_order_id, work_date, start_time, end_time, break_minutes, minutes_total, note, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)
   `
-  ).run(client, order, clientOrderId, work_date, start_time, end_time, break_minutes, minutes_total, note || null, new Date().toISOString());
+  ).run(client, order, clientOrderId, work_date, minutes_total, note || null, new Date().toISOString());
 
   res.redirect(`/pc-folders/${encodeURIComponent(safeName(client))}/${encodeURIComponent(safeName(order))}/Heure%20chantier`);
 });
