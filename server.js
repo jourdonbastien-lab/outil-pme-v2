@@ -8866,8 +8866,50 @@ function printBars() {
   }
 
   var win = window.open('', '', 'width=900,height=650');
-  win.document.write('<h2>Plan de coupe barres</h2>' + content);
+  if (!win) {
+    alert('Impossible d\'ouvrir la fenêtre d\'impression.');
+    return;
+  }
+
+  win.document.write(
+    '<!DOCTYPE html>' +
+    '<html lang="fr">' +
+      '<head>' +
+        '<meta charset="utf-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+        '<title>Plan de coupe barres</title>' +
+        '<style>' +
+          'html,body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;color:#111827;}' +
+          'body{min-height:100vh;}' +
+          '.tool-print-toolbar{position:fixed;top:0;left:0;right:0;z-index:1000;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 14px;background:rgba(255,255,255,.96);border-bottom:1px solid #d1d5db;backdrop-filter:blur(10px);}' +
+          '.tool-print-title{min-width:0;font-size:16px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+          '.tool-print-back,.tool-print-button{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 14px;border-radius:999px;border:1px solid #d1d5db;background:#fff;color:#111827;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;}' +
+          '.tool-print-button{background:#ff7a00;border-color:#ff7a00;}' +
+          '.tool-print-body{padding:88px 20px 28px;}' +
+          '.tool-print-body h2{margin:0 0 16px;font-size:24px;text-align:center;}' +
+          '.bar-box,.sheet-box{border:1px solid #111827;padding:10px;margin-bottom:8px;background:#fff;}' +
+          '@media (max-width:640px){.tool-print-toolbar{grid-template-columns:auto minmax(0,1fr);}.tool-print-button{grid-column:1 / -1;width:100%;}.tool-print-title{text-align:left;font-size:15px;}.tool-print-body{padding:132px 14px 20px;}}' +
+          '@media print{.tool-print-toolbar{display:none !important;}.tool-print-body{padding:0 !important;}body{background:#fff;}}' +
+        '</style>' +
+      '</head>' +
+      '<body>' +
+        '<div class="tool-print-toolbar">' +
+          '<button type="button" class="tool-print-back" onclick="goBackToTool()">← Retour à LogiBarre</button>' +
+          '<strong class="tool-print-title">Plan de coupe barres</strong>' +
+          '<button type="button" class="tool-print-button" onclick="window.print()">Imprimer</button>' +
+        '</div>' +
+        '<div class="tool-print-body">' +
+          '<h2>Plan de coupe barres</h2>' +
+          content +
+        '</div>' +
+        '<script>' +
+          'function goBackToTool(){try{if(window.history.length>1){window.history.back();return;}}catch(e){}window.location="/outils/logibarre";}' +
+        '<\/script>' +
+      '</body>' +
+    '</html>'
+  );
   win.document.close();
+  win.focus();
   win.print();
 }
 </script>
@@ -9306,8 +9348,50 @@ function printSheets() {
   }
 
   var win = window.open('', '', 'width=900,height=650');
-  win.document.write('<h2>Plan de découpe tôles</h2>' + content);
+  if (!win) {
+    alert('Impossible d\'ouvrir la fenêtre d\'impression.');
+    return;
+  }
+
+  win.document.write(
+    '<!DOCTYPE html>' +
+    '<html lang="fr">' +
+      '<head>' +
+        '<meta charset="utf-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+        '<title>Plan de découpe tôles</title>' +
+        '<style>' +
+          'html,body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f4f6;color:#111827;}' +
+          'body{min-height:100vh;}' +
+          '.tool-print-toolbar{position:fixed;top:0;left:0;right:0;z-index:1000;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 14px;background:rgba(255,255,255,.96);border-bottom:1px solid #d1d5db;backdrop-filter:blur(10px);}' +
+          '.tool-print-title{min-width:0;font-size:16px;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+          '.tool-print-back,.tool-print-button{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 14px;border-radius:999px;border:1px solid #d1d5db;background:#fff;color:#111827;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;}' +
+          '.tool-print-button{background:#ff7a00;border-color:#ff7a00;}' +
+          '.tool-print-body{padding:88px 20px 28px;}' +
+          '.tool-print-body h2{margin:0 0 16px;font-size:24px;text-align:center;}' +
+          '.sheet-box,.bar-box{border:1px solid #111827;padding:10px;margin-bottom:8px;background:#fff;}' +
+          '@media (max-width:640px){.tool-print-toolbar{grid-template-columns:auto minmax(0,1fr);}.tool-print-button{grid-column:1 / -1;width:100%;}.tool-print-title{text-align:left;font-size:15px;}.tool-print-body{padding:132px 14px 20px;}}' +
+          '@media print{.tool-print-toolbar{display:none !important;}.tool-print-body{padding:0 !important;}body{background:#fff;}}' +
+        '</style>' +
+      '</head>' +
+      '<body>' +
+        '<div class="tool-print-toolbar">' +
+          '<button type="button" class="tool-print-back" onclick="goBackToTool()">← Retour à LogiTôle</button>' +
+          '<strong class="tool-print-title">Plan de découpe tôles</strong>' +
+          '<button type="button" class="tool-print-button" onclick="window.print()">Imprimer</button>' +
+        '</div>' +
+        '<div class="tool-print-body">' +
+          '<h2>Plan de découpe tôles</h2>' +
+          content +
+        '</div>' +
+        '<script>' +
+          'function goBackToTool(){try{if(window.history.length>1){window.history.back();return;}}catch(e){}window.location="/outils/logitole";}' +
+        '<\/script>' +
+      '</body>' +
+    '</html>'
+  );
   win.document.close();
+  win.focus();
   win.print();
 }
 </script>
