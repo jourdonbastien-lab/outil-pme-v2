@@ -138,33 +138,41 @@
   </div>
 
   <div id="sketchModal" class="sketch-modal" hidden aria-hidden="true">
-    <div class="sketch-toolbar-top">
-      <button type="button" id="sketchCloseBtn" class="sketch-close-btn">Fermer</button>
+    <div class="sketch-modal-content">
+      <div class="sketch-toolbar-top">
+        <button type="button" id="undoSketchBtn" class="sketch-action-btn">Annuler</button>
+        <button type="button" id="redoSketchBtn" class="sketch-action-btn">Refaire</button>
+        <button type="button" id="sketchSaveBtn" class="sketch-save-btn">Enregistrer</button>
+        <button type="button" id="sketchCloseBtn" class="sketch-close-btn">Fermer</button>
+      </div>
+      <div class="sketch-toolbar-left">
+        <button type="button" id="toolPenBtn" class="is-active">Stylo</button>
+        <button type="button" id="toolEraserBtn">Gomme</button>
+        <div class="sketch-toolbar-card">
+          <span class="sketch-toolbar-label">Couleur</span>
+          <div class="sketch-toolbar-palette" id="sketchColorPalette">
+            <button type="button" data-sketch-color="#111827" style="--swatch:#111827" class="is-active" aria-label="Noir"></button>
+            <button type="button" data-sketch-color="#dc2626" style="--swatch:#dc2626" aria-label="Rouge"></button>
+            <button type="button" data-sketch-color="#2563eb" style="--swatch:#2563eb" aria-label="Bleu"></button>
+            <button type="button" data-sketch-color="#059669" style="--swatch:#059669" aria-label="Vert"></button>
+            <button type="button" data-sketch-color="#7c3aed" style="--swatch:#7c3aed" aria-label="Violet"></button>
+          </div>
+        </div>
+        <div class="sketch-toolbar-card">
+          <span class="sketch-toolbar-label">Trait</span>
+          <div class="sketch-toolbar-sizes" id="sketchSizePalette">
+            <button type="button" data-sketch-size="2" class="is-active">Fin</button>
+            <button type="button" data-sketch-size="4">Moyen</button>
+            <button type="button" data-sketch-size="7">Epais</button>
+            <button type="button" data-sketch-size="11">XL</button>
+          </div>
+        </div>
+        <button type="button" id="clearSketchBtn" class="sketch-clear-btn">Effacer</button>
+      </div>
       <span id="sketchStatus" class="sketch-status">Prêt</span>
-      <button type="button" id="sketchSaveBtn" class="sketch-save-btn">Enregistrer</button>
-    </div>
-    <div class="sketch-toolbar-tools">
-      <button type="button" id="toolPenBtn" class="is-active">Stylo</button>
-      <button type="button" id="toolEraserBtn">Gomme</button>
-      <button type="button" id="undoSketchBtn">Annuler</button>
-      <button type="button" id="redoSketchBtn">Refaire</button>
-      <button type="button" id="clearSketchBtn">Effacer</button>
-    </div>
-    <div class="sketch-toolbar-palette" id="sketchColorPalette">
-      <button type="button" data-sketch-color="#111827" style="--swatch:#111827" class="is-active" aria-label="Noir"></button>
-      <button type="button" data-sketch-color="#dc2626" style="--swatch:#dc2626" aria-label="Rouge"></button>
-      <button type="button" data-sketch-color="#2563eb" style="--swatch:#2563eb" aria-label="Bleu"></button>
-      <button type="button" data-sketch-color="#059669" style="--swatch:#059669" aria-label="Vert"></button>
-      <button type="button" data-sketch-color="#7c3aed" style="--swatch:#7c3aed" aria-label="Violet"></button>
-    </div>
-    <div class="sketch-toolbar-sizes" id="sketchSizePalette">
-      <button type="button" data-sketch-size="2" class="is-active">Fin</button>
-      <button type="button" data-sketch-size="4">Moyen</button>
-      <button type="button" data-sketch-size="7">Epais</button>
-      <button type="button" data-sketch-size="11">XL</button>
-    </div>
-    <div class="sketch-canvas-wrap">
-      <canvas id="sketchCanvas" aria-label="Zone de croquis Escalier V2"></canvas>
+      <div class="sketch-canvas-wrap">
+        <canvas id="sketchCanvas" aria-label="Zone de croquis Escalier V2"></canvas>
+      </div>
     </div>
   </div>
 
