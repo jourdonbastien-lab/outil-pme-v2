@@ -13,8 +13,10 @@ module.exports = {
         HOST: '127.0.0.1',
         PORT: 3000,
         TRUST_PROXY: 'true',
-        
+        SESSION_COOKIE_SECURE: 'true',
         SESSION_COOKIE_SAMESITE: 'lax',
+        SESSION_MAX_AGE_DAYS: '30',
+        SESSION_STORE_CLEAR_INTERVAL_MINUTES: '15',
       },
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
     },
