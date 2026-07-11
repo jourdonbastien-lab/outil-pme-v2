@@ -8883,7 +8883,7 @@ function printBars() {
 
   var win = window.open('', '', 'width=900,height=650');
   if (!win) {
-    alert('Impossible d\'ouvrir la fenêtre d\'impression.');
+    alert('Impossible d\\'ouvrir la fenêtre d\\'impression.');
     return;
   }
 
@@ -9357,7 +9357,7 @@ function printSheets() {
 
   var win = window.open('', '', 'width=900,height=650');
   if (!win) {
-    alert('Impossible d\'ouvrir la fenêtre d\'impression.');
+    alert('Impossible d\\'ouvrir la fenêtre d\\'impression.');
     return;
   }
 
