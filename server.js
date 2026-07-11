@@ -8918,7 +8918,6 @@ function printBars() {
   win.document.write(printHtml);
   win.document.close();
   win.focus();
-  win.print();
 }
 </script>
 
