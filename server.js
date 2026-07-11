@@ -9392,7 +9392,6 @@ function printSheets() {
   win.document.write(printHtml);
   win.document.close();
   win.focus();
-  win.print();
 }
 </script>
 
