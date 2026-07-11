@@ -1392,7 +1392,7 @@ function renderAuthPage({ title, body }) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escHtml(title)} - A2 METAL</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/style.css?v=20260711-1" />
 </head>
 <body class="login-body">
   <div class="login-wrapper">
@@ -1933,7 +1933,7 @@ function pageTemplate(req, title, content) {
 
 <title>${escHtml(title)}</title>
 
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/style.css?v=20260711-1">
 <link rel="apple-touch-icon" href="/logo-192.png">
 <link rel="icon" type="image/png" href="/logo-192.png">
 <link rel="manifest" href="/manifest.json">
@@ -4555,40 +4555,32 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                   <div class="chantier-progress client-order-stage-progress ${isOverHours ? 'over-hours' : 'ok-hours'}"><span style="width:${progress}%"></span></div>
                 </div>
 
-                <div class="modern-client-order-actions">
-                  <a class="modern-client-order-open" href="${clientFolderUrl}">
-                    ${clientPageIcon('folder', 'modern-client-order-open-icon')}
-                    <span>Ouvrir</span>
-                    <b aria-hidden="true">›</b>
-                  </a>
-                  <a class="modern-client-order-open modern-client-order-hours-link" href="${chantierHoursUrl}">
-                    ${pcFolderIcon('Heure chantier', 'modern-client-order-open-icon')}
-                    <span>Heures</span>
-                    <b aria-hidden="true">›</b>
-                  </a>
-                  ${isPoseStatus ? `
+                ${isPoseStatus ? `
+                <section class="modern-client-order-agenda-block">
                   ${existingPoseEvent
                     ? `
-                  <a class="modern-client-order-open" href="/agenda">
-                    ${clientPageIcon('calendar', 'modern-client-order-open-icon')}
-                    <span>Voir dans l'agenda</span>
-                    <b aria-hidden="true">›</b>
-                  </a>
-                  <span class="modern-status-badge done">Pose déjà planifiée</span>
+                  <div class="modern-client-order-agenda-inline modern-client-order-agenda-ready">
+                    <a class="modern-client-order-open modern-client-order-agenda-trigger" href="/agenda">
+                      ${clientPageIcon('calendar', 'modern-client-order-open-icon')}
+                      <span>Voir dans l'agenda</span>
+                      <b aria-hidden="true">›</b>
+                    </a>
+                    <span class="modern-status-badge done">Pose déjà planifiée</span>
+                  </div>
                     `
                     : `
                   <details class="modern-client-order-agenda-inline">
-                    <summary class="modern-client-order-open" style="cursor:pointer; list-style:none;">
+                    <summary class="modern-client-order-open modern-client-order-agenda-trigger">
                       ${clientPageIcon('calendar', 'modern-client-order-open-icon')}
                       <span>Ajouter à l’agenda</span>
                       <b aria-hidden="true">›</b>
                     </summary>
-                    <form method="POST" action="/orders/client/${o.id}/add-agenda-pose" class="modern-client-order-add-form" style="margin-top:10px;">
+                    <form method="POST" action="/orders/client/${o.id}/add-agenda-pose" class="modern-client-order-add-form modern-client-order-agenda-form">
                       <input type="hidden" name="client" value="${escHtml(o.name || '')}">
                       <input type="hidden" name="order_name" value="${escHtml(o.description || '')}">
                       <input type="hidden" name="title" value="${escHtml(poseAgendaTitle)}">
-                      <div class="modern-form-grid">
-                        <label class="clients-field">
+                      <div class="modern-client-order-agenda-grid">
+                        <label class="clients-field modern-client-order-agenda-field-wide">
                           <span>Date de pose</span>
                           <div class="clients-input-shell">
                             ${clientPageIcon('calendar')}
@@ -4609,14 +4601,14 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                             <input type="time" name="end_time" required>
                           </div>
                         </label>
-                        <label class="clients-field">
+                        <label class="clients-field modern-client-order-agenda-field-wide">
                           <span>Lieu / adresse (facultatif)</span>
                           <div class="clients-input-shell">
                             ${clientPageIcon('location')}
                             <input name="place" placeholder="Adresse de pose">
                           </div>
                         </label>
-                        <label class="clients-field">
+                        <label class="clients-field modern-client-order-agenda-field-wide">
                           <span>Note (facultatif)</span>
                           <div class="clients-input-shell">
                             ${clientPageIcon('tasks')}
@@ -4624,13 +4616,26 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                           </div>
                         </label>
                       </div>
-                      <div class="modern-form-actions">
+                      <div class="modern-form-actions modern-client-order-agenda-actions">
                         <button type="submit" class="clients-submit-btn">Valider</button>
                       </div>
                     </form>
                   </details>
                     `}
-                  ` : ''}
+                </section>
+                ` : ''}
+
+                <div class="modern-client-order-actions modern-client-order-actions-bottom">
+                  <a class="modern-client-order-open" href="${clientFolderUrl}">
+                    ${clientPageIcon('folder', 'modern-client-order-open-icon')}
+                    <span>Ouvrir</span>
+                    <b aria-hidden="true">›</b>
+                  </a>
+                  <a class="modern-client-order-open modern-client-order-hours-link" href="${chantierHoursUrl}">
+                    ${pcFolderIcon('Heure chantier', 'modern-client-order-open-icon')}
+                    <span>Heures</span>
+                    <b aria-hidden="true">›</b>
+                  </a>
                   <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');">
                     <input type="hidden" name="id" value="${o.id}" />
                     <button type="submit" class="modern-order-done-btn" title="Terminer">${clientPageIcon('check', 'modern-action-icon')} Terminer</button>

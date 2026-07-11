@@ -4152,6 +4152,114 @@ button:hover {
   margin:0;
 }
 
+.modern-client-order-agenda-block,
+.modern-client-order-agenda-inline,
+.modern-client-order-actions-bottom{
+  grid-column:1 / -1;
+  width:100%;
+  max-width:none;
+  min-width:0;
+  box-sizing:border-box;
+}
+
+.modern-client-order-agenda-block{
+  display:grid;
+  gap:10px;
+}
+
+.modern-client-order-agenda-inline{
+  display:grid;
+  gap:10px;
+  margin:0;
+}
+
+.modern-client-order-agenda-inline summary{
+  list-style:none;
+}
+
+.modern-client-order-agenda-inline summary::-webkit-details-marker{
+  display:none;
+}
+
+.modern-client-order-agenda-trigger{
+  justify-content:flex-start;
+  width:100%;
+  max-width:none;
+  min-width:0;
+  margin:0;
+  cursor:pointer;
+}
+
+.modern-client-order-agenda-form{
+  width:100%;
+  max-width:none;
+  min-width:0;
+  margin:0;
+  padding:14px;
+  border:1px solid #e5e7eb;
+  border-radius:18px;
+  background:#f8fafc;
+  box-sizing:border-box;
+}
+
+.modern-client-order-agenda-grid{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+  gap:12px;
+  width:100%;
+  max-width:none;
+  min-width:0;
+  box-sizing:border-box;
+}
+
+.modern-client-order-agenda-field-wide{
+  grid-column:1 / -1;
+}
+
+.modern-client-order-agenda-form .clients-field,
+.modern-client-order-agenda-form .clients-input-shell,
+.modern-client-order-agenda-form input,
+.modern-client-order-agenda-form textarea,
+.modern-client-order-agenda-form .clients-submit-btn{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  box-sizing:border-box;
+}
+
+.modern-client-order-agenda-form .clients-submit-btn{
+  margin-top:0;
+}
+
+.modern-client-order-agenda-actions{
+  width:100%;
+  max-width:none;
+  min-width:0;
+}
+
+.modern-client-order-agenda-actions .clients-submit-btn{
+  width:100%;
+  min-width:0;
+}
+
+.modern-client-order-agenda-ready{
+  align-items:start;
+}
+
+.modern-client-order-actions-bottom{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+  align-items:stretch;
+}
+
+.modern-client-order-actions-bottom .modern-client-order-open,
+.modern-client-order-actions-bottom form,
+.modern-client-order-actions-bottom .modern-order-done-btn{
+  width:100%;
+  min-width:0;
+}
+
 .modern-order-done-btn{
   display:inline-flex;
   align-items:center;
@@ -7831,6 +7939,84 @@ body.sketchpad-drawing{
   top:10px;
   z-index:100;
   display:inline-block;
+}
+
+@media (max-width:760px){
+  .modern-client-order-card{
+    grid-template-columns:minmax(0, 1fr) !important;
+  }
+
+  .modern-client-order-head,
+  .modern-client-order-row,
+  .modern-client-order-progress,
+  .modern-client-order-agenda-block,
+  .modern-client-order-agenda-inline,
+  .modern-client-order-actions-bottom{
+    grid-column:1 / -1 !important;
+    grid-row:auto !important;
+    width:100% !important;
+    max-width:none !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+    justify-self:stretch !important;
+    align-self:stretch !important;
+  }
+
+  .modern-client-order-agenda-block,
+  .modern-client-order-agenda-inline{
+    margin:12px 0 0 !important;
+  }
+
+  .modern-client-order-agenda-trigger{
+    justify-content:flex-start !important;
+    margin:0 !important;
+  }
+
+  .modern-client-order-agenda-form,
+  .modern-client-order-agenda-grid{
+    width:100% !important;
+    max-width:none !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+  }
+
+  .modern-client-order-agenda-grid{
+    grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) !important;
+  }
+
+  .modern-client-order-agenda-field-wide{
+    grid-column:1 / -1 !important;
+  }
+
+  .modern-client-order-agenda-form input,
+  .modern-client-order-agenda-form textarea,
+  .modern-client-order-agenda-form .clients-input-shell,
+  .modern-client-order-agenda-form .clients-submit-btn{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+  }
+
+  .modern-client-order-actions-bottom{
+    display:grid !important;
+    grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)) !important;
+    gap:8px !important;
+    margin-top:12px !important;
+  }
+
+  .modern-client-order-actions-bottom .modern-client-order-open,
+  .modern-client-order-actions-bottom form,
+  .modern-client-order-actions-bottom .modern-order-done-btn{
+    width:100% !important;
+    min-width:0 !important;
+  }
+}
+
+@media (max-width:420px){
+  .modern-client-order-agenda-grid{
+    grid-template-columns:minmax(0, 1fr) !important;
+  }
 }
 .files-grid{
   display:grid;
