@@ -129,12 +129,14 @@
     photoViewerImg.src = url;
     photoViewerCaption.textContent = caption || '';
     photoViewer.hidden = false;
+    photoViewer.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
   }
 
   function closeViewer() {
     if (!photoViewer || !photoViewerImg) return;
     photoViewer.hidden = true;
+    photoViewer.setAttribute('aria-hidden', 'true');
     photoViewerImg.removeAttribute('src');
     photoViewerCaption.textContent = '';
     document.body.style.overflow = '';
@@ -595,6 +597,11 @@
 
   if (photoViewerClose) {
     photoViewerClose.addEventListener('click', closeViewer);
+  }
+
+  if (photoViewer) {
+    photoViewer.hidden = true;
+    photoViewer.setAttribute('aria-hidden', 'true');
   }
 
   if (photoViewer) {
