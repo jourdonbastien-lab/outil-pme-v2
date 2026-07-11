@@ -3793,6 +3793,100 @@ button:hover {
   align-items:center;
 }
 
+.ebp-head-copy,
+.ebp-head .clients-create-head,
+.ebp-card,
+.ebp-files-wrapper{
+  min-width:0;
+}
+
+.ebp-head-copy{
+  display:grid;
+  gap:4px;
+}
+
+.ebp-source-label,
+.ebp-source-path{
+  display:block;
+}
+
+.ebp-source-path{
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+
+.ebp-files-wrapper{
+  width:100%;
+  max-width:100%;
+  overflow-x:auto;
+}
+
+.ebp-files-table{
+  width:100%;
+}
+
+.ebp-files-cards{
+  display:none;
+}
+
+.ebp-file-actions{
+  margin-top:0;
+}
+
+.ebp-file-actions form,
+.ebp-file-card-actions form{
+  margin:0;
+}
+
+.ebp-page-actions{
+  flex-wrap:wrap;
+}
+
+.ebp-file-card{
+  display:grid;
+  gap:14px;
+  padding:14px;
+  border:1px solid rgba(217,222,231,.22);
+  border-radius:18px;
+  background:rgba(248,250,252,.06);
+  box-sizing:border-box;
+}
+
+.ebp-file-card-main,
+.ebp-file-card-actions{
+  min-width:0;
+}
+
+.ebp-file-card-main h2{
+  margin:0;
+  color:#fff;
+  font-size:16px;
+  line-height:1.3;
+  overflow-wrap:anywhere;
+}
+
+.ebp-file-card-main p{
+  margin:0;
+  color:#cbd5e1;
+  font-size:13px;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+}
+
+.ebp-file-card-actions{
+  display:grid;
+  gap:10px;
+}
+
+.ebp-file-card-actions .modern-cancel-link,
+.ebp-file-card-actions .clients-submit-btn{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  margin-top:0;
+}
+
 .clients-create-card.modern-client-order-form{
   max-width:none;
   border:1px solid rgba(255,255,255,.08);
@@ -7939,6 +8033,84 @@ body.sketchpad-drawing{
   top:10px;
   z-index:100;
   display:inline-block;
+}
+
+@media (max-width:760px){
+  .ebp-page,
+  .ebp-card,
+  .ebp-files-wrapper,
+  .ebp-files-cards,
+  .ebp-page-actions{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    box-sizing:border-box;
+    overflow-x:hidden;
+  }
+
+  .ebp-head .clients-create-head,
+  .ebp-head-copy{
+    min-width:0;
+  }
+
+  .ebp-head{
+    padding:16px;
+  }
+
+  .ebp-head .clients-create-head{
+    align-items:flex-start;
+  }
+
+  .ebp-source-path{
+    white-space:normal;
+  }
+
+  .ebp-card{
+    padding:14px;
+  }
+
+  .ebp-files-wrapper{
+    display:none;
+  }
+
+  .ebp-files-cards{
+    display:grid;
+    gap:12px;
+  }
+
+  .ebp-file-card{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+  }
+
+  .ebp-file-card-actions{
+    grid-template-columns:1fr;
+  }
+
+  .ebp-page-actions{
+    display:grid;
+    gap:10px;
+  }
+
+  .ebp-page-actions .modern-cancel-link,
+  .ebp-page-actions .clients-submit-btn,
+  .ebp-page-actions .modern-form-actions .clients-submit-btn{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    margin-top:0;
+  }
+}
+
+@media (max-width:420px){
+  .ebp-head{
+    padding:14px;
+  }
+
+  .ebp-card{
+    padding:12px;
+  }
 }
 
 @media (max-width:760px){

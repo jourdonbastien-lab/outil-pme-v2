@@ -25,6 +25,7 @@ const pdfParse = tryRequire('pdf-parse');
 const tesseractJs = tryRequire('tesseract.js');
 const heicConvert = tryRequire('heic-convert');
 const sharp = tryRequire('sharp');
+const BetterSqlite3SessionStoreFactory = tryRequire('better-sqlite3-session-store');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -55,9 +56,14 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const TRUST_PROXY = envBool('TRUST_PROXY', NODE_ENV === 'production');
-const SESSION_SECRET = process.env.SESSION_SECRET || 'outil-pme-secret';
+const RAW_SESSION_SECRET = String(process.env.SESSION_SECRET || '').trim();
+const SESSION_SECRET = RAW_SESSION_SECRET || 'outil-pme-secret';
 const SESSION_COOKIE_SECURE = envBool('SESSION_COOKIE_SECURE', NODE_ENV === 'production');
 const SESSION_COOKIE_SAMESITE = process.env.SESSION_COOKIE_SAMESITE || 'lax';
+const SESSION_MAX_AGE_DAYS = envNumber('SESSION_MAX_AGE_DAYS', 30);
+const SESSION_MAX_AGE_MS = SESSION_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+const SESSION_STORE_CLEAR_INTERVAL_MINUTES = envNumber('SESSION_STORE_CLEAR_INTERVAL_MINUTES', 15);
+const SESSION_STORE_CLEAR_INTERVAL_MS = SESSION_STORE_CLEAR_INTERVAL_MINUTES * 60 * 1000;
 const MFA_ALLOWED_EMAILS = new Set(
   String(process.env.MFA_ALLOWED_EMAILS || '')
     .split(',')
@@ -82,6 +88,10 @@ const mfaRequestLimits = new Map();
 
 if (TRUST_PROXY) {
   app.set('trust proxy', 1);
+}
+
+if (NODE_ENV === 'production' && !RAW_SESSION_SECRET) {
+  console.warn('SESSION_SECRET absent: utilisation d\'une valeur de repli. Définissez SESSION_SECRET en production.');
 }
 
 app.get('/test', (req, res) => {
@@ -810,6 +820,24 @@ const db = new Database(dbPath);
 
 initializeSqlite(db);
 
+const SqliteSessionStore = BetterSqlite3SessionStoreFactory
+  ? BetterSqlite3SessionStoreFactory(session)
+  : null;
+
+const sessionStore = SqliteSessionStore
+  ? new SqliteSessionStore({
+      client: db,
+      expired: {
+        clear: true,
+        intervalMs: SESSION_STORE_CLEAR_INTERVAL_MS,
+      },
+    })
+  : null;
+
+if (!sessionStore) {
+  console.warn('better-sqlite3-session-store indisponible: express-session utilise le MemoryStore.');
+}
+
 /* ===================== TABLES + MIGRATIONS ===================== */
 
 function initializeSqlite(database) {
@@ -1242,9 +1270,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
   name: 'outil-pme.sid',
   secret: SESSION_SECRET,
+  store: sessionStore || undefined,
+  proxy: TRUST_PROXY,
   resave: false,
   saveUninitialized: false,
+  rolling: true,
   cookie: {
+    maxAge: SESSION_MAX_AGE_MS,
     secure: SESSION_COOKIE_SECURE,
     httpOnly: true,
     sameSite: SESSION_COOKIE_SAMESITE
@@ -1392,7 +1424,7 @@ function renderAuthPage({ title, body }) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escHtml(title)} - A2 METAL</title>
-  <link rel="stylesheet" href="/style.css?v=20260711-1" />
+  <link rel="stylesheet" href="/style.css?v=20260711-2" />
 </head>
 <body class="login-body">
   <div class="login-wrapper">
@@ -1933,7 +1965,7 @@ function pageTemplate(req, title, content) {
 
 <title>${escHtml(title)}</title>
 
-<link rel="stylesheet" href="/style.css?v=20260711-1">
+<link rel="stylesheet" href="/style.css?v=20260711-2">
 <link rel="apple-touch-icon" href="/logo-192.png">
 <link rel="icon" type="image/png" href="/logo-192.png">
 <link rel="manifest" href="/manifest.json">
@@ -4981,11 +5013,11 @@ app.get('/orders/clients/incoming-ebp', requireLogin, (req, res) => {
       const openUrl = `/orders/clients/incoming-ebp/open?file=${encodeURIComponent(file.name)}`;
       return `
         <tr>
-          <td>${escHtml(file.name)}</td>
-          <td>${escHtml(formatDateTimeLabel(file.addedAt))}</td>
-          <td>${escHtml(formatFileSize(file.size))}</td>
-          <td>
-            <div class="modern-form-actions" style="justify-content:flex-start;gap:8px;">
+          <td data-label="Fichier PDF">${escHtml(file.name)}</td>
+          <td data-label="Date d'ajout">${escHtml(formatDateTimeLabel(file.addedAt))}</td>
+          <td data-label="Taille">${escHtml(formatFileSize(file.size))}</td>
+          <td data-label="Actions">
+            <div class="modern-form-actions ebp-file-actions" style="justify-content:flex-start;gap:8px;">
               <a class="modern-cancel-link" href="${openUrl}" target="_blank" rel="noopener">Ouvrir</a>
               <form method="POST" action="/orders/clients/scan-ebp/analyze-incoming" style="margin:0;">
                 <input type="hidden" name="incoming_file" value="${escHtml(file.name)}" />
@@ -5001,28 +5033,54 @@ app.get('/orders/clients/incoming-ebp', requireLogin, (req, res) => {
     }).join('')
     : '<tr><td colspan="4" class="empty">Aucun PDF à traiter dans le dossier incoming.</td></tr>';
 
+  const mobileCards = files.length
+    ? files.map((file) => {
+      const openUrl = `/orders/clients/incoming-ebp/open?file=${encodeURIComponent(file.name)}`;
+      return `
+        <article class="ebp-file-card">
+          <div class="ebp-file-card-main">
+            <h2>${escHtml(file.name)}</h2>
+            <p><strong>Ajouté le</strong> ${escHtml(formatDateTimeLabel(file.addedAt))}</p>
+            <p><strong>Taille :</strong> ${escHtml(formatFileSize(file.size))}</p>
+          </div>
+          <div class="ebp-file-card-actions">
+            <a class="modern-cancel-link" href="${openUrl}" target="_blank" rel="noopener">Ouvrir</a>
+            <form method="POST" action="/orders/clients/scan-ebp/analyze-incoming">
+              <input type="hidden" name="incoming_file" value="${escHtml(file.name)}" />
+              <button type="submit" class="clients-submit-btn">
+                <span>${clientPageIcon('search', 'clients-submit-icon')}</span>
+                Scanner ce devis
+              </button>
+            </form>
+          </div>
+        </article>
+      `;
+    }).join('')
+    : '<div class="empty-state ebp-empty-state">Aucun PDF à traiter dans le dossier incoming.</div>';
+
   res.send(
     pageTemplate(
       req,
       'Devis EBP à traiter',
       `
-      <div class="modern-page modern-client-orders-page">
-        <section class="modern-list-head modern-client-orders-head">
+      <div class="modern-page modern-client-orders-page ebp-page">
+        <section class="modern-list-head modern-client-orders-head ebp-head">
           <div class="clients-create-head">
             ${clientPageIcon('quotes', 'clients-title-icon')}
-            <div>
+            <div class="ebp-head-copy">
               <h1>Devis EBP à traiter</h1>
-              <span>Dossier source: ${escHtml(EBP_INCOMING_DIR)}</span>
+              <span class="ebp-source-label">Dossier source :</span>
+              <span class="ebp-source-path">${escHtml(EBP_INCOMING_DIR)}</span>
             </div>
           </div>
         </section>
 
-        <section class="clients-create-card modern-form-card modern-client-order-form">
+        <section class="clients-create-card modern-form-card modern-client-order-form ebp-card">
           ${error ? `<p class="error">${escHtml(error)}</p>` : ''}
           ${message ? `<p class="info">${escHtml(message)}</p>` : ''}
 
-          <div style="overflow:auto;">
-            <table class="modern-list-table">
+          <div class="ebp-files-wrapper">
+            <table class="modern-list-table ebp-files-table">
               <thead>
                 <tr>
                   <th>Fichier PDF</th>
@@ -5037,7 +5095,11 @@ app.get('/orders/clients/incoming-ebp', requireLogin, (req, res) => {
             </table>
           </div>
 
-          <div class="modern-form-actions">
+          <div class="ebp-files-cards" aria-label="Liste mobile des devis EBP à traiter">
+            ${mobileCards}
+          </div>
+
+          <div class="modern-form-actions ebp-page-actions">
             <a class="modern-cancel-link" href="/orders/clients">Retour commandes</a>
             <a class="clients-submit-btn" href="/orders/clients/scan-ebp">
               <span>${clientPageIcon('quotes', 'clients-submit-icon')}</span>
