@@ -8887,24 +8887,32 @@ function printBars() {
     return;
   }
 
-  var printHtml = \`
-<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Plan de coupe barres</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    h2 { text-align: center; margin-bottom: 15px; }
-    .bar-box { border: 1px solid #000; padding: 10px; margin-bottom: 8px; }
-  </style>
-</head>
-<body>
-  <h2>Plan de coupe barres</h2>
-  \${content}
-</body>
-</html>\`;
+  var printHtml =
+    '<!doctype html>' +
+    '<html lang="fr">' +
+      '<head>' +
+        '<meta charset="utf-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+        '<title>Plan de coupe barres</title>' +
+        '<style>' +
+          'body{font-family:Arial,sans-serif;padding:20px;}' +
+          'h2{text-align:center;margin-bottom:15px;}' +
+          '.bar-box{border:1px solid #000;padding:10px;margin-bottom:8px;}' +
+          '.print-toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px;}' +
+          '.print-toolbar a,.print-toolbar button{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border:1px solid #999;border-radius:999px;background:#fff;color:#111;text-decoration:none;font:600 14px Arial,sans-serif;cursor:pointer;}' +
+          '.print-toolbar button{background:#f3f4f6;}' +
+          '@media print{.print-toolbar{display:none !important;}}' +
+        '</style>' +
+      '</head>' +
+      '<body>' +
+        '<div class="print-toolbar">' +
+          '<a href="/outils/logibarre">← Retour à LogiBarre</a>' +
+          '<button type="button" onclick="window.print()">Imprimer</button>' +
+        '</div>' +
+        '<h2>Plan de coupe barres</h2>' +
+        content +
+      '</body>' +
+    '</html>';
 
   win.document.open();
   win.document.write(printHtml);
@@ -9353,24 +9361,32 @@ function printSheets() {
     return;
   }
 
-  var printHtml = \`
-<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Plan de découpe tôles</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    h2 { text-align: center; margin-bottom: 15px; }
-    .sheet-box { border: 1px solid #000; padding: 10px; margin-bottom: 8px; }
-  </style>
-</head>
-<body>
-  <h2>Plan de découpe tôles</h2>
-  \${content}
-</body>
-</html>\`;
+  var printHtml =
+    '<!doctype html>' +
+    '<html lang="fr">' +
+      '<head>' +
+        '<meta charset="utf-8">' +
+        '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+        '<title>Plan de découpe tôles</title>' +
+        '<style>' +
+          'body{font-family:Arial,sans-serif;padding:20px;}' +
+          'h2{text-align:center;margin-bottom:15px;}' +
+          '.sheet-box{border:1px solid #000;padding:10px;margin-bottom:8px;}' +
+          '.print-toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px;}' +
+          '.print-toolbar a,.print-toolbar button{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border:1px solid #999;border-radius:999px;background:#fff;color:#111;text-decoration:none;font:600 14px Arial,sans-serif;cursor:pointer;}' +
+          '.print-toolbar button{background:#f3f4f6;}' +
+          '@media print{.print-toolbar{display:none !important;}}' +
+        '</style>' +
+      '</head>' +
+      '<body>' +
+        '<div class="print-toolbar">' +
+          '<a href="/outils/logitole">← Retour à LogiTôle</a>' +
+          '<button type="button" onclick="window.print()">Imprimer</button>' +
+        '</div>' +
+        '<h2>Plan de découpe tôles</h2>' +
+        content +
+      '</body>' +
+    '</html>';
 
   win.document.open();
   win.document.write(printHtml);
