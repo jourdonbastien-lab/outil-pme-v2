@@ -42,6 +42,12 @@
   const clearSketchBtn = document.getElementById('clearSketchBtn');
   const sketchColorPalette = document.getElementById('sketchColorPalette');
   const sketchSizePalette = document.getElementById('sketchSizePalette');
+  const useSketchPhotoBtn = document.getElementById('useSketchPhotoBtn');
+  const removeSketchPhotoBtn = document.getElementById('removeSketchPhotoBtn');
+  const sketchBgLabel = document.getElementById('sketchBgLabel');
+  const sketchPhotoPicker = document.getElementById('sketchPhotoPicker');
+  const sketchPhotoPickerList = document.getElementById('sketchPhotoPickerList');
+  const closeSketchPhotoPickerBtn = document.getElementById('closeSketchPhotoPickerBtn');
 
   const params = new URLSearchParams(window.location.search);
   const initialOrderId = normalizeId(params.get('client_order_id'));
@@ -54,6 +60,8 @@
   let photoSlots = makeEmptyPhotoSlots();
   let sketchUpdatedAt = '';
   let sketchCtx = null;
+  let sketchInkCanvas = null;
+  let sketchInkCtx = null;
   let sketchDrawing = false;
   let sketchTool = 'pen';
   let sketchColor = '#111827';
@@ -61,6 +69,9 @@
   let sketchHistory = [];
   let sketchHistoryIndex = -1;
   let sketchLoadingState = false;
+  let sketchBackgroundPhotoId = '';
+  let sketchBackgroundUrl = '';
+  let sketchBackgroundImage = null;
 
   function normalizeId(value) {
     const num = Number(value || 0);
@@ -173,56 +184,208 @@
     if (sketchStatusInline) sketchStatusInline.style.color = isError ? '#991b1b' : '';
   }
 
-  function sketchPaintWhite() {
-    if (!sketchCtx || !sketchCanvas) return;
+  function sketchCssSize() {
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    return {
+      ratio,
+      cssWidth: Math.max(1, sketchCanvas ? sketchCanvas.width / ratio : 1),
+      cssHeight: Math.max(1, sketchCanvas ? sketchCanvas.height / ratio : 1),
+    };
+  }
+
+  function sketchRenderComposite() {
+    if (!sketchCtx || !sketchCanvas || !sketchInkCanvas) return;
+    const size = sketchCssSize();
+
     sketchCtx.save();
     sketchCtx.setTransform(1, 0, 0, 1, 0, 0);
-    sketchCtx.fillStyle = '#ffffff';
-    sketchCtx.fillRect(0, 0, sketchCanvas.width, sketchCanvas.height);
+    sketchCtx.clearRect(0, 0, sketchCanvas.width, sketchCanvas.height);
     sketchCtx.restore();
+
+    sketchCtx.fillStyle = '#ffffff';
+    sketchCtx.fillRect(0, 0, size.cssWidth, size.cssHeight);
+
+    if (sketchBackgroundImage) {
+      sketchCtx.drawImage(sketchBackgroundImage, 0, 0, size.cssWidth, size.cssHeight);
+    }
+
+    sketchCtx.drawImage(sketchInkCanvas, 0, 0, size.cssWidth, size.cssHeight);
+  }
+
+  function sketchClearInk() {
+    if (!sketchInkCtx || !sketchInkCanvas) return;
+    sketchInkCtx.save();
+    sketchInkCtx.setTransform(1, 0, 0, 1, 0, 0);
+    sketchInkCtx.clearRect(0, 0, sketchInkCanvas.width, sketchInkCanvas.height);
+    sketchInkCtx.restore();
+    sketchRenderComposite();
+  }
+
+  function setSketchBackgroundUi() {
+    const hasBackground = Boolean(sketchBackgroundPhotoId && sketchBackgroundImage);
+    if (sketchBgLabel) {
+      sketchBgLabel.textContent = hasBackground ? `Fond: photo ${sketchBackgroundPhotoId.slice(0, 8)}` : 'Fond: aucun';
+    }
+    if (removeSketchPhotoBtn) {
+      removeSketchPhotoBtn.disabled = !hasBackground;
+    }
+  }
+
+  function closeSketchPhotoPicker() {
+    if (!sketchPhotoPicker) return;
+    sketchPhotoPicker.hidden = true;
+    sketchPhotoPicker.setAttribute('aria-hidden', 'true');
+  }
+
+  function openSketchPhotoPicker() {
+    if (!sketchPhotoPicker || !sketchPhotoPickerList) return;
+    const slots = normalizePhotoSlots(photoSlots);
+    const photos = [];
+    slots.forEach((slot) => {
+      slot.photos.forEach((photo) => {
+        photos.push({
+          id: photo.id,
+          url: photo.url,
+          label: `${slot.category} - ${photo.caption || photo.fileName || 'Photo'}`,
+        });
+      });
+    });
+
+    if (!photos.length) {
+      sketchPhotoPickerList.innerHTML = '<div class="photo-empty">Aucune photo disponible sur cette fiche.</div>';
+    } else {
+      sketchPhotoPickerList.innerHTML = photos
+        .map((photo) => `
+          <button type="button" class="sketch-photo-choice" data-sketch-photo-choice="${escapeHtml(photo.id)}">
+            <img src="${escapeHtml(photo.url)}" alt="Photo ${escapeHtml(photo.label)}" loading="lazy" />
+            <span>${escapeHtml(photo.label)}</span>
+          </button>
+        `)
+        .join('');
+
+      sketchPhotoPickerList.querySelectorAll('[data-sketch-photo-choice]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const photoId = String(button.getAttribute('data-sketch-photo-choice') || '').trim();
+          if (!photoId) return;
+          setSketchBackgroundFromPhoto(photoId);
+        });
+      });
+    }
+
+    sketchPhotoPicker.hidden = false;
+    sketchPhotoPicker.setAttribute('aria-hidden', 'false');
+  }
+
+  function loadSketchBackgroundImage(url) {
+    return new Promise((resolve) => {
+      if (!url) return resolve(null);
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => resolve(null);
+      image.src = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    });
+  }
+
+  async function setSketchBackgroundFromPhoto(photoId) {
+    const found = photoById(photoId);
+    if (!found || !found.photo || !found.photo.url) {
+      setSketchStatus('Photo de fond introuvable', true);
+      return;
+    }
+
+    const image = await loadSketchBackgroundImage(found.photo.url);
+    if (!image) {
+      setSketchStatus('Impossible de charger la photo', true);
+      return;
+    }
+
+    sketchBackgroundPhotoId = photoId;
+    sketchBackgroundUrl = found.photo.url;
+    sketchBackgroundImage = image;
+    setSketchBackgroundUi();
+    sketchRenderComposite();
+    closeSketchPhotoPicker();
+    dirty = true;
+    setSketchStatus('Photo de fond appliquee');
+  }
+
+  async function applyStoredSketchBackground() {
+    if (!sketchBackgroundPhotoId) {
+      sketchBackgroundUrl = '';
+      sketchBackgroundImage = null;
+      setSketchBackgroundUi();
+      sketchRenderComposite();
+      return;
+    }
+
+    const found = photoById(sketchBackgroundPhotoId);
+    if (!found || !found.photo || !found.photo.url) {
+      sketchBackgroundUrl = '';
+      sketchBackgroundImage = null;
+      setSketchBackgroundUi();
+      sketchRenderComposite();
+      return;
+    }
+
+    sketchBackgroundUrl = found.photo.url;
+    sketchBackgroundImage = await loadSketchBackgroundImage(sketchBackgroundUrl);
+    setSketchBackgroundUi();
+    sketchRenderComposite();
+  }
+
+  function removeSketchBackground() {
+    sketchBackgroundPhotoId = '';
+    sketchBackgroundUrl = '';
+    sketchBackgroundImage = null;
+    setSketchBackgroundUi();
+    sketchRenderComposite();
+    dirty = true;
+    setSketchStatus('Fond retire');
   }
 
   function sketchApplyBrush() {
-    if (!sketchCtx) return;
-    sketchCtx.lineCap = 'round';
-    sketchCtx.lineJoin = 'round';
+    if (!sketchInkCtx) return;
+    sketchInkCtx.lineCap = 'round';
+    sketchInkCtx.lineJoin = 'round';
     if (sketchTool === 'eraser') {
-      sketchCtx.globalCompositeOperation = 'source-over';
-      sketchCtx.strokeStyle = '#ffffff';
-      sketchCtx.lineWidth = Math.max(8, sketchSize * 4);
+      sketchInkCtx.globalCompositeOperation = 'destination-out';
+      sketchInkCtx.strokeStyle = 'rgba(0,0,0,1)';
+      sketchInkCtx.lineWidth = Math.max(10, sketchSize * 4);
     } else {
-      sketchCtx.globalCompositeOperation = 'source-over';
-      sketchCtx.strokeStyle = sketchColor;
-      sketchCtx.lineWidth = Math.max(1, sketchSize * 2);
+      sketchInkCtx.globalCompositeOperation = 'source-over';
+      sketchInkCtx.strokeStyle = sketchColor;
+      sketchInkCtx.lineWidth = Math.max(1, sketchSize * 2);
     }
   }
 
   function sketchCaptureState() {
-    if (!sketchCanvas) return '';
-    return sketchCanvas.toDataURL('image/png');
+    if (!sketchInkCanvas) return '';
+    return sketchInkCanvas.toDataURL('image/png');
   }
 
   function sketchLoadDataUrl(dataUrl) {
     return new Promise((resolve) => {
-      if (!sketchCtx || !sketchCanvas) return resolve(false);
+      if (!sketchInkCtx || !sketchInkCanvas) return resolve(false);
       if (!dataUrl) {
-        sketchPaintWhite();
+        sketchClearInk();
         sketchApplyBrush();
         return resolve(true);
       }
 
       const image = new Image();
       image.onload = function () {
-        sketchPaintWhite();
-        const ratio = Math.max(window.devicePixelRatio || 1, 1);
-        const cssWidth = sketchCanvas.width / ratio;
-        const cssHeight = sketchCanvas.height / ratio;
-        sketchCtx.drawImage(image, 0, 0, cssWidth, cssHeight);
+        sketchInkCtx.save();
+        sketchInkCtx.setTransform(1, 0, 0, 1, 0, 0);
+        sketchInkCtx.clearRect(0, 0, sketchInkCanvas.width, sketchInkCanvas.height);
+        sketchInkCtx.restore();
+        const size = sketchCssSize();
+        sketchInkCtx.drawImage(image, 0, 0, size.cssWidth, size.cssHeight);
         sketchApplyBrush();
+        sketchRenderComposite();
         resolve(true);
       };
       image.onerror = function () {
-        sketchPaintWhite();
+        sketchClearInk();
         sketchApplyBrush();
         resolve(false);
       };
@@ -277,24 +440,25 @@
   }
 
   function sketchStartDrawing(event) {
-    if (!sketchCtx || !sketchCanvas) return;
+    if (!sketchInkCtx || !sketchCanvas) return;
     event.preventDefault();
     sketchDrawing = true;
     sketchApplyBrush();
     const point = sketchCanvasPoint(event);
-    sketchCtx.beginPath();
-    sketchCtx.moveTo(point.x, point.y);
+    sketchInkCtx.beginPath();
+    sketchInkCtx.moveTo(point.x, point.y);
     try {
       sketchCanvas.setPointerCapture(event.pointerId);
     } catch {}
   }
 
   function sketchDraw(event) {
-    if (!sketchDrawing || !sketchCtx) return;
+    if (!sketchDrawing || !sketchInkCtx) return;
     event.preventDefault();
     const point = sketchCanvasPoint(event);
-    sketchCtx.lineTo(point.x, point.y);
-    sketchCtx.stroke();
+    sketchInkCtx.lineTo(point.x, point.y);
+    sketchInkCtx.stroke();
+    sketchRenderComposite();
   }
 
   function sketchStopDrawing(event) {
@@ -307,7 +471,7 @@
   }
 
   async function resizeSketchCanvas() {
-    if (!sketchCanvas || !sketchCtx || !sketchModal || sketchModal.hidden) return;
+    if (!sketchCanvas || !sketchCtx || !sketchInkCtx || !sketchInkCanvas || !sketchModal || sketchModal.hidden) return;
     const wrap = sketchCanvas.parentElement;
     if (!wrap) return;
 
@@ -320,14 +484,19 @@
 
     sketchCanvas.width = width;
     sketchCanvas.height = height;
+    sketchInkCanvas.width = width;
+    sketchInkCanvas.height = height;
     sketchCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    sketchInkCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
     await sketchLoadDataUrl(snapshot);
   }
 
   function initSketchCanvas() {
     if (!sketchCanvas || sketchCtx) return;
     sketchCtx = sketchCanvas.getContext('2d', { alpha: false });
-    if (!sketchCtx) return;
+    sketchInkCanvas = document.createElement('canvas');
+    sketchInkCtx = sketchInkCanvas.getContext('2d', { alpha: true });
+    if (!sketchCtx || !sketchInkCtx) return;
 
     sketchCanvas.addEventListener('pointerdown', sketchStartDrawing);
     sketchCanvas.addEventListener('pointermove', sketchDraw);
@@ -339,7 +508,7 @@
     if (!sketchCanvas) return;
     sketchLoadingState = true;
     if (!currentId) {
-      sketchPaintWhite();
+      sketchClearInk();
       sketchReplaceHistoryWithCurrent();
       sketchLoadingState = false;
       return;
@@ -364,7 +533,10 @@
     sketchModal.hidden = false;
     sketchModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('sketch-open');
+    closeSketchPhotoPicker();
+    await refreshPhotoSlots();
     await resizeSketchCanvas();
+    await applyStoredSketchBackground();
     await loadSketchFromServer();
   }
 
@@ -372,6 +544,7 @@
     if (!sketchModal) return;
     sketchModal.hidden = true;
     sketchModal.setAttribute('aria-hidden', 'true');
+    closeSketchPhotoPicker();
     document.body.classList.remove('sketch-open');
   }
 
@@ -407,10 +580,10 @@
   }
 
   async function clearSketchWithConfirm() {
-    if (!window.confirm('Effacer tout le croquis ?')) return;
-    sketchPaintWhite();
+    if (!window.confirm('Effacer uniquement les annotations ?')) return;
+    sketchClearInk();
     sketchPushHistory();
-    setSketchStatus('Croquis efface');
+    setSketchStatus('Annotations effacees');
   }
 
   async function saveSketchToServer() {
@@ -422,6 +595,7 @@
 
     setSketchStatus('Enregistrement...');
     try {
+      sketchRenderComposite();
       const response = await fetch(`/api/measurements/${recordId}/sketch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -462,6 +636,9 @@
   function applySlotsFromApi(slots) {
     photoSlots = normalizePhotoSlots(slots);
     renderPhotoSlots();
+    if (sketchModal && !sketchModal.hidden && sketchBackgroundPhotoId) {
+      void applyStoredSketchBackground();
+    }
   }
 
   async function refreshPhotoSlots() {
@@ -741,6 +918,10 @@
     currentId = normalizeId(item.id);
     applyFieldValues(item.fields || {});
     sketchUpdatedAt = String(item.fields?.sketch_updated_at || '').trim();
+    sketchBackgroundPhotoId = String(item.fields?.sketch_background_photo_id || '').trim();
+    sketchBackgroundUrl = '';
+    sketchBackgroundImage = null;
+    setSketchBackgroundUi();
     setSketchStatus(sketchUpdatedAt ? 'Croquis existant' : 'Pret');
     photoSlots = normalizePhotoSlots(item.photoSlots || item.fields?.photo_slots || []);
     renderPhotoSlots();
@@ -777,6 +958,10 @@
 
     form.elements.record_name.value = makeDefaultRecordName();
     sketchUpdatedAt = '';
+    sketchBackgroundPhotoId = '';
+    sketchBackgroundUrl = '';
+    sketchBackgroundImage = null;
+    setSketchBackgroundUi();
     setSketchStatus('Pret');
     photoSlots = makeEmptyPhotoSlots();
     renderPhotoSlots();
@@ -797,6 +982,7 @@
       quote_id: getValue('quote_id'),
       client_order_id: getValue('client_order_id'),
       sketch_updated_at: sketchUpdatedAt || null,
+      sketch_background_photo_id: sketchBackgroundPhotoId || null,
       photo_slots: serializePhotoSlotsForSave(),
     };
 
@@ -949,6 +1135,18 @@
     clearSketchBtn.addEventListener('click', clearSketchWithConfirm);
   }
 
+  if (useSketchPhotoBtn) {
+    useSketchPhotoBtn.addEventListener('click', openSketchPhotoPicker);
+  }
+
+  if (removeSketchPhotoBtn) {
+    removeSketchPhotoBtn.addEventListener('click', removeSketchBackground);
+  }
+
+  if (closeSketchPhotoPickerBtn) {
+    closeSketchPhotoPickerBtn.addEventListener('click', closeSketchPhotoPicker);
+  }
+
   if (sketchColorPalette) {
     sketchColorPalette.querySelectorAll('[data-sketch-color]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -973,6 +1171,10 @@
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && sketchModal && !sketchModal.hidden) {
+      if (sketchPhotoPicker && !sketchPhotoPicker.hidden) {
+        closeSketchPhotoPicker();
+        return;
+      }
       closeSketchModal();
       return;
     }
@@ -1003,6 +1205,8 @@
   setTodayIfEmpty();
   setSketchTool('pen');
   setSketchSize(2);
+  setSketchBackgroundUi();
+  closeSketchPhotoPicker();
   setSketchStatus('Pret');
   photoSlots = makeEmptyPhotoSlots();
   renderPhotoSlots();

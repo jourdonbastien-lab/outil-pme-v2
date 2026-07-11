@@ -452,6 +452,12 @@ select {
   font-weight: 700;
 }
 
+.sketch-bg-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .sketch-toolbar-palette {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
@@ -488,6 +494,58 @@ select {
   border-radius: 12px;
   background: #ffffff;
   overflow: hidden;
+}
+
+.sketch-photo-picker {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 10px;
+  max-height: 34dvh;
+  overflow: hidden;
+}
+
+.sketch-photo-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sketch-photo-picker-head strong {
+  font-size: 0.84rem;
+}
+
+.sketch-photo-picker-list {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: auto;
+}
+
+.sketch-photo-choice {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 6px;
+  text-align: left;
+}
+
+.sketch-photo-choice img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.sketch-photo-choice span {
+  font-size: 0.72rem;
+  color: #374151;
 }
 
 #sketchCanvas {
@@ -548,6 +606,18 @@ body.sketch-open {
     display: none;
   }
 
+  .sketch-bg-label {
+    position: absolute;
+    left: calc(env(safe-area-inset-left) + 8px);
+    bottom: calc(env(safe-area-inset-bottom) + 8px);
+    z-index: 2;
+    background: rgba(255, 255, 255, 0.78);
+    border-radius: 10px;
+    padding: 4px 8px;
+    font-size: 0.68rem;
+    backdrop-filter: blur(8px);
+  }
+
   .sketch-toolbar-top {
     position: absolute;
     top: calc(env(safe-area-inset-top) + 8px);
@@ -594,6 +664,32 @@ body.sketch-open {
     min-height: 34px;
     padding: 6px 8px;
     font-size: 0.74rem;
+  }
+
+  .sketch-photo-picker {
+    position: absolute;
+    top: calc(env(safe-area-inset-top) + 54px);
+    right: calc(env(safe-area-inset-right) + 8px);
+    z-index: 2;
+    width: min(56vw, 420px);
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 80px);
+    padding: 8px;
+    gap: 6px;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.22);
+  }
+
+  .sketch-photo-picker-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .sketch-photo-choice {
+    padding: 4px;
+    gap: 3px;
+  }
+
+  .sketch-photo-choice span {
+    font-size: 0.64rem;
   }
 
   .sketch-toolbar-card {

@@ -148,6 +148,8 @@
       <div class="sketch-toolbar-left">
         <button type="button" id="toolPenBtn" class="is-active">Stylo</button>
         <button type="button" id="toolEraserBtn">Gomme</button>
+        <button type="button" id="useSketchPhotoBtn">Utiliser une photo</button>
+        <button type="button" id="removeSketchPhotoBtn">Retirer le fond</button>
         <div class="sketch-toolbar-card">
           <span class="sketch-toolbar-label">Couleur</span>
           <div class="sketch-toolbar-palette" id="sketchColorPalette">
@@ -170,6 +172,14 @@
         <button type="button" id="clearSketchBtn" class="sketch-clear-btn">Effacer</button>
       </div>
       <span id="sketchStatus" class="sketch-status">Prêt</span>
+      <span id="sketchBgLabel" class="sketch-bg-label">Fond: aucun</span>
+      <div id="sketchPhotoPicker" class="sketch-photo-picker" hidden aria-hidden="true">
+        <div class="sketch-photo-picker-head">
+          <strong>Choisir une photo de fond</strong>
+          <button type="button" id="closeSketchPhotoPickerBtn">Fermer</button>
+        </div>
+        <div id="sketchPhotoPickerList" class="sketch-photo-picker-list"></div>
+      </div>
       <div class="sketch-canvas-wrap">
         <canvas id="sketchCanvas" aria-label="Zone de croquis Escalier V2"></canvas>
       </div>
