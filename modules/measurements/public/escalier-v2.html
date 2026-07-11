@@ -104,6 +104,15 @@
             </select>
           </div>
 
+          <section class="photo-section" aria-label="Photos chantier">
+            <div class="photo-section-head">
+              <h3>Photos chantier</h3>
+              <span id="photoTotalCount" class="photo-total-count">0 photo</span>
+            </div>
+            <p class="photo-help">Capture camera iPhone et import galerie, avec enregistrement serveur.</p>
+            <div id="photoSlots" class="photo-slots"></div>
+          </section>
+
           <div class="actions">
             <button type="button" id="backToListBtn">Liste</button>
             <button type="button" id="saveBtnBottom">Enregistrer</button>
@@ -111,6 +120,12 @@
         </form>
       </section>
     </main>
+  </div>
+
+  <div id="photoViewer" class="photo-viewer" hidden>
+    <button type="button" id="photoViewerClose" class="photo-viewer-close" aria-label="Fermer">Fermer</button>
+    <img id="photoViewerImg" alt="Photo en plein ecran" />
+    <p id="photoViewerCaption"></p>
   </div>
 
   <script src="/outils/prises-cotes/escalier-v2.js"></script>

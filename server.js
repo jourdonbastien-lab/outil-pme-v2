@@ -265,6 +265,10 @@ const CLIENT_ORDER_FILES_DIR = resolveStoragePath(
 const QUOTE_PHOTO_DIR = resolveStoragePath(process.env.OUTIL_PME_QUOTE_PHOTO_DIR, path.join(STORAGE_DIR, 'quote_photos'));
 const SKETCHES_DIR = resolveStoragePath(process.env.OUTIL_PME_SKETCHES_DIR, path.join(STORAGE_DIR, 'sketches'));
 const PDF_STORAGE_DIR = resolveStoragePath(process.env.OUTIL_PME_PDF_DIR, path.join(STORAGE_DIR, 'pdf'));
+const ESCALIER_V2_PHOTO_DIR = resolveStoragePath(
+  process.env.OUTIL_PME_ESCALIER_V2_PHOTO_DIR,
+  path.join(STORAGE_DIR, 'measurement_photos', 'escalier-v2')
+);
 const EBP_SCAN_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_SCAN_DIR, path.join(STORAGE_DIR, 'ebp_scans'));
 const EBP_SCAN_TMP_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_SCAN_TMP_DIR, path.join(STORAGE_DIR, 'tmp', 'ebp-scans'));
 const EBP_INCOMING_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_INCOMING_DIR, path.join(STORAGE_DIR, 'incoming-ebp'));
@@ -279,6 +283,7 @@ ensureDir(CLIENT_ORDER_FILES_DIR);
 ensureDir(QUOTE_PHOTO_DIR);
 ensureDir(SKETCHES_DIR);
 ensureDir(PDF_STORAGE_DIR);
+ensureDir(ESCALIER_V2_PHOTO_DIR);
 ensureDir(EBP_SCAN_DIR);
 ensureDir(EBP_SCAN_TMP_DIR);
 ensureDir(EBP_INCOMING_DIR);
@@ -1233,6 +1238,76 @@ const quotePhotoStorage = multer.diskStorage({
 const quotePhotoUpload =
   multer({ storage: quotePhotoStorage });
 
+const ESCALIER_V2_PHOTO_ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif']);
+const ESCALIER_V2_PHOTO_ALLOWED_MIME = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+]);
+const ESCALIER_V2_PHOTO_EXT_BY_MIME = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/heic': '.heic',
+  'image/heif': '.heif',
+};
+
+const escalierV2PhotoStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    try {
+      const measurementId = parseOptionalId(req.params.id);
+      if (!measurementId) return cb(new Error('ID fiche invalide'));
+      const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(measurementId, 'Escalier V2');
+      if (!row) return cb(new Error('Fiche Escalier V2 introuvable'));
+
+      const clientOrderId = parseOptionalId(row.client_order_id);
+      let dir = safeResolveInside(ESCALIER_V2_PHOTO_DIR, String(measurementId));
+
+      if (clientOrderId) {
+        const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(clientOrderId);
+        if (order) {
+          dir = safeResolveInside(
+            CLIENT_PC_DIR,
+            safeName(order.name),
+            clientOrderFolderName(order),
+            'Photos',
+            'prises-cotes-escalier-v2',
+            String(measurementId)
+          );
+        }
+      }
+
+      ensureDir(dir);
+      req.escalierV2PhotoDir = dir;
+      cb(null, dir);
+    } catch (error) {
+      cb(error);
+    }
+  },
+
+  filename(req, file, cb) {
+    const extFromName = path.extname(String(file.originalname || '')).toLowerCase();
+    const ext = ESCALIER_V2_PHOTO_ALLOWED_EXT.has(extFromName)
+      ? extFromName
+      : (ESCALIER_V2_PHOTO_EXT_BY_MIME[String(file.mimetype || '').toLowerCase()] || '.jpg');
+    const base = safeSegment(path.basename(String(file.originalname || 'photo'), extFromName) || 'photo');
+    cb(null, `${Date.now()}-${base}${ext}`);
+  }
+});
+
+const escalierV2PhotoUpload = multer({
+  storage: escalierV2PhotoStorage,
+  limits: { fileSize: 15 * 1024 * 1024, files: 30 },
+  fileFilter(req, file, cb) {
+    const ext = path.extname(String(file.originalname || '')).toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    if (ESCALIER_V2_PHOTO_ALLOWED_EXT.has(ext) || ESCALIER_V2_PHOTO_ALLOWED_MIME.has(mime)) return cb(null, true);
+    cb(new Error('Format photo non supporte. Utilisez JPG, PNG, WEBP ou HEIC.'));
+  }
+});
+
 const EBP_SCAN_ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif', '.pdf']);
 const EBP_SCAN_ALLOWED_MIME = new Set([
   'image/jpeg',
@@ -1642,6 +1717,115 @@ function parseMeasurementData(data) {
   } catch {
     return {};
   }
+}
+
+const ESCALIER_V2_PHOTO_CATEGORIES = [
+  'Vue generale',
+  'Depart',
+  'Arrivee',
+  'Tremie',
+  'Dessous',
+  'Mur gauche',
+  'Mur droit',
+  'Details',
+  'Autres',
+];
+
+function normalizeEscalierV2Category(value) {
+  const raw = String(value || '').trim();
+  return ESCALIER_V2_PHOTO_CATEGORIES.includes(raw) ? raw : 'Autres';
+}
+
+function normalizeEscalierV2PhotoSlots(value) {
+  const map = new Map();
+  ESCALIER_V2_PHOTO_CATEGORIES.forEach((category) => map.set(category, []));
+
+  if (!Array.isArray(value)) {
+    return ESCALIER_V2_PHOTO_CATEGORIES.map((category) => ({ category, photos: [] }));
+  }
+
+  value.forEach((slot) => {
+    const category = normalizeEscalierV2Category(slot?.category);
+    const photos = Array.isArray(slot?.photos) ? slot.photos : [];
+    photos.forEach((photo) => {
+      const photoId = String(photo?.id || '').trim();
+      const fileName = path.basename(String(photo?.fileName || '').trim());
+      if (!photoId || !fileName) return;
+      map.get(category).push({
+        id: photoId,
+        fileName,
+        caption: String(photo?.caption || '').trim(),
+        size: Number(photo?.size || 0),
+        mimeType: String(photo?.mimeType || '').trim(),
+        createdAt: String(photo?.createdAt || '').trim() || null,
+      });
+    });
+  });
+
+  return ESCALIER_V2_PHOTO_CATEGORIES.map((category) => ({
+    category,
+    photos: map.get(category),
+  }));
+}
+
+function measurementEscalierV2PhotoBaseDir(row) {
+  const clientOrderId = parseOptionalId(row?.client_order_id);
+  if (!clientOrderId) {
+    return safeResolveInside(ESCALIER_V2_PHOTO_DIR, String(row.id));
+  }
+
+  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(clientOrderId);
+  if (!order) {
+    return safeResolveInside(ESCALIER_V2_PHOTO_DIR, String(row.id));
+  }
+
+  return safeResolveInside(
+    CLIENT_PC_DIR,
+    safeName(order.name),
+    clientOrderFolderName(order),
+    'Photos',
+    'prises-cotes-escalier-v2',
+    String(row.id)
+  );
+}
+
+function buildEscalierV2PhotoPublicSlots(measurementId, slots) {
+  return normalizeEscalierV2PhotoSlots(slots).map((slot) => ({
+    category: slot.category,
+    count: slot.photos.length,
+    photos: slot.photos.map((photo) => ({
+      id: photo.id,
+      fileName: photo.fileName,
+      caption: photo.caption || '',
+      size: photo.size || 0,
+      mimeType: photo.mimeType || '',
+      createdAt: photo.createdAt || null,
+      url: `/api/measurements/escalier-v2/${measurementId}/photos/${encodeURIComponent(photo.id)}/file`,
+    })),
+  }));
+}
+
+function updateEscalierV2PhotoSlots(measurementId, updater) {
+  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(measurementId, 'Escalier V2');
+  if (!row) return null;
+
+  const payload = parseMeasurementData(row.data);
+  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
+  const slots = normalizeEscalierV2PhotoSlots(fields.photo_slots);
+  const nextSlots = normalizeEscalierV2PhotoSlots(updater(slots) || slots);
+
+  payload.fields = {
+    ...fields,
+    photo_slots: nextSlots,
+  };
+
+  db.prepare('UPDATE measurements SET data = ?, updated_at = ? WHERE id = ?')
+    .run(JSON.stringify(payload), new Date().toISOString(), measurementId);
+
+  return {
+    row,
+    slots: nextSlots,
+  };
 }
 
 function sketchPath(scope, id) {
@@ -3608,9 +3792,148 @@ app.get('/api/measurements/escalier-v2/:id', requireLogin, (req, res) => {
       quote_id: parseOptionalId(row.quote_id),
       client_order_id: parseOptionalId(row.client_order_id),
       fields,
+      photoSlots: buildEscalierV2PhotoPublicSlots(row.id, fields.photo_slots),
       updatedAt: row.updated_at || row.created_at || null,
     },
   });
+});
+
+app.get('/api/measurements/escalier-v2/:id/photos', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  if (!id) return res.status(400).json({ ok: false, error: 'ID invalide' });
+
+  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
+  if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
+
+  const payload = parseMeasurementData(row.data);
+  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
+  return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, fields.photo_slots) });
+});
+
+app.post('/api/measurements/escalier-v2/:id/photos', requireLogin, (req, res) => {
+  escalierV2PhotoUpload.array('photos', 30)(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ ok: false, error: err.message || 'Upload impossible' });
+    }
+
+    const id = parseOptionalId(req.params.id);
+    if (!id) return res.status(400).json({ ok: false, error: 'ID invalide' });
+
+    const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
+    if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
+
+    if (!Array.isArray(req.files) || !req.files.length) {
+      return res.status(400).json({ ok: false, error: 'Aucune photo recue' });
+    }
+
+    const category = normalizeEscalierV2Category(req.body?.category);
+    const updated = updateEscalierV2PhotoSlots(id, (slots) => {
+      const next = normalizeEscalierV2PhotoSlots(slots);
+      const target = next.find((slot) => slot.category === category);
+      if (!target) return next;
+
+      req.files.forEach((file) => {
+        target.photos.push({
+          id: crypto.randomUUID(),
+          fileName: path.basename(file.filename),
+          caption: '',
+          size: Number(file.size || 0),
+          mimeType: String(file.mimetype || ''),
+          createdAt: new Date().toISOString(),
+        });
+      });
+
+      return next;
+    });
+
+    if (!updated) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
+
+    return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, updated.slots) });
+  });
+});
+
+app.patch('/api/measurements/escalier-v2/:id/photos/:photoId', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  const photoId = String(req.params.photoId || '').trim();
+  if (!id || !photoId) return res.status(400).json({ ok: false, error: 'Parametres invalides' });
+
+  const caption = String(req.body?.caption || '').trim().slice(0, 300);
+  const updated = updateEscalierV2PhotoSlots(id, (slots) => {
+    const next = normalizeEscalierV2PhotoSlots(slots);
+    next.forEach((slot) => {
+      slot.photos.forEach((photo) => {
+        if (photo.id === photoId) photo.caption = caption;
+      });
+    });
+    return next;
+  });
+
+  if (!updated) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
+  return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, updated.slots) });
+});
+
+app.delete('/api/measurements/escalier-v2/:id/photos/:photoId', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  const photoId = String(req.params.photoId || '').trim();
+  if (!id || !photoId) return res.status(400).json({ ok: false, error: 'Parametres invalides' });
+
+  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
+  if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
+
+  const payload = parseMeasurementData(row.data);
+  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
+  const slots = normalizeEscalierV2PhotoSlots(fields.photo_slots);
+  let removedFileName = null;
+
+  slots.forEach((slot) => {
+    slot.photos = slot.photos.filter((photo) => {
+      if (photo.id !== photoId) return true;
+      removedFileName = photo.fileName;
+      return false;
+    });
+  });
+
+  if (!removedFileName) return res.status(404).json({ ok: false, error: 'Photo introuvable' });
+
+  const baseDir = measurementEscalierV2PhotoBaseDir(row);
+  ensureDir(baseDir);
+  const filePath = safeResolveInside(baseDir, path.basename(removedFileName));
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+  payload.fields = {
+    ...fields,
+    photo_slots: slots,
+  };
+
+  db.prepare('UPDATE measurements SET data = ?, updated_at = ? WHERE id = ?')
+    .run(JSON.stringify(payload), new Date().toISOString(), id);
+
+  return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, slots) });
+});
+
+app.get('/api/measurements/escalier-v2/:id/photos/:photoId/file', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  const photoId = String(req.params.photoId || '').trim();
+  if (!id || !photoId) return res.status(400).send('Parametres invalides');
+
+  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
+  if (!row) return res.status(404).send('Fiche Escalier V2 introuvable');
+
+  const payload = parseMeasurementData(row.data);
+  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
+  const slots = normalizeEscalierV2PhotoSlots(fields.photo_slots);
+
+  let fileName = null;
+  slots.forEach((slot) => {
+    slot.photos.forEach((photo) => {
+      if (photo.id === photoId) fileName = photo.fileName;
+    });
+  });
+
+  if (!fileName) return res.status(404).send('Photo introuvable');
+  const filePath = safeResolveInside(measurementEscalierV2PhotoBaseDir(row), path.basename(fileName));
+  if (!fs.existsSync(filePath)) return res.status(404).send('Fichier introuvable');
+  return res.sendFile(filePath);
 });
 
 app.post('/api/measurements', requireLogin, (req, res) => {
