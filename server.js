@@ -5018,7 +5018,7 @@ app.get('/orders/clients/incoming-ebp', requireLogin, (req, res) => {
           <td data-label="Taille">${escHtml(formatFileSize(file.size))}</td>
           <td data-label="Actions">
             <div class="modern-form-actions ebp-file-actions" style="justify-content:flex-start;gap:8px;">
-              <a class="modern-cancel-link" href="${openUrl}" target="_blank" rel="noopener">Ouvrir</a>
+              <a class="modern-cancel-link ebp-open-link" href="${openUrl}">Ouvrir</a>
               <form method="POST" action="/orders/clients/scan-ebp/analyze-incoming" style="margin:0;">
                 <input type="hidden" name="incoming_file" value="${escHtml(file.name)}" />
                 <button type="submit" class="clients-submit-btn">
@@ -5044,7 +5044,7 @@ app.get('/orders/clients/incoming-ebp', requireLogin, (req, res) => {
             <p><strong>Taille :</strong> ${escHtml(formatFileSize(file.size))}</p>
           </div>
           <div class="ebp-file-card-actions">
-            <a class="modern-cancel-link" href="${openUrl}" target="_blank" rel="noopener">Ouvrir</a>
+            <a class="modern-cancel-link ebp-open-link" href="${openUrl}">Ouvrir</a>
             <form method="POST" action="/orders/clients/scan-ebp/analyze-incoming">
               <input type="hidden" name="incoming_file" value="${escHtml(file.name)}" />
               <button type="submit" class="clients-submit-btn">
@@ -5108,12 +5108,80 @@ app.get('/orders/clients/incoming-ebp', requireLogin, (req, res) => {
           </div>
         </section>
       </div>
+      <script>
+        (function(){
+          var storageKey = 'incoming-ebp-scroll';
+          try {
+            var saved = window.sessionStorage.getItem(storageKey);
+            if (saved) {
+              window.requestAnimationFrame(function(){
+                window.scrollTo(0, Number(saved) || 0);
+                window.sessionStorage.removeItem(storageKey);
+              });
+            }
+          } catch {}
+
+          document.querySelectorAll('.ebp-open-link').forEach(function(link){
+            link.addEventListener('click', function(){
+              try {
+                window.sessionStorage.setItem(storageKey, String(window.scrollY || window.pageYOffset || 0));
+              } catch {}
+            });
+          });
+        })();
+      </script>
       `
     )
   );
 });
 
 app.get('/orders/clients/incoming-ebp/open', requireLogin, (req, res) => {
+  const incomingFileName = safeIncomingPdfName(req.query.file || '');
+  if (!incomingFileName) return res.status(400).send('Nom de fichier PDF invalide');
+
+  const filePath = safeResolveInside(EBP_INCOMING_DIR, incomingFileName);
+  if (!fs.existsSync(filePath)) return res.status(404).send('Fichier introuvable');
+
+  const rawUrl = `/orders/clients/incoming-ebp/raw?file=${encodeURIComponent(incomingFileName)}`;
+  const escapedTitle = escHtml(incomingFileName);
+
+  return res.send(`
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapedTitle}</title>
+  <link rel="stylesheet" href="/style.css?v=20260711-2">
+</head>
+<body class="incoming-pdf-viewer-body">
+  <div class="incoming-pdf-viewer">
+    <header class="incoming-pdf-viewer-header">
+      <button type="button" class="incoming-pdf-back" onclick="goBackToIncomingList()">← Retour</button>
+      <strong class="incoming-pdf-title">${escapedTitle}</strong>
+      <a class="incoming-pdf-download" href="${rawUrl}" download="${escapedTitle}">Télécharger</a>
+    </header>
+    <main class="incoming-pdf-frame-wrap">
+      <embed src="${rawUrl}" type="application/pdf" class="incoming-pdf-frame">
+    </main>
+  </div>
+  <script>
+    function goBackToIncomingList() {
+      try {
+        if (window.history.length > 1 && document.referrer) {
+          window.history.back();
+          return;
+        }
+      } catch {}
+      window.location = '/orders/clients/incoming-ebp';
+    }
+  </script>
+</body>
+</html>
+  `);
+});
+
+app.get('/orders/clients/incoming-ebp/raw', requireLogin, (req, res) => {
   const incomingFileName = safeIncomingPdfName(req.query.file || '');
   if (!incomingFileName) return res.status(400).send('Nom de fichier PDF invalide');
 
