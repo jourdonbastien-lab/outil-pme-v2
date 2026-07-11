@@ -113,6 +113,15 @@
             <div id="photoSlots" class="photo-slots"></div>
           </section>
 
+          <section class="sketch-section" aria-label="Croquis Escalier V2">
+            <div class="sketch-section-head">
+              <h3>Croquis</h3>
+              <span id="sketchStatusInline" class="sketch-status-inline">Prêt</span>
+            </div>
+            <p class="photo-help">Dessinez au doigt ou au stylet en plein écran.</p>
+            <button type="button" id="openSketchBtn">Ouvrir le croquis plein ecran</button>
+          </section>
+
           <div class="actions">
             <button type="button" id="backToListBtn">Liste</button>
             <button type="button" id="saveBtnBottom">Enregistrer</button>
@@ -126,6 +135,37 @@
     <button type="button" id="photoViewerClose" class="photo-viewer-close" aria-label="Fermer">Fermer</button>
     <img id="photoViewerImg" alt="Photo en plein ecran" />
     <p id="photoViewerCaption"></p>
+  </div>
+
+  <div id="sketchModal" class="sketch-modal" hidden aria-hidden="true">
+    <div class="sketch-toolbar-top">
+      <button type="button" id="sketchCloseBtn" class="sketch-close-btn">Fermer</button>
+      <span id="sketchStatus" class="sketch-status">Prêt</span>
+      <button type="button" id="sketchSaveBtn" class="sketch-save-btn">Enregistrer</button>
+    </div>
+    <div class="sketch-toolbar-tools">
+      <button type="button" id="toolPenBtn" class="is-active">Stylo</button>
+      <button type="button" id="toolEraserBtn">Gomme</button>
+      <button type="button" id="undoSketchBtn">Annuler</button>
+      <button type="button" id="redoSketchBtn">Refaire</button>
+      <button type="button" id="clearSketchBtn">Effacer</button>
+    </div>
+    <div class="sketch-toolbar-palette" id="sketchColorPalette">
+      <button type="button" data-sketch-color="#111827" style="--swatch:#111827" class="is-active" aria-label="Noir"></button>
+      <button type="button" data-sketch-color="#dc2626" style="--swatch:#dc2626" aria-label="Rouge"></button>
+      <button type="button" data-sketch-color="#2563eb" style="--swatch:#2563eb" aria-label="Bleu"></button>
+      <button type="button" data-sketch-color="#059669" style="--swatch:#059669" aria-label="Vert"></button>
+      <button type="button" data-sketch-color="#7c3aed" style="--swatch:#7c3aed" aria-label="Violet"></button>
+    </div>
+    <div class="sketch-toolbar-sizes" id="sketchSizePalette">
+      <button type="button" data-sketch-size="2" class="is-active">Fin</button>
+      <button type="button" data-sketch-size="4">Moyen</button>
+      <button type="button" data-sketch-size="7">Epais</button>
+      <button type="button" data-sketch-size="11">XL</button>
+    </div>
+    <div class="sketch-canvas-wrap">
+      <canvas id="sketchCanvas" aria-label="Zone de croquis Escalier V2"></canvas>
+    </div>
   </div>
 
   <script src="/outils/prises-cotes/escalier-v2.js"></script>
