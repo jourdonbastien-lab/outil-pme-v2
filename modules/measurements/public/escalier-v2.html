@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prise de cotes Escalier V2</title>
+  <link rel="stylesheet" href="/outils/prises-cotes/escalier-v2.css" />
+</head>
+<body>
+  <div class="v2-shell">
+    <header class="v2-header">
+      <a class="v2-back" href="/outils/prises-cotes">Retour</a>
+      <h1>Prise de cotes Escalier V2</h1>
+      <div id="saveIndicator" class="save-indicator" data-state="idle">Prêt</div>
+    </header>
+
+    <nav class="v2-nav" aria-label="Navigation Escalier V2">
+      <button id="tabList" type="button" class="is-active">Liste</button>
+      <button id="newBtn" type="button">Nouvelle fiche</button>
+      <button id="saveBtn" type="button">Enregistrer</button>
+    </nav>
+
+    <main class="v2-main">
+      <section id="listView" class="v2-section">
+        <div class="list-head">
+          <h2>Fiches Escalier V2</h2>
+          <p>Ouvrez un brouillon ou créez une nouvelle fiche.</p>
+        </div>
+        <div id="cards" class="cards"></div>
+      </section>
+
+      <section id="formView" class="v2-section" hidden>
+        <form id="form" class="v2-form" autocomplete="on">
+          <div class="field wide">
+            <label for="record_name">Nom de fiche</label>
+            <input id="record_name" name="record_name" type="text" placeholder="Ex : Dupont - Escalier V2" />
+          </div>
+
+          <h3>Informations generales</h3>
+
+          <div class="field">
+            <label for="client">Client</label>
+            <input id="client" name="client" type="text" required />
+          </div>
+
+          <div class="field">
+            <label for="commande">Commande</label>
+            <input id="commande" name="commande" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="chantier">Adresse chantier</label>
+            <input id="chantier" name="chantier" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="date">Date de prise de cotes</label>
+            <input id="date" name="date" type="date" />
+          </div>
+
+          <div class="field">
+            <label for="metreur">Metreur</label>
+            <input id="metreur" name="metreur" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="reference_interne">Reference interne</label>
+            <input id="reference_interne" name="reference_interne" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="type_escalier">Type d escalier</label>
+            <select id="type_escalier" name="type_escalier">
+              <option value="Droit">Droit</option>
+              <option value="1/4 tournant bas">1/4 tournant bas</option>
+              <option value="1/4 tournant haut">1/4 tournant haut</option>
+              <option value="Double 1/4 tournant">Double 1/4 tournant</option>
+              <option value="2 volees avec palier">2 volees avec palier</option>
+              <option value="Helicoidal">Helicoidal</option>
+              <option value="Autre">Autre</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="statut">Statut</label>
+            <select id="statut" name="statut">
+              <option value="Brouillon">Brouillon</option>
+              <option value="A valider">A valider</option>
+              <option value="Valide">Valide</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="quote_id">Devis lie</label>
+            <select id="quote_id" name="quote_id">
+              <option value="">Aucun devis</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="client_order_id">Commande client liee</label>
+            <select id="client_order_id" name="client_order_id">
+              <option value="">Aucune commande</option>
+            </select>
+          </div>
+
+          <div class="actions">
+            <button type="button" id="backToListBtn">Liste</button>
+            <button type="button" id="saveBtnBottom">Enregistrer</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script src="/outils/prises-cotes/escalier-v2.js"></script>
+</body>
+</html>

@@ -287,11 +287,19 @@ ensureDir(EBP_INCOMING_PROCESSED_DIR);
 const MEASUREMENTS_PUBLIC_DIR = path.join(__dirname, 'modules', 'measurements', 'public');
 const MEASUREMENT_SHEETS = {
   escalier: 'measurements.html',
+  'escalier-v2': 'escalier-v2.html',
   'garde-corps': 'garde-corps.html',
   portail: 'portail.html',
   cloture: 'cloture.html',
 };
-const MEASUREMENTS_ASSETS = new Set(['measurements.css', 'measurements.js', 'module-sheet.js', 'sketchpad.js']);
+const MEASUREMENTS_ASSETS = new Set([
+  'measurements.css',
+  'measurements.js',
+  'module-sheet.js',
+  'sketchpad.js',
+  'escalier-v2.css',
+  'escalier-v2.js',
+]);
 const CHANTIER_STATUSES = ['À préparer', 'En fabrication', 'En pose', 'En attente', 'Terminé', 'Facturé'];
 const QUOTE_STATUSES = ['Brouillon', 'Envoyé', 'Accepté', 'Refusé', 'Facturé'];
 
@@ -1625,6 +1633,15 @@ function renderMeasurementCards(rows) {
       `).join('')}
     </div>
   `;
+}
+
+function parseMeasurementData(data) {
+  try {
+    const parsed = JSON.parse(String(data || '{}'));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function sketchPath(scope, id) {
@@ -3416,6 +3433,12 @@ app.get('/outils/prises-cotes', requireLogin, (req, res) => {
       desc: 'Fiche de prises de cotes Escalier',
     },
     {
+      href: '/outils/prises-cotes/escalier-v2',
+      icon: '🧭',
+      title: 'Escalier V2',
+      desc: 'Prise de cotes Escalier V2 (brouillon)',
+    },
+    {
       href: '/outils/prises-cotes/garde-corps',
       icon: '🧱',
       title: 'Garde-corps',
@@ -3494,6 +3517,100 @@ app.get('/api/measurements/link-options', requireLogin, (req, res) => {
     }));
 
   res.json({ quotes, clientOrders });
+});
+
+app.get('/api/measurements/escalier-v2/bootstrap', requireLogin, (req, res) => {
+  const moduleName = 'Escalier V2';
+  const requestedId = parseOptionalId(req.query.id);
+  const clientOrderId = parseOptionalId(req.query.client_order_id);
+  const prefill = {
+    client: '',
+    commande: '',
+    client_order_id: clientOrderId,
+  };
+  let linkedDraftId = null;
+
+  if (clientOrderId) {
+    const order = db.prepare('SELECT id, name, description FROM client_orders WHERE id = ?').get(clientOrderId);
+    if (order) {
+      prefill.client = String(order.name || '').trim();
+      prefill.commande = String(order.description || `Commande_${order.id}`).trim();
+      const linked = db
+        .prepare('SELECT id FROM measurements WHERE module = ? AND client_order_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1')
+        .get(moduleName, clientOrderId);
+      if (linked) linkedDraftId = linked.id;
+    }
+  }
+
+  let currentDraftId = null;
+  if (requestedId) {
+    const exists = db.prepare('SELECT id FROM measurements WHERE id = ? AND module = ?').get(requestedId, moduleName);
+    if (exists) currentDraftId = exists.id;
+  }
+  if (!currentDraftId && linkedDraftId) currentDraftId = linkedDraftId;
+
+  res.json({
+    module: moduleName,
+    prefill,
+    linkedDraftId,
+    currentDraftId,
+  });
+});
+
+app.get('/api/measurements/escalier-v2/list', requireLogin, (req, res) => {
+  const moduleName = 'Escalier V2';
+  const clientOrderId = parseOptionalId(req.query.client_order_id);
+  const rows = clientOrderId
+    ? db
+        .prepare('SELECT * FROM measurements WHERE module = ? AND client_order_id = ? ORDER BY updated_at DESC, id DESC')
+        .all(moduleName, clientOrderId)
+    : db.prepare('SELECT * FROM measurements WHERE module = ? ORDER BY updated_at DESC, id DESC').all(moduleName);
+
+  const items = rows.map((row) => {
+    const payload = parseMeasurementData(row.data);
+    const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
+    return {
+      id: row.id,
+      recordName: row.record_name || `Fiche Escalier V2 #${row.id}`,
+      client: row.client || fields.client || '',
+      commande: fields.commande || '',
+      chantier: row.chantier || fields.chantier || '',
+      date: row.measure_date || fields.date || '',
+      metreur: fields.metreur || '',
+      referenceInterne: fields.reference_interne || '',
+      typeEscalier: fields.type_escalier || 'Autre',
+      statut: fields.statut || 'Brouillon',
+      quote_id: parseOptionalId(row.quote_id),
+      client_order_id: parseOptionalId(row.client_order_id),
+      updatedAt: row.updated_at || row.created_at || null,
+    };
+  });
+
+  res.json({ ok: true, items });
+});
+
+app.get('/api/measurements/escalier-v2/:id', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  if (!id) return res.status(400).json({ ok: false, error: 'ID invalide' });
+
+  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
+  if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
+
+  const payload = parseMeasurementData(row.data);
+  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
+
+  res.json({
+    ok: true,
+    item: {
+      id: row.id,
+      module: row.module,
+      recordName: row.record_name,
+      quote_id: parseOptionalId(row.quote_id),
+      client_order_id: parseOptionalId(row.client_order_id),
+      fields,
+      updatedAt: row.updated_at || row.created_at || null,
+    },
+  });
 });
 
 app.post('/api/measurements', requireLogin, (req, res) => {
@@ -3606,6 +3723,11 @@ app.get('/outils/prises-cotes/fiche/:id', requireLogin, (req, res) => {
       `
     )
   );
+});
+
+app.get('/outils/prises-cotes/escalier-v2', requireLogin, (req, res) => {
+  const filePath = path.join(MEASUREMENTS_PUBLIC_DIR, 'escalier-v2.html');
+  return res.sendFile(filePath);
 });
 
 app.get('/outils/prises-cotes/:module', requireLogin, (req, res, next) => {
@@ -5781,6 +5903,9 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
       })()
     : '';
   const chantierHoursUrl = `/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/Heure%20chantier`;
+  const stairV2Url = orderDb
+    ? `/outils/prises-cotes/escalier-v2?client_order_id=${encodeURIComponent(String(orderDb.id))}`
+    : '/outils/prises-cotes/escalier-v2';
 
   const content = `
     <div class="pc-modern-page">
@@ -5804,6 +5929,10 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
             <a class="pc-order-hero-link" href="/orders/clients">
               ${clientPageIcon('folder', 'pc-order-hero-link-icon')}
               Commandes
+            </a>
+            <a class="pc-order-hero-link" href="${stairV2Url}">
+              ${clientPageIcon('measurements', 'pc-order-hero-link-icon')}
+              Escalier V2
             </a>
           </div>
         </div>
