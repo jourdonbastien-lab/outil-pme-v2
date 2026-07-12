@@ -252,11 +252,14 @@ select {
 .measurements-v2-layout {
   display: grid;
   gap: 10px;
+  align-items: start;
 }
 
 .measurements-v2-card {
   display: grid;
   gap: 10px;
+  align-content: start;
+  align-self: start;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 10px;
@@ -277,7 +280,8 @@ select {
 }
 
 .measurements-v2-svg {
-  max-height: 62vh;
+  width: 100%;
+  max-height: none;
 }
 
 .cad-sheet {
@@ -288,13 +292,13 @@ select {
 
 .cad-view-title {
   fill: #111827;
-  font-size: 15px;
+  font-size: 22px;
   font-weight: 800;
 }
 
 .cad-caption {
   fill: #6b7280;
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 700;
 }
 
@@ -368,7 +372,7 @@ select {
 
 .measure-label {
   fill: #374151;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 800;
   text-anchor: middle;
   dominant-baseline: middle;
@@ -382,7 +386,7 @@ select {
 
 .measure-note-text {
   fill: #374151;
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 900;
   text-anchor: middle;
 }
@@ -1362,7 +1366,23 @@ body.sketch-open {
   }
 
   .measurements-v2-layout {
-    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr) minmax(260px, 0.8fr);
+    grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr);
+    grid-template-areas:
+      "schema checks"
+      "fields fields";
+    align-items: start;
+  }
+
+  .measurements-v2-card:nth-child(1) {
+    grid-area: schema;
+  }
+
+  .measurements-v2-card:nth-child(2) {
+    grid-area: fields;
+  }
+
+  .measurements-v2-card:nth-child(3) {
+    grid-area: checks;
   }
 
   .photo-grid {
