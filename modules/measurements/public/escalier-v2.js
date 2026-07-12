@@ -31,6 +31,7 @@
   const openSketchBtn = document.getElementById('openSketchBtn');
   const sketchStatusInline = document.getElementById('sketchStatusInline');
   const sketchModal = document.getElementById('sketchModal');
+  const sketchModalContent = sketchModal ? sketchModal.querySelector('.sketch-modal-content') : null;
   const sketchCloseBtn = document.getElementById('sketchCloseBtn');
   const sketchSaveBtn = document.getElementById('sketchSaveBtn');
   const sketchStatus = document.getElementById('sketchStatus');
@@ -40,6 +41,7 @@
   const undoSketchBtn = document.getElementById('undoSketchBtn');
   const redoSketchBtn = document.getElementById('redoSketchBtn');
   const clearSketchBtn = document.getElementById('clearSketchBtn');
+  const sketchToolbarToggle = document.getElementById('sketchToolbarToggle');
   const sketchColorPalette = document.getElementById('sketchColorPalette');
   const sketchSizePalette = document.getElementById('sketchSizePalette');
   const useSketchPhotoBtn = document.getElementById('useSketchPhotoBtn');
@@ -229,6 +231,7 @@
     }
     if (removeSketchPhotoBtn) {
       removeSketchPhotoBtn.disabled = !hasBackground;
+      removeSketchPhotoBtn.classList.toggle('has-background', hasBackground);
     }
   }
 
@@ -557,10 +560,30 @@
     document.body.classList.remove('sketch-open');
   }
 
+  function setSketchToolbarCollapsed(collapsed) {
+    if (!sketchModalContent || !sketchToolbarToggle) return;
+    sketchModalContent.classList.toggle('sketch-tools-collapsed', collapsed);
+    sketchToolbarToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    sketchToolbarToggle.setAttribute('aria-label', collapsed ? "Afficher la barre d'outils" : "Masquer la barre d'outils");
+    sketchToolbarToggle.setAttribute('title', collapsed ? "Afficher la barre d'outils" : "Masquer la barre d'outils");
+    sketchToolbarToggle.textContent = collapsed ? '›' : '‹';
+    window.setTimeout(() => {
+      if (sketchModal && !sketchModal.hidden) resizeSketchCanvas();
+    }, 180);
+  }
+
   function setSketchTool(nextTool) {
     sketchTool = nextTool === 'eraser' ? 'eraser' : 'pen';
-    if (toolPenBtn) toolPenBtn.classList.toggle('is-active', sketchTool === 'pen');
-    if (toolEraserBtn) toolEraserBtn.classList.toggle('is-active', sketchTool === 'eraser');
+    if (toolPenBtn) {
+      const active = sketchTool === 'pen';
+      toolPenBtn.classList.toggle('is-active', active);
+      toolPenBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
+    if (toolEraserBtn) {
+      const active = sketchTool === 'eraser';
+      toolEraserBtn.classList.toggle('is-active', active);
+      toolEraserBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
     sketchApplyBrush();
   }
 
@@ -570,7 +593,9 @@
     setSketchTool('pen');
     if (sketchColorPalette) {
       sketchColorPalette.querySelectorAll('[data-sketch-color]').forEach((button) => {
-        button.classList.toggle('is-active', String(button.getAttribute('data-sketch-color')) === sketchColor);
+        const active = String(button.getAttribute('data-sketch-color')) === sketchColor;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
     }
     sketchApplyBrush();
@@ -582,7 +607,9 @@
     sketchSize = parsed;
     if (sketchSizePalette) {
       sketchSizePalette.querySelectorAll('[data-sketch-size]').forEach((button) => {
-        button.classList.toggle('is-active', Number(button.getAttribute('data-sketch-size')) === sketchSize);
+        const active = Number(button.getAttribute('data-sketch-size')) === sketchSize;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
     }
     sketchApplyBrush();
@@ -1150,6 +1177,13 @@
 
   if (removeSketchPhotoBtn) {
     removeSketchPhotoBtn.addEventListener('click', removeSketchBackground);
+  }
+
+  if (sketchToolbarToggle) {
+    sketchToolbarToggle.addEventListener('click', () => {
+      const collapsed = Boolean(sketchModalContent && sketchModalContent.classList.contains('sketch-tools-collapsed'));
+      setSketchToolbarCollapsed(!collapsed);
+    });
   }
 
   if (closeSketchPhotoPickerBtn) {

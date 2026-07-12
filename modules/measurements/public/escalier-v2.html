@@ -140,36 +140,37 @@
   <div id="sketchModal" class="sketch-modal" hidden aria-hidden="true">
     <div class="sketch-modal-content">
       <div class="sketch-toolbar-top">
-        <button type="button" id="undoSketchBtn" class="sketch-action-btn" aria-label="Annuler">↶</button>
-        <button type="button" id="redoSketchBtn" class="sketch-action-btn" aria-label="Refaire">↷</button>
-        <button type="button" id="sketchSaveBtn" class="sketch-save-btn" aria-label="Enregistrer">OK</button>
-        <button type="button" id="sketchCloseBtn" class="sketch-close-btn" aria-label="Fermer">×</button>
+        <button type="button" id="undoSketchBtn" class="sketch-action-btn" aria-label="Annuler" title="Annuler">↶</button>
+        <button type="button" id="redoSketchBtn" class="sketch-action-btn" aria-label="Refaire" title="Refaire">↷</button>
+        <button type="button" id="sketchSaveBtn" class="sketch-save-btn" aria-label="Enregistrer" title="Enregistrer">✓</button>
+        <button type="button" id="sketchCloseBtn" class="sketch-close-btn" aria-label="Fermer" title="Fermer">×</button>
       </div>
-      <div class="sketch-toolbar-left">
-        <button type="button" id="toolPenBtn" class="is-active">Stylo</button>
-        <button type="button" id="toolEraserBtn">Gomme</button>
-        <button type="button" id="useSketchPhotoBtn">Photo</button>
-        <button type="button" id="removeSketchPhotoBtn">Fond</button>
+      <button type="button" id="sketchToolbarToggle" class="sketch-toolbar-toggle" aria-label="Masquer la barre d'outils" title="Masquer la barre d'outils" aria-expanded="true">‹</button>
+      <div class="sketch-toolbar-left" id="sketchToolbarLeft">
+        <button type="button" id="toolPenBtn" class="is-active sketch-icon-btn" aria-label="Stylo" title="Stylo" aria-pressed="true">✎</button>
+        <button type="button" id="toolEraserBtn" class="sketch-icon-btn" aria-label="Gomme" title="Gomme" aria-pressed="false">⌫</button>
+        <button type="button" id="useSketchPhotoBtn" class="sketch-icon-btn" aria-label="Choisir une photo de fond" title="Choisir une photo de fond">▧</button>
+        <button type="button" id="removeSketchPhotoBtn" class="sketch-icon-btn" aria-label="Retirer la photo de fond" title="Retirer la photo de fond">▨</button>
         <div class="sketch-toolbar-card">
           <span class="sketch-toolbar-label">Couleur</span>
           <div class="sketch-toolbar-palette" id="sketchColorPalette">
-            <button type="button" data-sketch-color="#111827" style="--swatch:#111827" class="is-active" aria-label="Noir"></button>
-            <button type="button" data-sketch-color="#dc2626" style="--swatch:#dc2626" aria-label="Rouge"></button>
-            <button type="button" data-sketch-color="#2563eb" style="--swatch:#2563eb" aria-label="Bleu"></button>
-            <button type="button" data-sketch-color="#059669" style="--swatch:#059669" aria-label="Vert"></button>
-            <button type="button" data-sketch-color="#7c3aed" style="--swatch:#7c3aed" aria-label="Violet"></button>
+            <button type="button" data-sketch-color="#111827" style="--swatch:#111827" class="is-active" aria-label="Noir" title="Noir" aria-pressed="true"></button>
+            <button type="button" data-sketch-color="#dc2626" style="--swatch:#dc2626" aria-label="Rouge" title="Rouge" aria-pressed="false"></button>
+            <button type="button" data-sketch-color="#2563eb" style="--swatch:#2563eb" aria-label="Bleu" title="Bleu" aria-pressed="false"></button>
+            <button type="button" data-sketch-color="#059669" style="--swatch:#059669" aria-label="Vert" title="Vert" aria-pressed="false"></button>
+            <button type="button" data-sketch-color="#7c3aed" style="--swatch:#7c3aed" aria-label="Violet" title="Violet" aria-pressed="false"></button>
           </div>
         </div>
         <div class="sketch-toolbar-card">
           <span class="sketch-toolbar-label">Trait</span>
           <div class="sketch-toolbar-sizes" id="sketchSizePalette">
-            <button type="button" data-sketch-size="2" class="is-active">Fin</button>
-            <button type="button" data-sketch-size="4">Moyen</button>
-            <button type="button" data-sketch-size="7">Epais</button>
-            <button type="button" data-sketch-size="11">XL</button>
+            <button type="button" data-sketch-size="2" class="is-active" aria-label="Epaisseur fine" title="Epaisseur fine" aria-pressed="true"><span style="--line-size:2px"></span></button>
+            <button type="button" data-sketch-size="4" aria-label="Epaisseur moyenne" title="Epaisseur moyenne" aria-pressed="false"><span style="--line-size:4px"></span></button>
+            <button type="button" data-sketch-size="7" aria-label="Epaisseur epaisse" title="Epaisseur epaisse" aria-pressed="false"><span style="--line-size:7px"></span></button>
+            <button type="button" data-sketch-size="11" aria-label="Epaisseur XL" title="Epaisseur XL" aria-pressed="false"><span style="--line-size:11px"></span></button>
           </div>
         </div>
-        <button type="button" id="clearSketchBtn" class="sketch-clear-btn">Effacer</button>
+        <button type="button" id="clearSketchBtn" class="sketch-clear-btn sketch-icon-btn" aria-label="Effacer le croquis" title="Effacer le croquis">⌧</button>
       </div>
       <span id="sketchStatus" class="sketch-status">Prêt</span>
       <span id="sketchBgLabel" class="sketch-bg-label">Fond: aucun</span>
