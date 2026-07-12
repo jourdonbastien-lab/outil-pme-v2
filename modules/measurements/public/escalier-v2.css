@@ -276,9 +276,172 @@ select {
   height: auto;
 }
 
+.measurements-v2-svg {
+  max-height: 62vh;
+}
+
+.cad-sheet {
+  fill: #ffffff;
+  stroke: #d1d5db;
+  stroke-width: 1.5;
+}
+
+.cad-view-title {
+  fill: #111827;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.cad-caption {
+  fill: #6b7280;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cad-main,
+.cad-floor {
+  fill: none;
+  stroke: #111827;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cad-opening {
+  fill: none;
+  stroke: #9ca3af;
+  stroke-width: 2;
+  stroke-dasharray: 8 7;
+}
+
+.cad-step {
+  stroke: #64748b;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+.cad-walkline {
+  fill: none;
+  stroke: #475569;
+  stroke-width: 1.6;
+  stroke-dasharray: 7 6;
+}
+
+.cad-arrow {
+  fill: none;
+  stroke: #475569;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.measure-dimension,
+.measure-note {
+  cursor: pointer;
+  outline: none;
+}
+
+.measure-hit {
+  stroke: transparent;
+  stroke-width: 44;
+  stroke-linecap: round;
+}
+
+.measure-line,
+.measure-ext,
+.measure-tick {
+  fill: none;
+  stroke: #9ca3af;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.measure-line {
+  marker-start: url("#measureArrow");
+  marker-end: url("#measureArrow");
+}
+
+.measure-label-bg {
+  fill: #ffffff;
+  stroke: #e5e7eb;
+}
+
+.measure-label {
+  fill: #374151;
+  font-size: 12px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.measure-note-dot {
+  fill: #ffffff;
+  stroke: #9ca3af;
+  stroke-width: 2;
+}
+
+.measure-note-text {
+  fill: #374151;
+  font-size: 12px;
+  font-weight: 900;
+  text-anchor: middle;
+}
+
+.measure-dimension.is-missing .measure-line,
+.measure-dimension.is-missing .measure-ext,
+.measure-dimension.is-missing .measure-tick,
+.measure-note.is-missing .measure-note-dot {
+  stroke: #ea580c;
+  stroke-dasharray: 5 4;
+}
+
+.measure-dimension.is-complete .measure-line,
+.measure-dimension.is-complete .measure-ext,
+.measure-dimension.is-complete .measure-tick,
+.measure-note.is-complete .measure-note-dot {
+  stroke: #16a34a;
+}
+
+.measure-dimension.is-complete .measure-label-bg,
+.measure-note.is-complete .measure-note-dot {
+  fill: #f0fdf4;
+}
+
+.measure-dimension.is-active .measure-line,
+.measure-dimension.is-active .measure-ext,
+.measure-dimension.is-active .measure-tick,
+.measure-note.is-active .measure-note-dot {
+  stroke: #f97316;
+  stroke-width: 3;
+}
+
+.measure-dimension.is-active .measure-label-bg,
+.measure-note.is-active .measure-note-dot {
+  fill: #fff7ed;
+  stroke: #f97316;
+}
+
+.measure-dimension.is-active .measure-label,
+.measure-note.is-active .measure-note-text {
+  fill: #9a3412;
+}
+
 .measurements-v2-fields {
   display: grid;
   gap: 8px;
+}
+
+.measure-group {
+  display: grid;
+  gap: 8px;
+}
+
+.measure-group h5 {
+  margin: 4px 0 0;
+  color: #374151;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .measure-field {
@@ -290,20 +453,58 @@ select {
   background: #ffffff;
 }
 
+.measure-field.is-active {
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14);
+}
+
+.measure-field.is-complete {
+  border-color: #bbf7d0;
+}
+
+.measure-field.is-missing {
+  border-color: #fed7aa;
+}
+
 .measure-field label {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   color: var(--text);
   font-size: 0.9rem;
   font-weight: 800;
 }
 
+.measure-field label strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 26px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
+.measure-field label em {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-style: normal;
+}
+
 .measure-field span {
+  margin-left: auto;
   color: var(--muted);
   font-size: 0.74rem;
   font-weight: 700;
+}
+
+.measure-field p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .measure-field input,

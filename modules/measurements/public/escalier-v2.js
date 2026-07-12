@@ -103,28 +103,43 @@
     headroom: '',
   };
   const MEASURE_FIELD_DEFS = {
-    totalHeight: { label: 'Hauteur sol a sol', unit: 'mm', kind: 'number' },
-    totalRun: { label: 'Reculement / longueur disponible', unit: 'mm', kind: 'number' },
-    stairWidth: { label: 'Largeur escalier', unit: 'mm', kind: 'number' },
-    openingLength: { label: 'Longueur tremie', unit: 'mm', kind: 'number' },
-    openingWidth: { label: 'Largeur tremie', unit: 'mm', kind: 'number' },
-    headroom: { label: 'Echappee', unit: 'mm', kind: 'number' },
-    lowerRun: { label: 'Volée basse', unit: 'mm', kind: 'number' },
-    upperRun: { label: 'Volée haute', unit: 'mm', kind: 'number' },
-    landingLength: { label: 'Longueur palier', unit: 'mm', kind: 'number' },
-    diameter: { label: 'Diametre / emprise', unit: 'mm', kind: 'number' },
+    totalHeight: { label: 'Hauteur sol a sol', unit: 'mm', kind: 'number', group: 'general', ref: 'H', help: 'Mesure verticale entre sol fini bas et sol fini haut.' },
+    totalRun: { label: 'Reculement / longueur disponible', unit: 'mm', kind: 'number', group: 'general', ref: 'R', help: 'Longueur au sol disponible depuis le depart jusqu a l arrivee.' },
+    stairWidth: { label: 'Largeur escalier', unit: 'mm', kind: 'number', group: 'general', ref: 'L', help: 'Largeur utile de passage ou largeur de fabrication demandee.' },
+    openingLength: { label: 'Longueur tremie', unit: 'mm', kind: 'number', group: 'opening', ref: 'TL', help: 'Longueur de l ouverture disponible dans la dalle.' },
+    openingWidth: { label: 'Largeur tremie', unit: 'mm', kind: 'number', group: 'opening', ref: 'Tl', help: 'Largeur de l ouverture disponible dans la dalle.' },
+    headroom: { label: 'Echappee', unit: 'mm', kind: 'number', group: 'safety', ref: 'E', help: 'Hauteur libre au passage, a verifier aux points critiques.' },
+    lowerRun: { label: 'Volée basse', unit: 'mm', kind: 'number', group: 'lowerFlight', ref: 'VB', help: 'Longueur disponible sur la premiere volee.' },
+    upperRun: { label: 'Volée haute', unit: 'mm', kind: 'number', group: 'upperFlight', ref: 'VH', help: 'Longueur disponible sur la volee apres le tournant ou le palier.' },
+    landingLength: { label: 'Longueur palier', unit: 'mm', kind: 'number', group: 'landing', ref: 'P', help: 'Dimension utile du palier intermediaire.' },
+    diameter: { label: 'Diametre / emprise', unit: 'mm', kind: 'number', group: 'general', ref: 'D', help: 'Diametre ou emprise maximale disponible.' },
     turnSide: {
       label: 'Sens du tournant',
       kind: 'select',
       options: ['Droite', 'Gauche'],
+      group: 'general',
+      ref: 'S',
+      help: 'Sens du quart tournant vu depuis le depart de l escalier.',
     },
     rotationDirection: {
       label: 'Sens de rotation',
       kind: 'select',
       options: ['Droite', 'Gauche'],
+      group: 'general',
+      ref: 'S',
+      help: 'Sens de rotation vu depuis le depart.',
     },
-    notes: { label: 'Notes de mesure', kind: 'textarea' },
+    notes: { label: 'Notes de mesure', kind: 'textarea', group: 'notes', ref: 'N', help: 'Informations chantier utiles qui ne rentrent pas dans les cotes.' },
   };
+  const MEASURE_GROUPS = [
+    ['general', 'Dimensions generales'],
+    ['opening', 'Tremie'],
+    ['lowerFlight', 'Volee basse'],
+    ['upperFlight', 'Volee haute'],
+    ['landing', 'Palier'],
+    ['safety', 'Securite et echappee'],
+    ['notes', 'Informations complementaires'],
+  ];
   const MEASURE_TYPE_CONFIG = {
     straight: {
       label: 'Droit',
@@ -193,6 +208,7 @@
   let sketchSelectedAnnotationIndex = -1;
   let sketchMoveState = null;
   let measurementsV2State = null;
+  let activeMeasurementKey = '';
 
   function normalizeId(value) {
     const num = Number(value || 0);
@@ -313,31 +329,215 @@
     return measurementsV2State;
   }
 
+  function isRequiredMeasurement(key) {
+    return (measurementConfig().required || []).includes(key);
+  }
+
+  function measurementStateClass(key) {
+    if (key === activeMeasurementKey) return 'is-active';
+    if (measureValue(key)) return 'is-complete';
+    return isRequiredMeasurement(key) ? 'is-missing' : 'is-optional';
+  }
+
+  function measurementDisplayValue(key) {
+    const value = measureValue(key);
+    const def = MEASURE_FIELD_DEFS[key] || {};
+    if (!value) return '—';
+    if (def.kind === 'number') return `${value} mm`;
+    return value;
+  }
+
+  function measurementShortLabel(key) {
+    const def = MEASURE_FIELD_DEFS[key] || {};
+    return `${def.ref || key}: ${measurementDisplayValue(key)}`;
+  }
+
+  function renderCadDimension(key, x1, y1, x2, y2, tx, ty) {
+    const def = MEASURE_FIELD_DEFS[key] || {};
+    const className = measurementStateClass(key);
+    const label = measurementShortLabel(key);
+    const required = isRequiredMeasurement(key) ? 'obligatoire' : 'facultative';
+    const isVertical = Math.abs(x1 - x2) < Math.abs(y1 - y2);
+    const ext1 = isVertical
+      ? `x1="${x1}" y1="${y1}" x2="${x1 - 18}" y2="${y1}"`
+      : `x1="${x1}" y1="${y1}" x2="${x1}" y2="${y1 - 18}"`;
+    const ext2 = isVertical
+      ? `x1="${x2}" y1="${y2}" x2="${x2 - 18}" y2="${y2}"`
+      : `x1="${x2}" y1="${y2}" x2="${x2}" y2="${y2 - 18}"`;
+    return `
+      <g class="measure-dimension ${className}" data-measure-key="${escapeHtml(key)}" tabindex="0" role="button" aria-label="${escapeHtml(`${def.label || key}, ${required}, ${measurementDisplayValue(key)}`)}">
+        <line class="measure-hit" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />
+        <line class="measure-ext" ${ext1} />
+        <line class="measure-ext" ${ext2} />
+        <line class="measure-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />
+        <path class="measure-tick" d="M${x1 - 8} ${y1 + 8}L${x1 + 8} ${y1 - 8}M${x2 - 8} ${y2 + 8}L${x2 + 8} ${y2 - 8}" />
+        <rect class="measure-label-bg" x="${tx - 56}" y="${ty - 15}" width="112" height="24" rx="8" />
+        <text class="measure-label" x="${tx}" y="${ty}">${escapeHtml(label)}</text>
+      </g>
+    `;
+  }
+
+  function renderCadNote(key, x, y) {
+    const def = MEASURE_FIELD_DEFS[key] || {};
+    return `
+      <g class="measure-note ${measurementStateClass(key)}" data-measure-key="${escapeHtml(key)}" tabindex="0" role="button" aria-label="${escapeHtml(def.label || key)}">
+        <circle class="measure-note-dot" cx="${x}" cy="${y}" r="14" />
+        <text class="measure-note-text" x="${x}" y="${y + 5}">${escapeHtml(def.ref || '?')}</text>
+      </g>
+    `;
+  }
+
+  function renderPlanGeometry(type) {
+    const planByType = {
+      straight: `
+        <rect class="cad-opening" x="74" y="78" width="296" height="126" />
+        <rect class="cad-main" x="108" y="112" width="228" height="58" />
+        ${[136, 164, 192, 220, 248, 276, 304].map((x) => `<line class="cad-step" x1="${x}" y1="112" x2="${x}" y2="170" />`).join('')}
+        <path class="cad-walkline" d="M118 141H324" />
+        <path class="cad-arrow" d="M324 141l-13-8M324 141l-13 8" />
+      `,
+      quarter_low: `
+        <path class="cad-opening" d="M74 80H360V218H74Z" />
+        <path class="cad-main" d="M106 154H224V84H286V208H106Z" />
+        <line class="cad-step" x1="136" y1="154" x2="136" y2="208" />
+        <line class="cad-step" x1="166" y1="154" x2="166" y2="208" />
+        <line class="cad-step" x1="196" y1="154" x2="196" y2="208" />
+        <line class="cad-step" x1="224" y1="154" x2="286" y2="126" />
+        <line class="cad-step" x1="224" y1="126" x2="286" y2="102" />
+        <line class="cad-step" x1="224" y1="102" x2="286" y2="102" />
+        <path class="cad-walkline" d="M116 181H248Q267 181 267 162V94" />
+        <path class="cad-arrow" d="M267 94l-8 13M267 94l8 13" />
+      `,
+      quarter_high: `
+        <path class="cad-opening" d="M74 78H360V218H74Z" />
+        <path class="cad-main" d="M106 82H286V142H172V208H106Z" />
+        <line class="cad-step" x1="136" y1="82" x2="136" y2="142" />
+        <line class="cad-step" x1="166" y1="82" x2="166" y2="142" />
+        <line class="cad-step" x1="196" y1="82" x2="172" y2="142" />
+        <line class="cad-step" x1="172" y1="142" x2="106" y2="172" />
+        <line class="cad-step" x1="172" y1="172" x2="106" y2="194" />
+        <path class="cad-walkline" d="M116 112H236Q254 112 235 130L140 198" />
+        <path class="cad-arrow" d="M140 198l3-15M140 198l15-3" />
+      `,
+      double_quarter: `
+        <path class="cad-opening" d="M70 62H380V228H70Z" />
+        <path class="cad-main" d="M100 164H194V88H314V144H254V216H100Z" />
+        <line class="cad-step" x1="130" y1="164" x2="130" y2="216" />
+        <line class="cad-step" x1="160" y1="164" x2="160" y2="216" />
+        <line class="cad-step" x1="194" y1="164" x2="254" y2="144" />
+        <line class="cad-step" x1="194" y1="126" x2="314" y2="126" />
+        <line class="cad-step" x1="224" y1="88" x2="224" y2="144" />
+        <line class="cad-step" x1="254" y1="144" x2="254" y2="216" />
+        <path class="cad-walkline" d="M112 190H214Q236 190 236 168V116H300" />
+        <path class="cad-arrow" d="M300 116l-13-8M300 116l-13 8" />
+      `,
+      landing_two_flights: `
+        <path class="cad-opening" d="M74 66H370V220H74Z" />
+        <path class="cad-main" d="M104 154H192V114H270V76H328V170H104Z" />
+        <line class="cad-step" x1="132" y1="154" x2="132" y2="170" />
+        <line class="cad-step" x1="160" y1="154" x2="160" y2="170" />
+        <line class="cad-step" x1="192" y1="114" x2="270" y2="114" />
+        <line class="cad-step" x1="270" y1="96" x2="328" y2="96" />
+        <line class="cad-step" x1="270" y1="124" x2="328" y2="124" />
+        <path class="cad-walkline" d="M114 162H230Q250 162 250 142V106H316" />
+        <path class="cad-arrow" d="M316 106l-13-8M316 106l-13 8" />
+      `,
+      helical: `
+        <circle class="cad-opening" cx="218" cy="150" r="118" />
+        <circle class="cad-main" cx="218" cy="150" r="76" />
+        ${[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((angle) => {
+          const rad = (angle * Math.PI) / 180;
+          const x = 218 + Math.cos(rad) * 76;
+          const y = 150 + Math.sin(rad) * 76;
+          return `<line class="cad-step" x1="218" y1="150" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" />`;
+        }).join('')}
+        <path class="cad-walkline" d="M184 190C156 156 172 100 222 92C274 85 302 142 273 181" />
+        <path class="cad-arrow" d="M273 181l-2-15M273 181l-14-5" />
+      `,
+      other: `
+        <rect class="cad-opening" x="76" y="78" width="292" height="132" />
+        <path class="cad-main" d="M114 112H316V176H114Z" stroke-dasharray="9 7" />
+        <line class="cad-step" x1="114" y1="134" x2="316" y2="134" />
+        <line class="cad-step" x1="114" y1="154" x2="316" y2="154" />
+        <path class="cad-walkline" d="M124 144H304" />
+        <path class="cad-arrow" d="M304 144l-13-8M304 144l-13 8" />
+      `,
+    };
+    return planByType[type] || planByType.straight;
+  }
+
+  function renderPlanDimensions(type) {
+    const common = [
+      renderCadDimension('openingLength', 74, 52, 370, 52, 222, 42),
+      renderCadDimension('openingWidth', 404, 78, 404, 204, 438, 142),
+      renderCadDimension('stairWidth', 108, 234, 336, 234, 222, 224),
+    ];
+    if (type === 'straight' || type === 'other') {
+      return [
+        ...common,
+        renderCadDimension('totalRun', 108, 206, 336, 206, 222, 196),
+      ].join('');
+    }
+    if (type === 'helical') {
+      return [
+        renderCadDimension('diameter', 100, 36, 336, 36, 218, 26),
+        renderCadDimension('openingLength', 100, 266, 336, 266, 218, 256),
+        renderCadDimension('openingWidth', 370, 32, 370, 268, 404, 150),
+        renderCadNote('rotationDirection', 290, 72),
+      ].join('');
+    }
+    if (type === 'landing_two_flights') {
+      return [
+        ...common,
+        renderCadDimension('lowerRun', 104, 242, 192, 242, 148, 232),
+        renderCadDimension('landingLength', 192, 56, 270, 56, 231, 46),
+        renderCadDimension('upperRun', 270, 216, 328, 216, 299, 206),
+      ].join('');
+    }
+    return [
+      ...common,
+      renderCadDimension('lowerRun', 106, 242, 224, 242, 165, 232),
+      renderCadDimension('upperRun', 286, 84, 286, 208, 326, 146),
+      renderCadNote('turnSide', 246, 132),
+    ].join('');
+  }
+
+  function renderSideElevation() {
+    const type = measurementsV2State ? measurementsV2State.stairType : 'straight';
+    const runKey = (type === 'straight' || type === 'other') ? 'totalRun' : (type === 'helical' ? 'diameter' : 'lowerRun');
+    return `
+      <g class="cad-elevation">
+        <text class="cad-view-title" x="486" y="54">Vue de cote</text>
+        <path class="cad-floor" d="M486 252H674" />
+        <path class="cad-floor" d="M594 116H690" />
+        <path class="cad-main" d="M500 252H528V232H556V212H584V192H612V172H640V152H668V116" />
+        <path class="cad-walkline" d="M500 252L668 116" />
+        ${renderCadDimension('totalHeight', 704, 116, 704, 252, 680, 184)}
+        ${renderCadDimension(runKey, 500, 286, 668, 286, 584, 276)}
+        ${renderCadDimension('headroom', 626, 116, 626, 192, 586, 152)}
+      </g>
+    `;
+  }
+
   function renderMeasurementsV2Schema() {
     if (!measurementsV2Schema) return;
     const config = measurementConfig();
     const type = measurementsV2State ? measurementsV2State.stairType : 'straight';
-    const shapeByType = {
-      straight: '<path d="M78 128H292V176H78Z" /><g><line x1="108" y1="128" x2="108" y2="176" /><line x1="138" y1="128" x2="138" y2="176" /><line x1="168" y1="128" x2="168" y2="176" /><line x1="198" y1="128" x2="198" y2="176" /><line x1="228" y1="128" x2="228" y2="176" /><line x1="258" y1="128" x2="258" y2="176" /></g>',
-      quarter_low: '<path d="M78 150H178V72H228V200H78Z" /><g><line x1="108" y1="150" x2="108" y2="200" /><line x1="138" y1="150" x2="138" y2="200" /><line x1="178" y1="150" x2="228" y2="122" /><line x1="178" y1="122" x2="228" y2="98" /><line x1="178" y1="96" x2="228" y2="96" /></g>',
-      quarter_high: '<path d="M78 72H228V122H128V200H78Z" /><g><line x1="108" y1="72" x2="108" y2="122" /><line x1="138" y1="72" x2="138" y2="122" /><line x1="168" y1="72" x2="128" y2="122" /><line x1="128" y1="122" x2="78" y2="150" /><line x1="128" y1="150" x2="78" y2="176" /></g>',
-      double_quarter: '<path d="M78 162H158V82H248V132H208V212H78Z" /><g><line x1="108" y1="162" x2="108" y2="212" /><line x1="138" y1="162" x2="138" y2="212" /><line x1="158" y1="162" x2="208" y2="132" /><line x1="158" y1="112" x2="248" y2="112" /><line x1="208" y1="132" x2="208" y2="212" /></g>',
-      landing_two_flights: '<path d="M76 150H162V112H232V70H282V162H76Z" /><g><line x1="104" y1="150" x2="104" y2="162" /><line x1="132" y1="150" x2="132" y2="162" /><line x1="162" y1="112" x2="232" y2="112" /><line x1="232" y1="92" x2="282" y2="92" /><line x1="232" y1="116" x2="282" y2="116" /></g>',
-      helical: '<circle cx="180" cy="138" r="72" /><g><path d="M180 138L248 114" /><path d="M180 138L228 190" /><path d="M180 138L132 190" /><path d="M180 138L112 114" /><path d="M180 138L180 66" /></g>',
-      other: '<path d="M94 86H274V184H94Z" stroke-dasharray="8 7" /><path d="M112 128H252" /><path d="M112 152H252" />',
-    };
     measurementsV2Schema.innerHTML = `
-      <svg viewBox="0 0 360 240" role="img" aria-label="Schema ${escapeHtml(config.label)}">
-        <rect x="14" y="14" width="332" height="212" rx="12" fill="#fff" stroke="#e5e7eb" />
-        <text x="28" y="42" fill="#111827" font-size="15" font-weight="800">${escapeHtml(config.label)}</text>
-        <g fill="none" stroke="#111827" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-          ${shapeByType[type] || shapeByType.straight}
+      <svg class="measurements-v2-svg" viewBox="0 0 740 330" role="img" aria-label="Schema cote ${escapeHtml(config.label)}">
+        <defs>
+          <marker id="measureArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10Z" />
+          </marker>
+        </defs>
+        <rect class="cad-sheet" x="10" y="10" width="720" height="310" rx="12" />
+        <text class="cad-view-title" x="32" y="54">Vue en plan · ${escapeHtml(config.label)}</text>
+        <g class="cad-plan">
+          ${renderPlanGeometry(type)}
+          ${renderPlanDimensions(type)}
         </g>
-        <g stroke="#f97316" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M70 206H294" />
-          <path d="M294 206l-12-8M294 206l-12 8" />
-        </g>
-        <text x="70" y="222" fill="#9a3412" font-size="12" font-weight="700">Sens de releve et cotes a confirmer sur chantier</text>
+        ${renderSideElevation()}
+        <text class="cad-caption" x="32" y="306">Touchez une cote pour saisir la mesure correspondante.</text>
       </svg>
     `;
   }
@@ -347,32 +547,38 @@
     const value = measureValue(key);
     const badge = required ? 'Obligatoire' : 'Optionnel';
     const meta = [badge, def.unit].filter(Boolean).join(' · ');
+    const fieldClass = `measure-field ${measurementStateClass(key)}${key === activeMeasurementKey ? ' is-active' : ''}`;
+    const ref = def.ref ? `<strong>${escapeHtml(def.ref)}</strong>` : '';
+    const help = def.help ? `<p>${escapeHtml(def.help)}</p>` : '';
     if (def.kind === 'select') {
       const options = (def.options || []).map((option) => `
         <option value="${escapeHtml(option)}"${value === option ? ' selected' : ''}>${escapeHtml(option)}</option>
       `).join('');
       return `
-        <div class="measure-field">
-          <label for="measure-${escapeHtml(key)}">${escapeHtml(def.label)} <span>${badge}</span></label>
+        <div class="${fieldClass}" data-measure-field="${escapeHtml(key)}">
+          <label for="measure-${escapeHtml(key)}">${ref}<em>${escapeHtml(def.label)}</em> <span>${badge}</span></label>
           <select id="measure-${escapeHtml(key)}" data-measure-key="${escapeHtml(key)}">
             <option value="">A choisir</option>
             ${options}
           </select>
+          ${help}
         </div>
       `;
     }
     if (def.kind === 'textarea') {
       return `
-        <div class="measure-field">
-          <label for="measure-${escapeHtml(key)}">${escapeHtml(def.label)} <span>${badge}</span></label>
+        <div class="${fieldClass}" data-measure-field="${escapeHtml(key)}">
+          <label for="measure-${escapeHtml(key)}">${ref}<em>${escapeHtml(def.label)}</em> <span>${badge}</span></label>
           <textarea id="measure-${escapeHtml(key)}" data-measure-key="${escapeHtml(key)}">${escapeHtml(value)}</textarea>
+          ${help}
         </div>
       `;
     }
     return `
-      <div class="measure-field">
-        <label for="measure-${escapeHtml(key)}">${escapeHtml(def.label)} <span>${escapeHtml(meta)}</span></label>
+      <div class="${fieldClass}" data-measure-field="${escapeHtml(key)}">
+        <label for="measure-${escapeHtml(key)}">${ref}<em>${escapeHtml(def.label)}</em> <span>${escapeHtml(meta)}</span></label>
         <input id="measure-${escapeHtml(key)}" data-measure-key="${escapeHtml(key)}" type="text" inputmode="decimal" value="${escapeHtml(value)}" placeholder="${required ? 'A relever' : 'Optionnel'}" />
+        ${help}
       </div>
     `;
   }
@@ -382,10 +588,17 @@
     const config = measurementConfig();
     const required = config.required || [];
     const optional = config.optional || [];
-    measurementsV2Fields.innerHTML = [
-      ...required.map((key) => renderMeasureInput(key, true)),
-      ...optional.map((key) => renderMeasureInput(key, false)),
-    ].join('');
+    const keys = [...required, ...optional];
+    measurementsV2Fields.innerHTML = MEASURE_GROUPS.map(([groupKey, groupLabel]) => {
+      const groupKeys = keys.filter((key) => (MEASURE_FIELD_DEFS[key]?.group || 'general') === groupKey);
+      if (!groupKeys.length) return '';
+      return `
+        <section class="measure-group">
+          <h5>${escapeHtml(groupLabel)}</h5>
+          ${groupKeys.map((key) => renderMeasureInput(key, required.includes(key))).join('')}
+        </section>
+      `;
+    }).join('');
   }
 
   function renderMeasurementsV2Checks() {
@@ -405,9 +618,47 @@
     if (!measurementsV2State) {
       measurementsV2State = createMeasurementsV2State(normalizeStairTypeKey(getValue('type_escalier')));
     }
+    const config = measurementConfig();
+    const availableKeys = [...(config.required || []), ...(config.optional || [])];
+    if (activeMeasurementKey && !availableKeys.includes(activeMeasurementKey)) activeMeasurementKey = '';
     renderMeasurementsV2Schema();
     renderMeasurementsV2Fields();
     renderMeasurementsV2Checks();
+  }
+
+  function updateActiveMeasurementUi() {
+    if (measurementsV2Schema) {
+      measurementsV2Schema.querySelectorAll('[data-measure-key]').forEach((node) => {
+        node.classList.toggle('is-active', node.getAttribute('data-measure-key') === activeMeasurementKey);
+      });
+    }
+    if (measurementsV2Fields) {
+      measurementsV2Fields.querySelectorAll('[data-measure-field]').forEach((node) => {
+        node.classList.toggle('is-active', node.getAttribute('data-measure-field') === activeMeasurementKey);
+      });
+    }
+  }
+
+  function focusMeasurementField(key, scrollIntoView) {
+    if (!measurementsV2Fields || !key) return;
+    const field = Array.from(measurementsV2Fields.querySelectorAll('[data-measure-field]'))
+      .find((node) => node.getAttribute('data-measure-field') === key);
+    const input = Array.from(measurementsV2Fields.querySelectorAll('[data-measure-key]'))
+      .find((node) => node.getAttribute('data-measure-key') === key);
+    if (field && scrollIntoView) {
+      field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    if (input && typeof input.focus === 'function') {
+      window.setTimeout(() => input.focus({ preventScroll: true }), scrollIntoView ? 220 : 0);
+    }
+  }
+
+  function selectMeasurementKey(key, options) {
+    if (!key || !MEASURE_FIELD_DEFS[key]) return;
+    activeMeasurementKey = key;
+    renderMeasurementsV2Schema();
+    updateActiveMeasurementUi();
+    if (options && options.focus) focusMeasurementField(key, Boolean(options.scroll));
   }
 
   function buildMeasurementsV2Payload() {
@@ -2199,6 +2450,14 @@
   }
 
   if (measurementsV2Fields) {
+    measurementsV2Fields.addEventListener('focusin', (event) => {
+      const target = event.target;
+      if (!target || !target.getAttribute) return;
+      const key = target.getAttribute('data-measure-key');
+      if (!key) return;
+      selectMeasurementKey(key, { focus: false });
+    });
+
     measurementsV2Fields.addEventListener('input', (event) => {
       const target = event.target;
       if (!target || !target.getAttribute) return;
@@ -2208,7 +2467,10 @@
         measurementsV2State = createMeasurementsV2State(normalizeStairTypeKey(getValue('type_escalier')));
       }
       measurementsV2State.values[key] = String(target.value || '');
+      activeMeasurementKey = key;
+      renderMeasurementsV2Schema();
       renderMeasurementsV2Checks();
+      updateActiveMeasurementUi();
       dirty = true;
     });
 
@@ -2222,7 +2484,24 @@
       }
       measurementsV2State.values[key] = String(target.value || '');
       renderMeasurementsV2();
+      updateActiveMeasurementUi();
       dirty = true;
+    });
+  }
+
+  if (measurementsV2Schema) {
+    measurementsV2Schema.addEventListener('click', (event) => {
+      const target = event.target && event.target.closest ? event.target.closest('[data-measure-key]') : null;
+      if (!target) return;
+      selectMeasurementKey(target.getAttribute('data-measure-key'), { focus: true, scroll: true });
+    });
+
+    measurementsV2Schema.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const target = event.target && event.target.closest ? event.target.closest('[data-measure-key]') : null;
+      if (!target) return;
+      event.preventDefault();
+      selectMeasurementKey(target.getAttribute('data-measure-key'), { focus: true, scroll: true });
     });
   }
 
