@@ -212,6 +212,144 @@ select {
   margin: 0;
 }
 
+.measurements-v2-section {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.measurements-v2-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.measurements-v2-head h3,
+.measurements-v2-card h4 {
+  margin: 0;
+}
+
+.measurements-v2-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.measurements-v2-progress {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #fff7ed;
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
+.measurements-v2-layout {
+  display: grid;
+  gap: 10px;
+}
+
+.measurements-v2-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: #f9fafb;
+}
+
+.measurements-v2-schema {
+  overflow: hidden;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+}
+
+.measurements-v2-schema svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.measurements-v2-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.measure-field {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  background: #ffffff;
+}
+
+.measure-field label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.measure-field span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.measure-field input,
+.measure-field select,
+.measure-field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 16px;
+  color: var(--text);
+  background: #ffffff;
+}
+
+.measure-field textarea {
+  min-height: 74px;
+  resize: vertical;
+}
+
+.measurements-v2-checks {
+  display: grid;
+  gap: 8px;
+}
+
+.measure-check {
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.measure-check.is-ok {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+  font-weight: 800;
+}
+
+.measure-check.is-warning {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
 .photo-total-count {
   font-size: 0.82rem;
   font-weight: 700;
@@ -1015,10 +1153,15 @@ body.sketch-open {
 
   .v2-form h3,
   .field.wide,
+  .measurements-v2-section,
   .photo-section,
   .sketch-section,
   .actions {
     grid-column: 1 / -1;
+  }
+
+  .measurements-v2-layout {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr) minmax(260px, 0.8fr);
   }
 
   .photo-grid {

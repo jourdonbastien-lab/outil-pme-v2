@@ -66,6 +66,10 @@
   const sketchTextInput = document.getElementById('sketchTextInput');
   const sketchTextCancelBtn = document.getElementById('sketchTextCancelBtn');
   const sketchTextConfirmBtn = document.getElementById('sketchTextConfirmBtn');
+  const measurementsV2Progress = document.getElementById('measurementsV2Progress');
+  const measurementsV2Schema = document.getElementById('measurementsV2Schema');
+  const measurementsV2Fields = document.getElementById('measurementsV2Fields');
+  const measurementsV2Checks = document.getElementById('measurementsV2Checks');
 
   const ANNOTATION_TOOLS = new Set(['line', 'arrow', 'rect', 'ellipse', 'text', 'marker', 'dimension', 'symbol']);
   const SYMBOL_LIBRARY = [
@@ -90,6 +94,74 @@
     { key: 'dalle', label: 'Dalle', icon: '▭' },
     { key: 'point_fixation', label: 'Point de fixation', icon: '⊕' },
   ];
+  const MEASURE_BASE_VALUES = {
+    totalHeight: '',
+    totalRun: '',
+    stairWidth: '',
+    openingLength: '',
+    openingWidth: '',
+    headroom: '',
+  };
+  const MEASURE_FIELD_DEFS = {
+    totalHeight: { label: 'Hauteur sol a sol', unit: 'mm', kind: 'number' },
+    totalRun: { label: 'Reculement / longueur disponible', unit: 'mm', kind: 'number' },
+    stairWidth: { label: 'Largeur escalier', unit: 'mm', kind: 'number' },
+    openingLength: { label: 'Longueur tremie', unit: 'mm', kind: 'number' },
+    openingWidth: { label: 'Largeur tremie', unit: 'mm', kind: 'number' },
+    headroom: { label: 'Echappee', unit: 'mm', kind: 'number' },
+    lowerRun: { label: 'Volée basse', unit: 'mm', kind: 'number' },
+    upperRun: { label: 'Volée haute', unit: 'mm', kind: 'number' },
+    landingLength: { label: 'Longueur palier', unit: 'mm', kind: 'number' },
+    diameter: { label: 'Diametre / emprise', unit: 'mm', kind: 'number' },
+    turnSide: {
+      label: 'Sens du tournant',
+      kind: 'select',
+      options: ['Droite', 'Gauche'],
+    },
+    rotationDirection: {
+      label: 'Sens de rotation',
+      kind: 'select',
+      options: ['Droite', 'Gauche'],
+    },
+    notes: { label: 'Notes de mesure', kind: 'textarea' },
+  };
+  const MEASURE_TYPE_CONFIG = {
+    straight: {
+      label: 'Droit',
+      required: ['totalHeight', 'totalRun', 'stairWidth', 'openingLength', 'openingWidth'],
+      optional: ['headroom', 'notes'],
+    },
+    quarter_low: {
+      label: '1/4 tournant bas',
+      required: ['totalHeight', 'lowerRun', 'upperRun', 'stairWidth', 'openingLength', 'openingWidth', 'turnSide'],
+      optional: ['headroom', 'notes'],
+    },
+    quarter_high: {
+      label: '1/4 tournant haut',
+      required: ['totalHeight', 'lowerRun', 'upperRun', 'stairWidth', 'openingLength', 'openingWidth', 'turnSide'],
+      optional: ['headroom', 'notes'],
+    },
+    double_quarter: {
+      label: 'Double 1/4 tournant',
+      required: ['totalHeight', 'lowerRun', 'upperRun', 'stairWidth', 'openingLength', 'openingWidth', 'turnSide'],
+      optional: ['headroom', 'notes'],
+    },
+    landing_two_flights: {
+      label: '2 volees avec palier',
+      required: ['totalHeight', 'lowerRun', 'upperRun', 'landingLength', 'stairWidth', 'openingLength', 'openingWidth'],
+      optional: ['headroom', 'notes'],
+    },
+    helical: {
+      label: 'Helicoidal',
+      required: ['totalHeight', 'diameter', 'stairWidth', 'openingLength', 'openingWidth', 'rotationDirection'],
+      optional: ['headroom', 'notes'],
+    },
+    other: {
+      label: 'Autre',
+      required: ['totalHeight', 'stairWidth'],
+      optional: ['totalRun', 'openingLength', 'openingWidth', 'headroom', 'notes'],
+    },
+  };
 
   const params = new URLSearchParams(window.location.search);
   const initialOrderId = normalizeId(params.get('client_order_id'));
@@ -120,6 +192,7 @@
   let sketchTextRequest = null;
   let sketchSelectedAnnotationIndex = -1;
   let sketchMoveState = null;
+  let measurementsV2State = null;
 
   function normalizeId(value) {
     const num = Number(value || 0);
@@ -138,6 +211,219 @@
 
   function getValue(name) {
     return String(form.elements[name] ? form.elements[name].value : '').trim();
+  }
+
+  function normalizeStairTypeKey(value) {
+    const text = String(value || '').toLowerCase();
+    if (text.includes('helico')) return 'helical';
+    if (text.includes('palier')) return 'landing_two_flights';
+    if (text.includes('double')) return 'double_quarter';
+    if (text.includes('1/4') && text.includes('haut')) return 'quarter_high';
+    if (text.includes('1/4') && text.includes('bas')) return 'quarter_low';
+    if (text.includes('autre')) return 'other';
+    return 'straight';
+  }
+
+  function createMeasurementsV2State(stairType, values) {
+    return {
+      schemaVersion: 1,
+      stairType: stairType || 'straight',
+      values: {
+        ...MEASURE_BASE_VALUES,
+        ...(values && typeof values === 'object' ? values : {}),
+      },
+      completedKeys: [],
+      requiredCompleted: 0,
+      requiredTotal: 0,
+      optionalCompleted: 0,
+      optionalTotal: 0,
+      warnings: [],
+      updatedAt: '',
+    };
+  }
+
+  function normalizeMeasurementsV2(value, fallbackStairType) {
+    const fallback = normalizeStairTypeKey(fallbackStairType);
+    if (!value || typeof value !== 'object') return createMeasurementsV2State(fallback);
+    const stairType = MEASURE_TYPE_CONFIG[value.stairType] ? value.stairType : fallback;
+    const safeValues = { ...MEASURE_BASE_VALUES };
+    if (value.values && typeof value.values === 'object') {
+      Object.keys(value.values).forEach((key) => {
+        safeValues[key] = value.values[key] == null ? '' : String(value.values[key]);
+      });
+    }
+    return {
+      ...createMeasurementsV2State(stairType, safeValues),
+      updatedAt: value.updatedAt ? String(value.updatedAt) : '',
+    };
+  }
+
+  function measurementConfig() {
+    const state = measurementsV2State || createMeasurementsV2State('straight');
+    return MEASURE_TYPE_CONFIG[state.stairType] || MEASURE_TYPE_CONFIG.straight;
+  }
+
+  function measureValue(key) {
+    return String((measurementsV2State && measurementsV2State.values && measurementsV2State.values[key]) || '').trim();
+  }
+
+  function measureNumber(key) {
+    const normalized = measureValue(key).replace(',', '.');
+    const number = Number(normalized);
+    return Number.isFinite(number) ? number : null;
+  }
+
+  function analyzeMeasurementsV2() {
+    if (!measurementsV2State) {
+      measurementsV2State = createMeasurementsV2State(normalizeStairTypeKey(getValue('type_escalier')));
+    }
+    const config = measurementConfig();
+    const required = config.required || [];
+    const optional = config.optional || [];
+    const completedKeys = [...required, ...optional].filter((key) => measureValue(key));
+    const warnings = [];
+
+    required.forEach((key) => {
+      if (!measureValue(key)) warnings.push(`${MEASURE_FIELD_DEFS[key]?.label || key} manquant.`);
+    });
+
+    [...required, ...optional].forEach((key) => {
+      const def = MEASURE_FIELD_DEFS[key];
+      if (!def || def.kind !== 'number' || !measureValue(key)) return;
+      const number = measureNumber(key);
+      if (!number || number <= 0) warnings.push(`${def.label} doit etre superieur a 0.`);
+    });
+
+    const stairWidth = measureNumber('stairWidth');
+    const openingWidth = measureNumber('openingWidth');
+    const headroom = measureNumber('headroom');
+    if (stairWidth && openingWidth && openingWidth < stairWidth) {
+      warnings.push('La largeur de tremie est inferieure a la largeur escalier.');
+    }
+    if (headroom && headroom < 1900) {
+      warnings.push('Echappee inferieure a 1900 mm : a verifier sur chantier.');
+    }
+
+    measurementsV2State.completedKeys = completedKeys;
+    measurementsV2State.requiredCompleted = required.filter((key) => measureValue(key)).length;
+    measurementsV2State.requiredTotal = required.length;
+    measurementsV2State.optionalCompleted = optional.filter((key) => measureValue(key)).length;
+    measurementsV2State.optionalTotal = optional.length;
+    measurementsV2State.warnings = warnings;
+    return measurementsV2State;
+  }
+
+  function renderMeasurementsV2Schema() {
+    if (!measurementsV2Schema) return;
+    const config = measurementConfig();
+    const type = measurementsV2State ? measurementsV2State.stairType : 'straight';
+    const shapeByType = {
+      straight: '<path d="M78 128H292V176H78Z" /><g><line x1="108" y1="128" x2="108" y2="176" /><line x1="138" y1="128" x2="138" y2="176" /><line x1="168" y1="128" x2="168" y2="176" /><line x1="198" y1="128" x2="198" y2="176" /><line x1="228" y1="128" x2="228" y2="176" /><line x1="258" y1="128" x2="258" y2="176" /></g>',
+      quarter_low: '<path d="M78 150H178V72H228V200H78Z" /><g><line x1="108" y1="150" x2="108" y2="200" /><line x1="138" y1="150" x2="138" y2="200" /><line x1="178" y1="150" x2="228" y2="122" /><line x1="178" y1="122" x2="228" y2="98" /><line x1="178" y1="96" x2="228" y2="96" /></g>',
+      quarter_high: '<path d="M78 72H228V122H128V200H78Z" /><g><line x1="108" y1="72" x2="108" y2="122" /><line x1="138" y1="72" x2="138" y2="122" /><line x1="168" y1="72" x2="128" y2="122" /><line x1="128" y1="122" x2="78" y2="150" /><line x1="128" y1="150" x2="78" y2="176" /></g>',
+      double_quarter: '<path d="M78 162H158V82H248V132H208V212H78Z" /><g><line x1="108" y1="162" x2="108" y2="212" /><line x1="138" y1="162" x2="138" y2="212" /><line x1="158" y1="162" x2="208" y2="132" /><line x1="158" y1="112" x2="248" y2="112" /><line x1="208" y1="132" x2="208" y2="212" /></g>',
+      landing_two_flights: '<path d="M76 150H162V112H232V70H282V162H76Z" /><g><line x1="104" y1="150" x2="104" y2="162" /><line x1="132" y1="150" x2="132" y2="162" /><line x1="162" y1="112" x2="232" y2="112" /><line x1="232" y1="92" x2="282" y2="92" /><line x1="232" y1="116" x2="282" y2="116" /></g>',
+      helical: '<circle cx="180" cy="138" r="72" /><g><path d="M180 138L248 114" /><path d="M180 138L228 190" /><path d="M180 138L132 190" /><path d="M180 138L112 114" /><path d="M180 138L180 66" /></g>',
+      other: '<path d="M94 86H274V184H94Z" stroke-dasharray="8 7" /><path d="M112 128H252" /><path d="M112 152H252" />',
+    };
+    measurementsV2Schema.innerHTML = `
+      <svg viewBox="0 0 360 240" role="img" aria-label="Schema ${escapeHtml(config.label)}">
+        <rect x="14" y="14" width="332" height="212" rx="12" fill="#fff" stroke="#e5e7eb" />
+        <text x="28" y="42" fill="#111827" font-size="15" font-weight="800">${escapeHtml(config.label)}</text>
+        <g fill="none" stroke="#111827" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          ${shapeByType[type] || shapeByType.straight}
+        </g>
+        <g stroke="#f97316" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M70 206H294" />
+          <path d="M294 206l-12-8M294 206l-12 8" />
+        </g>
+        <text x="70" y="222" fill="#9a3412" font-size="12" font-weight="700">Sens de releve et cotes a confirmer sur chantier</text>
+      </svg>
+    `;
+  }
+
+  function renderMeasureInput(key, required) {
+    const def = MEASURE_FIELD_DEFS[key] || { label: key, kind: 'text' };
+    const value = measureValue(key);
+    const badge = required ? 'Obligatoire' : 'Optionnel';
+    const meta = [badge, def.unit].filter(Boolean).join(' · ');
+    if (def.kind === 'select') {
+      const options = (def.options || []).map((option) => `
+        <option value="${escapeHtml(option)}"${value === option ? ' selected' : ''}>${escapeHtml(option)}</option>
+      `).join('');
+      return `
+        <div class="measure-field">
+          <label for="measure-${escapeHtml(key)}">${escapeHtml(def.label)} <span>${badge}</span></label>
+          <select id="measure-${escapeHtml(key)}" data-measure-key="${escapeHtml(key)}">
+            <option value="">A choisir</option>
+            ${options}
+          </select>
+        </div>
+      `;
+    }
+    if (def.kind === 'textarea') {
+      return `
+        <div class="measure-field">
+          <label for="measure-${escapeHtml(key)}">${escapeHtml(def.label)} <span>${badge}</span></label>
+          <textarea id="measure-${escapeHtml(key)}" data-measure-key="${escapeHtml(key)}">${escapeHtml(value)}</textarea>
+        </div>
+      `;
+    }
+    return `
+      <div class="measure-field">
+        <label for="measure-${escapeHtml(key)}">${escapeHtml(def.label)} <span>${escapeHtml(meta)}</span></label>
+        <input id="measure-${escapeHtml(key)}" data-measure-key="${escapeHtml(key)}" type="text" inputmode="decimal" value="${escapeHtml(value)}" placeholder="${required ? 'A relever' : 'Optionnel'}" />
+      </div>
+    `;
+  }
+
+  function renderMeasurementsV2Fields() {
+    if (!measurementsV2Fields) return;
+    const config = measurementConfig();
+    const required = config.required || [];
+    const optional = config.optional || [];
+    measurementsV2Fields.innerHTML = [
+      ...required.map((key) => renderMeasureInput(key, true)),
+      ...optional.map((key) => renderMeasureInput(key, false)),
+    ].join('');
+  }
+
+  function renderMeasurementsV2Checks() {
+    if (!measurementsV2Checks || !measurementsV2Progress) return;
+    const state = analyzeMeasurementsV2();
+    measurementsV2Progress.textContent = `${state.requiredCompleted} / ${state.requiredTotal}`;
+    if (!state.warnings.length) {
+      measurementsV2Checks.innerHTML = '<div class="measure-check is-ok">Mesures obligatoires completes. Controle visuel a faire avant validation.</div>';
+      return;
+    }
+    measurementsV2Checks.innerHTML = state.warnings.map((warning) => `
+      <div class="measure-check is-warning">${escapeHtml(warning)}</div>
+    `).join('');
+  }
+
+  function renderMeasurementsV2() {
+    if (!measurementsV2State) {
+      measurementsV2State = createMeasurementsV2State(normalizeStairTypeKey(getValue('type_escalier')));
+    }
+    renderMeasurementsV2Schema();
+    renderMeasurementsV2Fields();
+    renderMeasurementsV2Checks();
+  }
+
+  function buildMeasurementsV2Payload() {
+    const state = analyzeMeasurementsV2();
+    return {
+      schemaVersion: 1,
+      stairType: state.stairType,
+      values: { ...state.values },
+      completedKeys: [...state.completedKeys],
+      requiredCompleted: state.requiredCompleted,
+      requiredTotal: state.requiredTotal,
+      optionalCompleted: state.optionalCompleted,
+      optionalTotal: state.optionalTotal,
+      warnings: [...state.warnings],
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   function applyFieldValues(fields) {
@@ -1720,6 +2006,7 @@
     const item = data.item || {};
     currentId = normalizeId(item.id);
     applyFieldValues(item.fields || {});
+    measurementsV2State = normalizeMeasurementsV2(item.fields?.measurements_v2, getValue('type_escalier'));
     sketchUpdatedAt = String(item.fields?.sketch_updated_at || '').trim();
     sketchBackgroundPhotoId = String(item.fields?.sketch_background_photo_id || '').trim();
     sketchAnnotations = normalizeSketchAnnotations(item.fields?.sketch_annotations || []);
@@ -1732,6 +2019,7 @@
     setSketchStatus(sketchUpdatedAt ? 'Croquis existant' : 'Pret');
     photoSlots = normalizePhotoSlots(item.photoSlots || item.fields?.photo_slots || []);
     renderPhotoSlots();
+    renderMeasurementsV2();
 
     if (form.elements.quote_id) form.elements.quote_id.value = item.quote_id ? String(item.quote_id) : '';
     if (form.elements.client_order_id) form.elements.client_order_id.value = item.client_order_id ? String(item.client_order_id) : '';
@@ -1776,6 +2064,8 @@
     setSketchStatus('Pret');
     photoSlots = makeEmptyPhotoSlots();
     renderPhotoSlots();
+    measurementsV2State = createMeasurementsV2State(normalizeStairTypeKey(getValue('type_escalier')));
+    renderMeasurementsV2();
     dirty = true;
     showForm();
   }
@@ -1797,6 +2087,7 @@
       sketch_annotations: cloneSketchAnnotations(sketchAnnotations),
       sketch_marker_counter: sketchMarkerCounter,
       sketch_version: 2,
+      measurements_v2: buildMeasurementsV2Payload(),
       photo_slots: serializePhotoSlotsForSave(),
     };
 
@@ -1896,6 +2187,44 @@
     if (form.elements.client_order_id.value) form.elements.quote_id.value = '';
     dirty = true;
   });
+
+  if (form.elements.type_escalier) {
+    form.elements.type_escalier.addEventListener('change', () => {
+      const nextType = normalizeStairTypeKey(getValue('type_escalier'));
+      if (!measurementsV2State) measurementsV2State = createMeasurementsV2State(nextType);
+      measurementsV2State.stairType = nextType;
+      renderMeasurementsV2();
+      dirty = true;
+    });
+  }
+
+  if (measurementsV2Fields) {
+    measurementsV2Fields.addEventListener('input', (event) => {
+      const target = event.target;
+      if (!target || !target.getAttribute) return;
+      const key = target.getAttribute('data-measure-key');
+      if (!key) return;
+      if (!measurementsV2State) {
+        measurementsV2State = createMeasurementsV2State(normalizeStairTypeKey(getValue('type_escalier')));
+      }
+      measurementsV2State.values[key] = String(target.value || '');
+      renderMeasurementsV2Checks();
+      dirty = true;
+    });
+
+    measurementsV2Fields.addEventListener('change', (event) => {
+      const target = event.target;
+      if (!target || !target.getAttribute) return;
+      const key = target.getAttribute('data-measure-key');
+      if (!key) return;
+      if (!measurementsV2State) {
+        measurementsV2State = createMeasurementsV2State(normalizeStairTypeKey(getValue('type_escalier')));
+      }
+      measurementsV2State.values[key] = String(target.value || '');
+      renderMeasurementsV2();
+      dirty = true;
+    });
+  }
 
   if (photoViewerClose) {
     photoViewerClose.addEventListener('click', closeViewer);
@@ -2093,5 +2422,7 @@
   setSketchStatus('Pret');
   photoSlots = makeEmptyPhotoSlots();
   renderPhotoSlots();
+  measurementsV2State = createMeasurementsV2State(normalizeStairTypeKey(getValue('type_escalier')));
+  renderMeasurementsV2();
   initBootstrap();
 })();
