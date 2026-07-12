@@ -397,9 +397,11 @@ select {
   position: fixed;
   inset: 0;
   z-index: 21050;
-  background: #eef2f7;
-  display: grid;
-  padding: 10px;
+  background: #ffffff;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .sketch-modal[hidden] {
@@ -407,10 +409,11 @@ select {
 }
 
 .sketch-modal-content {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
   min-height: 0;
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  gap: 8px;
+  overflow: hidden;
 }
 
 .sketch-toolbar-top,
@@ -422,21 +425,49 @@ select {
 }
 
 .sketch-toolbar-top {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 10px);
+  right: calc(env(safe-area-inset-right) + 10px);
+  z-index: 3;
+  grid-template-columns: repeat(4, auto);
   align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(12px);
 }
 
 .sketch-toolbar-left {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  position: absolute;
+  left: calc(env(safe-area-inset-left) + 10px);
+  top: calc(env(safe-area-inset-top) + 72px);
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  z-index: 3;
+  width: min(118px, 30vw);
+  grid-template-columns: 1fr;
+  grid-auto-rows: min-content;
+  align-content: start;
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(12px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sketch-toolbar-card {
   display: grid;
-  gap: 6px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #ffffff;
-  padding: 8px;
+  gap: 5px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.78);
+  padding: 6px;
 }
 
 .sketch-toolbar-label {
@@ -446,25 +477,43 @@ select {
 }
 
 .sketch-status {
+  position: absolute;
+  left: calc(env(safe-area-inset-left) + 136px);
+  top: calc(env(safe-area-inset-top) + 14px);
+  z-index: 2;
+  max-width: min(42vw, 360px);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 5px 9px;
   font-size: 0.84rem;
   text-align: left;
   color: var(--muted);
   font-weight: 700;
+  backdrop-filter: blur(10px);
 }
 
 .sketch-bg-label {
+  position: absolute;
+  left: calc(env(safe-area-inset-left) + 10px);
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
+  z-index: 2;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 5px 9px;
   font-size: 0.8rem;
   color: var(--muted);
   font-weight: 700;
+  backdrop-filter: blur(10px);
 }
 
 .sketch-toolbar-palette {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .sketch-toolbar-palette button {
   border-radius: 999px;
-  min-height: 34px;
+  min-height: 26px;
+  padding: 0;
   border: 2px solid var(--line);
   background: var(--swatch);
 }
@@ -474,13 +523,17 @@ select {
 }
 
 .sketch-toolbar-sizes {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: 1fr;
+  gap: 5px;
 }
 
 .sketch-modal button {
-  min-height: 40px;
-  padding: 8px;
-  font-size: 0.83rem;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+  border-radius: 12px;
 }
 
 .sketch-modal button.is-active {
@@ -489,22 +542,49 @@ select {
 }
 
 .sketch-canvas-wrap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   min-height: 0;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  border: 0;
+  border-radius: 0;
   background: #ffffff;
   overflow: hidden;
 }
 
+.sketch-photo-picker-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(2px);
+}
+
+.sketch-photo-picker-backdrop[hidden] {
+  display: none !important;
+}
+
 .sketch-photo-picker {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 11;
+  width: min(92vw, 620px);
+  max-height: min(76dvh, 620px);
+  transform: translate(-50%, -50%);
   display: grid;
   gap: 8px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.95);
-  padding: 10px;
-  max-height: 34dvh;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 12px;
   overflow: hidden;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+}
+
+.sketch-photo-picker[hidden] {
+  display: none !important;
 }
 
 .sketch-photo-picker-head {
@@ -521,8 +601,9 @@ select {
 .sketch-photo-picker-list {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sketch-photo-choice {
@@ -641,22 +722,8 @@ body.sketch-open {
   }
 
   .sketch-toolbar-left {
-    position: absolute;
-    left: calc(env(safe-area-inset-left) + 8px);
     top: calc(env(safe-area-inset-top) + 8px);
-    bottom: calc(env(safe-area-inset-bottom) + 8px);
-    z-index: 2;
     width: min(126px, 24vw);
-    grid-template-columns: 1fr;
-    grid-auto-rows: min-content;
-    align-content: start;
-    gap: 6px;
-    padding: 6px;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.84);
-    backdrop-filter: blur(8px);
-    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.18);
-    overflow-y: auto;
   }
 
   .sketch-toolbar-left > button,
@@ -667,10 +734,6 @@ body.sketch-open {
   }
 
   .sketch-photo-picker {
-    position: absolute;
-    top: calc(env(safe-area-inset-top) + 54px);
-    right: calc(env(safe-area-inset-right) + 8px);
-    z-index: 2;
     width: min(56vw, 420px);
     max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 80px);
     padding: 8px;

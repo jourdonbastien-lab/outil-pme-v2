@@ -140,16 +140,16 @@
   <div id="sketchModal" class="sketch-modal" hidden aria-hidden="true">
     <div class="sketch-modal-content">
       <div class="sketch-toolbar-top">
-        <button type="button" id="undoSketchBtn" class="sketch-action-btn">Annuler</button>
-        <button type="button" id="redoSketchBtn" class="sketch-action-btn">Refaire</button>
-        <button type="button" id="sketchSaveBtn" class="sketch-save-btn">Enregistrer</button>
-        <button type="button" id="sketchCloseBtn" class="sketch-close-btn">Fermer</button>
+        <button type="button" id="undoSketchBtn" class="sketch-action-btn" aria-label="Annuler">↶</button>
+        <button type="button" id="redoSketchBtn" class="sketch-action-btn" aria-label="Refaire">↷</button>
+        <button type="button" id="sketchSaveBtn" class="sketch-save-btn" aria-label="Enregistrer">OK</button>
+        <button type="button" id="sketchCloseBtn" class="sketch-close-btn" aria-label="Fermer">×</button>
       </div>
       <div class="sketch-toolbar-left">
         <button type="button" id="toolPenBtn" class="is-active">Stylo</button>
         <button type="button" id="toolEraserBtn">Gomme</button>
-        <button type="button" id="useSketchPhotoBtn">Utiliser une photo</button>
-        <button type="button" id="removeSketchPhotoBtn">Retirer le fond</button>
+        <button type="button" id="useSketchPhotoBtn">Photo</button>
+        <button type="button" id="removeSketchPhotoBtn">Fond</button>
         <div class="sketch-toolbar-card">
           <span class="sketch-toolbar-label">Couleur</span>
           <div class="sketch-toolbar-palette" id="sketchColorPalette">
@@ -173,9 +173,10 @@
       </div>
       <span id="sketchStatus" class="sketch-status">Prêt</span>
       <span id="sketchBgLabel" class="sketch-bg-label">Fond: aucun</span>
-      <div id="sketchPhotoPicker" class="sketch-photo-picker" hidden aria-hidden="true">
+      <div id="sketchPhotoPickerBackdrop" class="sketch-photo-picker-backdrop" hidden aria-hidden="true"></div>
+      <div id="sketchPhotoPicker" class="sketch-photo-picker" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sketchPhotoPickerTitle">
         <div class="sketch-photo-picker-head">
-          <strong>Choisir une photo de fond</strong>
+          <strong id="sketchPhotoPickerTitle">Choisir une photo de fond</strong>
           <button type="button" id="closeSketchPhotoPickerBtn">Fermer</button>
         </div>
         <div id="sketchPhotoPickerList" class="sketch-photo-picker-list"></div>

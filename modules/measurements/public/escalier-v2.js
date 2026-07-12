@@ -46,6 +46,7 @@
   const removeSketchPhotoBtn = document.getElementById('removeSketchPhotoBtn');
   const sketchBgLabel = document.getElementById('sketchBgLabel');
   const sketchPhotoPicker = document.getElementById('sketchPhotoPicker');
+  const sketchPhotoPickerBackdrop = document.getElementById('sketchPhotoPickerBackdrop');
   const sketchPhotoPickerList = document.getElementById('sketchPhotoPickerList');
   const closeSketchPhotoPickerBtn = document.getElementById('closeSketchPhotoPickerBtn');
 
@@ -235,6 +236,10 @@
     if (!sketchPhotoPicker) return;
     sketchPhotoPicker.hidden = true;
     sketchPhotoPicker.setAttribute('aria-hidden', 'true');
+    if (sketchPhotoPickerBackdrop) {
+      sketchPhotoPickerBackdrop.hidden = true;
+      sketchPhotoPickerBackdrop.setAttribute('aria-hidden', 'true');
+    }
   }
 
   function openSketchPhotoPicker() {
@@ -274,6 +279,10 @@
 
     sketchPhotoPicker.hidden = false;
     sketchPhotoPicker.setAttribute('aria-hidden', 'false');
+    if (sketchPhotoPickerBackdrop) {
+      sketchPhotoPickerBackdrop.hidden = false;
+      sketchPhotoPickerBackdrop.setAttribute('aria-hidden', 'false');
+    }
   }
 
   function loadSketchBackgroundImage(url) {
@@ -1145,6 +1154,10 @@
 
   if (closeSketchPhotoPickerBtn) {
     closeSketchPhotoPickerBtn.addEventListener('click', closeSketchPhotoPicker);
+  }
+
+  if (sketchPhotoPickerBackdrop) {
+    sketchPhotoPickerBackdrop.addEventListener('click', closeSketchPhotoPicker);
   }
 
   if (sketchColorPalette) {
