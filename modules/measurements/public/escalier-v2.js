@@ -352,6 +352,11 @@
     return `${def.ref || key}: ${measurementDisplayValue(key)}`;
   }
 
+  function measurementLegendLabel(key) {
+    const def = MEASURE_FIELD_DEFS[key] || {};
+    return `${def.ref || key} — ${def.label || key}`;
+  }
+
   function renderCadDimension(key, x1, y1, x2, y2, tx, ty) {
     const def = MEASURE_FIELD_DEFS[key] || {};
     const className = measurementStateClass(key);
@@ -371,7 +376,6 @@
         <line class="measure-ext" ${ext2} />
         <line class="measure-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />
         <path class="measure-tick" d="M${x1 - 8} ${y1 + 8}L${x1 + 8} ${y1 - 8}M${x2 - 8} ${y2 + 8}L${x2 + 8} ${y2 - 8}" />
-        <rect class="measure-label-bg" x="${tx - 56}" y="${ty - 15}" width="112" height="24" rx="8" />
         <text class="measure-label" x="${tx}" y="${ty}">${escapeHtml(label)}</text>
       </g>
     `;
@@ -390,77 +394,91 @@
   function renderPlanGeometry(type) {
     const planByType = {
       straight: `
-        <rect class="cad-opening" x="74" y="78" width="296" height="126" />
-        <rect class="cad-main" x="108" y="112" width="228" height="58" />
-        ${[136, 164, 192, 220, 248, 276, 304].map((x) => `<line class="cad-step" x1="${x}" y1="112" x2="${x}" y2="170" />`).join('')}
-        <path class="cad-walkline" d="M118 141H324" />
-        <path class="cad-arrow" d="M324 141l-13-8M324 141l-13 8" />
+        <rect class="cad-opening" x="90" y="120" width="300" height="126" />
+        <rect class="cad-main" x="128" y="154" width="224" height="58" />
+        ${[156, 184, 212, 240, 268, 296, 324].map((x) => `<line class="cad-step" x1="${x}" y1="154" x2="${x}" y2="212" />`).join('')}
+        <text class="cad-small-label" x="132" y="232">Départ</text>
+        <text class="cad-small-label" x="304" y="148">Arrivée</text>
+        <path class="cad-walkline" d="M140 183H340" />
+        <path class="cad-arrow" d="M340 183l-13-8M340 183l-13 8" />
       `,
       quarter_low: `
-        <path class="cad-opening" d="M74 80H360V218H74Z" />
-        <path class="cad-main" d="M106 154H224V84H286V208H106Z" />
-        <line class="cad-step" x1="136" y1="154" x2="136" y2="208" />
-        <line class="cad-step" x1="166" y1="154" x2="166" y2="208" />
-        <line class="cad-step" x1="196" y1="154" x2="196" y2="208" />
-        <line class="cad-step" x1="224" y1="154" x2="286" y2="126" />
-        <line class="cad-step" x1="224" y1="126" x2="286" y2="102" />
-        <line class="cad-step" x1="224" y1="102" x2="286" y2="102" />
-        <path class="cad-walkline" d="M116 181H248Q267 181 267 162V94" />
-        <path class="cad-arrow" d="M267 94l-8 13M267 94l8 13" />
+        <path class="cad-opening" d="M90 98H392V268H90Z" />
+        <path class="cad-main" d="M126 194H244V106H306V250H126Z" />
+        <line class="cad-step" x1="156" y1="194" x2="156" y2="250" />
+        <line class="cad-step" x1="186" y1="194" x2="186" y2="250" />
+        <line class="cad-step" x1="216" y1="194" x2="216" y2="250" />
+        <line class="cad-step" x1="244" y1="194" x2="306" y2="156" />
+        <line class="cad-step" x1="244" y1="156" x2="306" y2="130" />
+        <line class="cad-step" x1="244" y1="130" x2="306" y2="130" />
+        <text class="cad-small-label" x="130" y="270">Départ</text>
+        <text class="cad-small-label" x="312" y="106">Arrivée</text>
+        <path class="cad-walkline" d="M136 222H268Q286 222 286 202V116" />
+        <path class="cad-arrow" d="M286 116l-8 13M286 116l8 13" />
       `,
       quarter_high: `
-        <path class="cad-opening" d="M74 78H360V218H74Z" />
-        <path class="cad-main" d="M106 82H286V142H172V208H106Z" />
-        <line class="cad-step" x1="136" y1="82" x2="136" y2="142" />
-        <line class="cad-step" x1="166" y1="82" x2="166" y2="142" />
-        <line class="cad-step" x1="196" y1="82" x2="172" y2="142" />
-        <line class="cad-step" x1="172" y1="142" x2="106" y2="172" />
-        <line class="cad-step" x1="172" y1="172" x2="106" y2="194" />
-        <path class="cad-walkline" d="M116 112H236Q254 112 235 130L140 198" />
-        <path class="cad-arrow" d="M140 198l3-15M140 198l15-3" />
+        <path class="cad-opening" d="M90 98H392V268H90Z" />
+        <path class="cad-main" d="M126 116H306V176H192V250H126Z" />
+        <line class="cad-step" x1="156" y1="116" x2="156" y2="176" />
+        <line class="cad-step" x1="186" y1="116" x2="186" y2="176" />
+        <line class="cad-step" x1="216" y1="116" x2="192" y2="176" />
+        <line class="cad-step" x1="192" y1="176" x2="126" y2="208" />
+        <line class="cad-step" x1="192" y1="208" x2="126" y2="232" />
+        <text class="cad-small-label" x="130" y="270">Départ</text>
+        <text class="cad-small-label" x="308" y="110">Arrivée</text>
+        <path class="cad-walkline" d="M138 146H256Q274 146 254 166L154 240" />
+        <path class="cad-arrow" d="M154 240l3-15M154 240l15-3" />
       `,
       double_quarter: `
-        <path class="cad-opening" d="M70 62H380V228H70Z" />
-        <path class="cad-main" d="M100 164H194V88H314V144H254V216H100Z" />
-        <line class="cad-step" x1="130" y1="164" x2="130" y2="216" />
-        <line class="cad-step" x1="160" y1="164" x2="160" y2="216" />
-        <line class="cad-step" x1="194" y1="164" x2="254" y2="144" />
-        <line class="cad-step" x1="194" y1="126" x2="314" y2="126" />
-        <line class="cad-step" x1="224" y1="88" x2="224" y2="144" />
-        <line class="cad-step" x1="254" y1="144" x2="254" y2="216" />
-        <path class="cad-walkline" d="M112 190H214Q236 190 236 168V116H300" />
-        <path class="cad-arrow" d="M300 116l-13-8M300 116l-13 8" />
+        <path class="cad-opening" d="M86 82H402V278H86Z" />
+        <path class="cad-main" d="M118 204H214V116H334V178H272V260H118Z" />
+        <line class="cad-step" x1="148" y1="204" x2="148" y2="260" />
+        <line class="cad-step" x1="178" y1="204" x2="178" y2="260" />
+        <line class="cad-step" x1="214" y1="204" x2="272" y2="178" />
+        <line class="cad-step" x1="214" y1="158" x2="334" y2="158" />
+        <line class="cad-step" x1="244" y1="116" x2="244" y2="178" />
+        <line class="cad-step" x1="272" y1="178" x2="272" y2="260" />
+        <text class="cad-small-label" x="122" y="282">Départ</text>
+        <text class="cad-small-label" x="336" y="112">Arrivée</text>
+        <path class="cad-walkline" d="M130 232H232Q254 232 254 210V146H320" />
+        <path class="cad-arrow" d="M320 146l-13-8M320 146l-13 8" />
       `,
       landing_two_flights: `
-        <path class="cad-opening" d="M74 66H370V220H74Z" />
-        <path class="cad-main" d="M104 154H192V114H270V76H328V170H104Z" />
-        <line class="cad-step" x1="132" y1="154" x2="132" y2="170" />
-        <line class="cad-step" x1="160" y1="154" x2="160" y2="170" />
-        <line class="cad-step" x1="192" y1="114" x2="270" y2="114" />
-        <line class="cad-step" x1="270" y1="96" x2="328" y2="96" />
-        <line class="cad-step" x1="270" y1="124" x2="328" y2="124" />
-        <path class="cad-walkline" d="M114 162H230Q250 162 250 142V106H316" />
-        <path class="cad-arrow" d="M316 106l-13-8M316 106l-13 8" />
+        <path class="cad-opening" d="M90 92H402V262H90Z" />
+        <path class="cad-main" d="M122 194H212V150H292V108H352V212H122Z" />
+        <line class="cad-step" x1="152" y1="194" x2="152" y2="212" />
+        <line class="cad-step" x1="182" y1="194" x2="182" y2="212" />
+        <line class="cad-step" x1="212" y1="150" x2="292" y2="150" />
+        <line class="cad-step" x1="292" y1="130" x2="352" y2="130" />
+        <line class="cad-step" x1="292" y1="160" x2="352" y2="160" />
+        <text class="cad-small-label" x="126" y="236">Départ</text>
+        <text class="cad-small-label" x="354" y="106">Arrivée</text>
+        <path class="cad-walkline" d="M132 204H252Q272 204 272 184V140H340" />
+        <path class="cad-arrow" d="M340 140l-13-8M340 140l-13 8" />
       `,
       helical: `
-        <circle class="cad-opening" cx="218" cy="150" r="118" />
-        <circle class="cad-main" cx="218" cy="150" r="76" />
+        <circle class="cad-opening" cx="250" cy="180" r="118" />
+        <circle class="cad-main" cx="250" cy="180" r="76" />
         ${[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((angle) => {
           const rad = (angle * Math.PI) / 180;
-          const x = 218 + Math.cos(rad) * 76;
-          const y = 150 + Math.sin(rad) * 76;
-          return `<line class="cad-step" x1="218" y1="150" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" />`;
+          const x = 250 + Math.cos(rad) * 76;
+          const y = 180 + Math.sin(rad) * 76;
+          return `<line class="cad-step" x1="250" y1="180" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" />`;
         }).join('')}
-        <path class="cad-walkline" d="M184 190C156 156 172 100 222 92C274 85 302 142 273 181" />
-        <path class="cad-arrow" d="M273 181l-2-15M273 181l-14-5" />
+        <text class="cad-small-label" x="170" y="270">Départ</text>
+        <text class="cad-small-label" x="310" y="98">Arrivée</text>
+        <path class="cad-walkline" d="M216 220C188 186 204 130 254 122C306 115 334 172 305 211" />
+        <path class="cad-arrow" d="M305 211l-2-15M305 211l-14-5" />
       `,
       other: `
-        <rect class="cad-opening" x="76" y="78" width="292" height="132" />
-        <path class="cad-main" d="M114 112H316V176H114Z" stroke-dasharray="9 7" />
-        <line class="cad-step" x1="114" y1="134" x2="316" y2="134" />
-        <line class="cad-step" x1="114" y1="154" x2="316" y2="154" />
-        <path class="cad-walkline" d="M124 144H304" />
-        <path class="cad-arrow" d="M304 144l-13-8M304 144l-13 8" />
+        <rect class="cad-opening" x="90" y="118" width="300" height="132" />
+        <path class="cad-main" d="M128 154H352V214H128Z" stroke-dasharray="9 7" />
+        <line class="cad-step" x1="128" y1="176" x2="352" y2="176" />
+        <line class="cad-step" x1="128" y1="196" x2="352" y2="196" />
+        <text class="cad-small-label" x="132" y="270">Départ</text>
+        <text class="cad-small-label" x="308" y="148">Arrivée</text>
+        <path class="cad-walkline" d="M140 184H338" />
+        <path class="cad-arrow" d="M338 184l-13-8M338 184l-13 8" />
       `,
     };
     return planByType[type] || planByType.straight;
@@ -468,37 +486,37 @@
 
   function renderPlanDimensions(type) {
     const common = [
-      renderCadDimension('openingLength', 74, 52, 370, 52, 222, 42),
-      renderCadDimension('openingWidth', 404, 78, 404, 204, 438, 142),
-      renderCadDimension('stairWidth', 108, 234, 336, 234, 222, 224),
+      renderCadDimension('openingLength', 90, 68, 392, 68, 241, 54),
+      renderCadDimension('openingWidth', 430, 98, 430, 268, 474, 183),
+      renderCadDimension('stairWidth', 128, 316, 352, 316, 240, 302),
     ];
     if (type === 'straight' || type === 'other') {
       return [
         ...common,
-        renderCadDimension('totalRun', 108, 206, 336, 206, 222, 196),
+        renderCadDimension('totalRun', 128, 284, 352, 284, 240, 270),
       ].join('');
     }
     if (type === 'helical') {
       return [
-        renderCadDimension('diameter', 100, 36, 336, 36, 218, 26),
-        renderCadDimension('openingLength', 100, 266, 336, 266, 218, 256),
-        renderCadDimension('openingWidth', 370, 32, 370, 268, 404, 150),
-        renderCadNote('rotationDirection', 290, 72),
+        renderCadDimension('diameter', 132, 46, 368, 46, 250, 32),
+        renderCadDimension('openingLength', 132, 322, 368, 322, 250, 308),
+        renderCadDimension('openingWidth', 410, 62, 410, 298, 456, 180),
+        renderCadNote('rotationDirection', 334, 118),
       ].join('');
     }
     if (type === 'landing_two_flights') {
       return [
         ...common,
-        renderCadDimension('lowerRun', 104, 242, 192, 242, 148, 232),
-        renderCadDimension('landingLength', 192, 56, 270, 56, 231, 46),
-        renderCadDimension('upperRun', 270, 216, 328, 216, 299, 206),
+        renderCadDimension('lowerRun', 122, 304, 212, 304, 167, 290),
+        renderCadDimension('landingLength', 212, 70, 292, 70, 252, 56),
+        renderCadDimension('upperRun', 292, 284, 352, 284, 322, 270),
       ].join('');
     }
     return [
       ...common,
-      renderCadDimension('lowerRun', 106, 242, 224, 242, 165, 232),
-      renderCadDimension('upperRun', 286, 84, 286, 208, 326, 146),
-      renderCadNote('turnSide', 246, 132),
+      renderCadDimension('lowerRun', 126, 304, 244, 304, 185, 290),
+      renderCadDimension('upperRun', 336, 106, 336, 250, 382, 178),
+      renderCadNote('turnSide', 268, 168),
     ].join('');
   }
 
@@ -507,16 +525,31 @@
     const runKey = (type === 'straight' || type === 'other') ? 'totalRun' : (type === 'helical' ? 'diameter' : 'lowerRun');
     return `
       <g class="cad-elevation">
-        <text class="cad-view-title" x="486" y="54">Vue de cote</text>
-        <path class="cad-floor" d="M486 252H674" />
-        <path class="cad-floor" d="M594 116H690" />
-        <path class="cad-main" d="M500 252H528V232H556V212H584V192H612V172H640V152H668V116" />
-        <path class="cad-walkline" d="M500 252L668 116" />
-        ${renderCadDimension('totalHeight', 704, 116, 704, 252, 680, 184)}
-        ${renderCadDimension(runKey, 500, 286, 668, 286, 584, 276)}
-        ${renderCadDimension('headroom', 626, 116, 626, 192, 586, 152)}
+        <path class="cad-floor" d="M92 262H402" />
+        <path class="cad-floor" d="M264 92H430" />
+        <path class="cad-dalle" d="M264 92H430V118H282" />
+        <path class="cad-main" d="M112 262H152V238H192V214H232V190H272V166H312V142H352V118H392V92" />
+        <path class="cad-walkline" d="M112 262L392 92" />
+        <text class="cad-small-label" x="100" y="286">Sol bas</text>
+        <text class="cad-small-label" x="354" y="86">Sol haut</text>
+        ${renderCadDimension('totalHeight', 468, 92, 468, 262, 438, 177)}
+        ${renderCadDimension(runKey, 112, 318, 392, 318, 252, 304)}
+        ${renderCadDimension('headroom', 306, 92, 306, 190, 266, 141)}
       </g>
     `;
+  }
+
+  function renderMeasurementLegend(type) {
+    const config = measurementConfig();
+    const keys = [...(config.required || []), ...(config.optional || [])].filter((key) => key !== 'notes');
+    const visibleKeys = type === 'helical'
+      ? keys.filter((key) => ['diameter', 'openingLength', 'openingWidth', 'totalHeight', 'headroom', 'rotationDirection'].includes(key))
+      : keys.filter((key) => key !== 'turnSide' || type !== 'straight');
+    return visibleKeys.map((key) => `
+      <button type="button" class="measure-legend-item ${measurementStateClass(key)}" data-measure-key="${escapeHtml(key)}">
+        ${escapeHtml(measurementLegendLabel(key))}
+      </button>
+    `).join('');
   }
 
   function renderMeasurementsV2Schema() {
@@ -524,21 +557,39 @@
     const config = measurementConfig();
     const type = measurementsV2State ? measurementsV2State.stairType : 'straight';
     measurementsV2Schema.innerHTML = `
-      <svg class="measurements-v2-svg" viewBox="0 0 740 330" role="img" aria-label="Schema cote ${escapeHtml(config.label)}">
-        <defs>
-          <marker id="measureArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M0 0L10 5L0 10Z" />
-          </marker>
-        </defs>
-        <rect class="cad-sheet" x="10" y="10" width="720" height="310" rx="12" />
-        <text class="cad-view-title" x="32" y="54">Vue en plan · ${escapeHtml(config.label)}</text>
-        <g class="cad-plan">
-          ${renderPlanGeometry(type)}
-          ${renderPlanDimensions(type)}
-        </g>
-        ${renderSideElevation()}
-        <text class="cad-caption" x="32" y="306">Touchez une cote pour saisir la mesure correspondante.</text>
-      </svg>
+      <div class="measure-schema-grid">
+        <figure class="measure-view">
+          <figcaption>Vue en plan · ${escapeHtml(config.label)}</figcaption>
+          <svg class="measurements-v2-svg" viewBox="0 0 520 360" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Vue en plan cotee ${escapeHtml(config.label)}">
+            <defs>
+              <marker id="measureArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 0L10 5L0 10Z" />
+              </marker>
+            </defs>
+            <rect class="cad-sheet" x="10" y="10" width="500" height="340" rx="4" />
+            <g class="cad-plan">
+              ${renderPlanGeometry(type)}
+              ${renderPlanDimensions(type)}
+            </g>
+          </svg>
+        </figure>
+        <figure class="measure-view">
+          <figcaption>Vue de côté</figcaption>
+          <svg class="measurements-v2-svg" viewBox="0 0 520 360" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Vue de cote cotee ${escapeHtml(config.label)}">
+            <defs>
+              <marker id="measureArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0 0L10 5L0 10Z" />
+              </marker>
+            </defs>
+            <rect class="cad-sheet" x="10" y="10" width="500" height="340" rx="4" />
+            ${renderSideElevation()}
+          </svg>
+        </figure>
+      </div>
+      <div class="measure-legend" aria-label="Legende des reperes de mesure">
+        ${renderMeasurementLegend(type)}
+      </div>
+      <p class="measure-schema-help">Touchez une cote ou un repère pour saisir la mesure correspondante.</p>
     `;
   }
 
@@ -593,7 +644,7 @@
       const groupKeys = keys.filter((key) => (MEASURE_FIELD_DEFS[key]?.group || 'general') === groupKey);
       if (!groupKeys.length) return '';
       return `
-        <section class="measure-group">
+        <section class="measure-group measure-group-${escapeHtml(groupKey)}">
           <h5>${escapeHtml(groupLabel)}</h5>
           ${groupKeys.map((key) => renderMeasureInput(key, required.includes(key))).join('')}
         </section>
@@ -604,14 +655,47 @@
   function renderMeasurementsV2Checks() {
     if (!measurementsV2Checks || !measurementsV2Progress) return;
     const state = analyzeMeasurementsV2();
+    const config = measurementConfig();
+    const missingKeys = (config.required || []).filter((key) => !measureValue(key));
+    const fieldWarnings = new Set([
+      ...missingKeys,
+      ...Object.keys(MEASURE_FIELD_DEFS).filter((key) => {
+        const def = MEASURE_FIELD_DEFS[key];
+        return def && def.kind === 'number' && measureValue(key) && (!measureNumber(key) || measureNumber(key) <= 0);
+      }),
+    ]);
+    if (measureNumber('stairWidth') && measureNumber('openingWidth') && measureNumber('openingWidth') < measureNumber('stairWidth')) {
+      fieldWarnings.add('openingWidth');
+      fieldWarnings.add('stairWidth');
+    }
+    if (measureNumber('headroom') && measureNumber('headroom') < 1900) fieldWarnings.add('headroom');
     measurementsV2Progress.textContent = `${state.requiredCompleted} / ${state.requiredTotal}`;
     if (!state.warnings.length) {
-      measurementsV2Checks.innerHTML = '<div class="measure-check is-ok">Mesures obligatoires completes. Controle visuel a faire avant validation.</div>';
+      measurementsV2Checks.innerHTML = `
+        <div class="measure-check-summary is-ok">
+          <strong>Toutes les mesures obligatoires sont renseignées.</strong>
+          <span>Contrôle visuel à faire avant validation chantier.</span>
+        </div>
+      `;
       return;
     }
-    measurementsV2Checks.innerHTML = state.warnings.map((warning) => `
-      <div class="measure-check is-warning">${escapeHtml(warning)}</div>
-    `).join('');
+    const missingText = `${missingKeys.length} mesure${missingKeys.length > 1 ? 's' : ''} obligatoire${missingKeys.length > 1 ? 's' : ''} manquante${missingKeys.length > 1 ? 's' : ''}`;
+    const rows = Array.from(fieldWarnings).map((key) => {
+      const def = MEASURE_FIELD_DEFS[key] || {};
+      return `
+        <button type="button" class="measure-check-row ${measurementStateClass(key)}" data-measure-key="${escapeHtml(key)}">
+          <strong>${escapeHtml(def.ref || key)}</strong>
+          <span>${escapeHtml(def.label || key)}</span>
+        </button>
+      `;
+    }).join('');
+    measurementsV2Checks.innerHTML = `
+      <div class="measure-check-summary is-warning">
+        <strong>Mesures à compléter</strong>
+        <span>${escapeHtml(missingText)}</span>
+        <div class="measure-check-list">${rows}</div>
+      </div>
+    `;
   }
 
   function renderMeasurementsV2() {
@@ -2497,6 +2581,22 @@
     });
 
     measurementsV2Schema.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const target = event.target && event.target.closest ? event.target.closest('[data-measure-key]') : null;
+      if (!target) return;
+      event.preventDefault();
+      selectMeasurementKey(target.getAttribute('data-measure-key'), { focus: true, scroll: true });
+    });
+  }
+
+  if (measurementsV2Checks) {
+    measurementsV2Checks.addEventListener('click', (event) => {
+      const target = event.target && event.target.closest ? event.target.closest('[data-measure-key]') : null;
+      if (!target) return;
+      selectMeasurementKey(target.getAttribute('data-measure-key'), { focus: true, scroll: true });
+    });
+
+    measurementsV2Checks.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
       const target = event.target && event.target.closest ? event.target.closest('[data-measure-key]') : null;
       if (!target) return;

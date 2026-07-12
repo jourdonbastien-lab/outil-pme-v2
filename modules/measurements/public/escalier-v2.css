@@ -267,10 +267,13 @@ select {
 }
 
 .measurements-v2-schema {
-  overflow: hidden;
+  display: grid;
+  gap: 10px;
+  overflow: visible;
   border-radius: 10px;
   background: #ffffff;
   border: 1px solid var(--line);
+  padding: 8px;
 }
 
 .measurements-v2-schema svg {
@@ -284,10 +287,74 @@ select {
   max-height: none;
 }
 
+.measure-schema-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.measure-view {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+
+.measure-view figcaption {
+  color: #111827;
+  font-size: 0.86rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+
+.measure-view + .measure-view {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 10px;
+}
+
+.measure-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 2px;
+  border-top: 1px solid #eef2f7;
+}
+
+.measure-legend-item {
+  width: auto;
+  min-height: 32px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  padding: 5px 9px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.measure-legend-item.is-active {
+  border-color: #f97316;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.measure-legend-item.is-complete {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.measure-schema-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .cad-sheet {
   fill: #ffffff;
-  stroke: #d1d5db;
-  stroke-width: 1.5;
+  stroke: #e5e7eb;
+  stroke-width: 1;
 }
 
 .cad-view-title {
@@ -306,9 +373,15 @@ select {
 .cad-floor {
   fill: none;
   stroke: #111827;
-  stroke-width: 3;
+  stroke-width: 2.4;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.cad-dalle {
+  fill: #f8fafc;
+  stroke: #475569;
+  stroke-width: 1.8;
 }
 
 .cad-opening {
@@ -320,7 +393,7 @@ select {
 
 .cad-step {
   stroke: #64748b;
-  stroke-width: 1.7;
+  stroke-width: 1.45;
   stroke-linecap: round;
 }
 
@@ -336,6 +409,12 @@ select {
   stroke: #475569;
   stroke-width: 2;
   stroke-linecap: round;
+}
+
+.cad-small-label {
+  fill: #475569;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .measure-dimension,
@@ -366,13 +445,12 @@ select {
 }
 
 .measure-label-bg {
-  fill: #ffffff;
-  stroke: #e5e7eb;
+  display: none;
 }
 
 .measure-label {
   fill: #374151;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 800;
   text-anchor: middle;
   dominant-baseline: middle;
@@ -386,7 +464,7 @@ select {
 
 .measure-note-text {
   fill: #374151;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 900;
   text-anchor: middle;
 }
@@ -408,7 +486,7 @@ select {
 
 .measure-dimension.is-complete .measure-label-bg,
 .measure-note.is-complete .measure-note-dot {
-  fill: #f0fdf4;
+  fill: #ffffff;
 }
 
 .measure-dimension.is-active .measure-line,
@@ -450,16 +528,17 @@ select {
 
 .measure-field {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 8px;
+  padding: 7px;
   background: #ffffff;
 }
 
 .measure-field.is-active {
   border-color: #f97316;
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14);
+  background: #fffaf5;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.12);
 }
 
 .measure-field.is-complete {
@@ -467,7 +546,7 @@ select {
 }
 
 .measure-field.is-missing {
-  border-color: #fed7aa;
+  border-color: #f3e1cf;
 }
 
 .measure-field label {
@@ -475,7 +554,7 @@ select {
   align-items: center;
   gap: 8px;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   font-weight: 800;
 }
 
@@ -484,7 +563,7 @@ select {
   align-items: center;
   justify-content: center;
   min-width: 30px;
-  height: 26px;
+  height: 24px;
   border-radius: 8px;
   background: #fff7ed;
   color: var(--accent);
@@ -507,7 +586,7 @@ select {
 .measure-field p {
   margin: 0;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   line-height: 1.35;
 }
 
@@ -517,14 +596,14 @@ select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 10px;
+  padding: 9px 10px;
   font-size: 16px;
   color: var(--text);
   background: #ffffff;
 }
 
 .measure-field textarea {
-  min-height: 74px;
+  min-height: 64px;
   resize: vertical;
 }
 
@@ -533,26 +612,81 @@ select {
   gap: 8px;
 }
 
-.measure-check {
+.measure-check-summary {
+  display: grid;
+  gap: 8px;
   border-radius: 10px;
-  padding: 9px 10px;
+  padding: 10px;
   background: #ffffff;
   border: 1px solid var(--line);
   color: var(--muted);
   font-size: 0.86rem;
 }
 
-.measure-check.is-ok {
+.measure-check-summary strong {
+  color: #111827;
+}
+
+.measure-check-summary > span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.measure-check-summary.is-ok {
   border-color: #bbf7d0;
   background: #f0fdf4;
   color: #166534;
   font-weight: 800;
 }
 
-.measure-check.is-warning {
+.measure-check-summary.is-ok strong,
+.measure-check-summary.is-ok span {
+  color: #166534;
+}
+
+.measure-check-summary.is-warning {
   border-color: #fed7aa;
   background: #fff7ed;
   color: #9a3412;
+}
+
+.measure-check-list {
+  display: grid;
+  gap: 5px;
+}
+
+.measure-check-row {
+  width: 100%;
+  min-height: 36px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(234, 88, 12, 0.2);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #9a3412;
+  padding: 5px 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.measure-check-row strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--accent);
+  font-size: 0.74rem;
+}
+
+.measure-check-row span {
+  min-width: 0;
+  color: #7c2d12;
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .photo-total-count {
@@ -1383,6 +1517,31 @@ body.sketch-open {
 
   .measurements-v2-card:nth-child(3) {
     grid-area: checks;
+  }
+
+  .measure-schema-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .measure-view + .measure-view {
+    border-top: 0;
+    border-left: 1px solid #e5e7eb;
+    padding-top: 0;
+    padding-left: 10px;
+  }
+
+  .measurements-v2-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .measure-group {
+    align-content: start;
+  }
+
+  .measure-group-notes {
+    grid-column: 1 / -1;
   }
 
   .photo-grid {
