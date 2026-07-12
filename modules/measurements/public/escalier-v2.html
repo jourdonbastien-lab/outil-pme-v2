@@ -156,6 +156,7 @@
         <button type="button" class="sketch-icon-btn" data-sketch-tool="text" aria-label="Texte" title="Texte" aria-pressed="false">T</button>
         <button type="button" class="sketch-icon-btn" data-sketch-tool="marker" aria-label="Repère numéroté" title="Repère numéroté" aria-pressed="false">1</button>
         <button type="button" class="sketch-icon-btn" data-sketch-tool="dimension" aria-label="Cotation simple" title="Cotation simple" aria-pressed="false">⇔</button>
+        <button type="button" id="openSketchSymbolBtn" class="sketch-icon-btn" aria-label="Bibliothèque de symboles" title="Bibliothèque de symboles">⌘</button>
         <button type="button" id="useSketchPhotoBtn" class="sketch-icon-btn" aria-label="Choisir une photo de fond" title="Choisir une photo de fond">▧</button>
         <button type="button" id="removeSketchPhotoBtn" class="sketch-icon-btn" aria-label="Retirer la photo de fond" title="Retirer la photo de fond">▨</button>
         <div class="sketch-toolbar-card">
@@ -181,6 +182,11 @@
       </div>
       <span id="sketchStatus" class="sketch-status">Prêt</span>
       <span id="sketchBgLabel" class="sketch-bg-label">Fond: aucun</span>
+      <div id="sketchSymbolControls" class="sketch-symbol-controls" hidden aria-hidden="true">
+        <button type="button" id="sketchSymbolSmallerBtn" aria-label="Réduire le symbole" title="Réduire le symbole">−</button>
+        <button type="button" id="sketchSymbolLargerBtn" aria-label="Agrandir le symbole" title="Agrandir le symbole">+</button>
+        <button type="button" id="sketchSymbolDeleteBtn" aria-label="Supprimer le symbole" title="Supprimer le symbole">Suppr.</button>
+      </div>
       <div id="sketchPhotoPickerBackdrop" class="sketch-photo-picker-backdrop" hidden aria-hidden="true"></div>
       <div id="sketchPhotoPicker" class="sketch-photo-picker" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sketchPhotoPickerTitle">
         <div class="sketch-photo-picker-head">
@@ -188,6 +194,14 @@
           <button type="button" id="closeSketchPhotoPickerBtn">Fermer</button>
         </div>
         <div id="sketchPhotoPickerList" class="sketch-photo-picker-list"></div>
+      </div>
+      <div id="sketchSymbolPickerBackdrop" class="sketch-symbol-picker-backdrop" hidden aria-hidden="true"></div>
+      <div id="sketchSymbolPicker" class="sketch-symbol-picker" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sketchSymbolPickerTitle">
+        <div class="sketch-symbol-picker-head">
+          <strong id="sketchSymbolPickerTitle">Bibliothèque de symboles</strong>
+          <button type="button" id="closeSketchSymbolPickerBtn">Fermer</button>
+        </div>
+        <div id="sketchSymbolPickerList" class="sketch-symbol-picker-list"></div>
       </div>
       <div class="sketch-canvas-wrap">
         <canvas id="sketchCanvas" aria-label="Zone de croquis Escalier V2"></canvas>

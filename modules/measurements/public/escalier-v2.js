@@ -52,13 +52,44 @@
   const sketchPhotoPickerList = document.getElementById('sketchPhotoPickerList');
   const closeSketchPhotoPickerBtn = document.getElementById('closeSketchPhotoPickerBtn');
   const sketchToolButtons = Array.from(document.querySelectorAll('[data-sketch-tool]'));
+  const openSketchSymbolBtn = document.getElementById('openSketchSymbolBtn');
+  const sketchSymbolPicker = document.getElementById('sketchSymbolPicker');
+  const sketchSymbolPickerBackdrop = document.getElementById('sketchSymbolPickerBackdrop');
+  const sketchSymbolPickerList = document.getElementById('sketchSymbolPickerList');
+  const closeSketchSymbolPickerBtn = document.getElementById('closeSketchSymbolPickerBtn');
+  const sketchSymbolControls = document.getElementById('sketchSymbolControls');
+  const sketchSymbolSmallerBtn = document.getElementById('sketchSymbolSmallerBtn');
+  const sketchSymbolLargerBtn = document.getElementById('sketchSymbolLargerBtn');
+  const sketchSymbolDeleteBtn = document.getElementById('sketchSymbolDeleteBtn');
   const sketchTextDialog = document.getElementById('sketchTextDialog');
   const sketchTextDialogTitle = document.getElementById('sketchTextDialogTitle');
   const sketchTextInput = document.getElementById('sketchTextInput');
   const sketchTextCancelBtn = document.getElementById('sketchTextCancelBtn');
   const sketchTextConfirmBtn = document.getElementById('sketchTextConfirmBtn');
 
-  const ANNOTATION_TOOLS = new Set(['line', 'arrow', 'rect', 'ellipse', 'text', 'marker', 'dimension']);
+  const ANNOTATION_TOOLS = new Set(['line', 'arrow', 'rect', 'ellipse', 'text', 'marker', 'dimension', 'symbol']);
+  const SYMBOL_LIBRARY = [
+    { key: 'prise_electrique', label: 'Prise électrique', icon: 'P' },
+    { key: 'interrupteur', label: 'Interrupteur', icon: 'I' },
+    { key: 'radiateur', label: 'Radiateur', icon: 'R' },
+    { key: 'poutre', label: 'Poutre', icon: '━' },
+    { key: 'ipn', label: 'IPN', icon: 'H' },
+    { key: 'poteau', label: 'Poteau', icon: '●' },
+    { key: 'fenetre', label: 'Fenêtre', icon: '▦' },
+    { key: 'porte', label: 'Porte', icon: '⌜' },
+    { key: 'mur_beton', label: 'Mur béton', icon: '▤' },
+    { key: 'mur_pierre', label: 'Mur pierre', icon: '▥' },
+    { key: 'cloison', label: 'Cloison', icon: '│' },
+    { key: 'niveau', label: 'Niveau', icon: '⌁' },
+    { key: 'sens_montee', label: 'Sens de montée', icon: '↗' },
+    { key: 'depart', label: 'Départ', icon: 'D' },
+    { key: 'arrivee', label: 'Arrivée', icon: 'A' },
+    { key: 'obstacle', label: 'Obstacle', icon: '!' },
+    { key: 'gaine_technique', label: 'Gaine technique', icon: 'G' },
+    { key: 'tremie', label: 'Trémie', icon: '□' },
+    { key: 'dalle', label: 'Dalle', icon: '▭' },
+    { key: 'point_fixation', label: 'Point de fixation', icon: '⊕' },
+  ];
 
   const params = new URLSearchParams(window.location.search);
   const initialOrderId = normalizeId(params.get('client_order_id'));
@@ -87,6 +118,8 @@
   let sketchDraftAnnotation = null;
   let sketchMarkerCounter = 0;
   let sketchTextRequest = null;
+  let sketchSelectedAnnotationIndex = -1;
+  let sketchMoveState = null;
 
   function normalizeId(value) {
     const num = Number(value || 0);
@@ -247,6 +280,22 @@
         number: Math.max(1, Number(annotation.number || 1)),
       };
     }
+    if (type === 'symbol') {
+      const symbol = String(annotation.symbol || '').trim();
+      const found = SYMBOL_LIBRARY.find((item) => item.key === symbol);
+      return {
+        type,
+        color: base.color,
+        strokeWidth: Math.max(1, Number(annotation.strokeWidth || annotation.lineWidth || 2)),
+        symbol: found ? found.key : 'obstacle',
+        x: normalizeUnit(annotation.x),
+        y: normalizeUnit(annotation.y),
+        width: normalizeUnit(annotation.width || 0.12) || 0.12,
+        height: normalizeUnit(annotation.height || 0.08) || 0.08,
+        rotation: Number.isFinite(Number(annotation.rotation)) ? Number(annotation.rotation) : 0,
+        label: String(annotation.label || (found ? found.label : 'Symbole')).slice(0, 80),
+      };
+    }
     return {
       ...base,
       x1: normalizeUnit(annotation.x1),
@@ -293,7 +342,166 @@
     ctx.restore();
   }
 
-  function drawSketchAnnotation(ctx, annotation) {
+  function drawSymbolShape(ctx, symbol, width, height) {
+    const w = width;
+    const h = height;
+    const hw = w / 2;
+    const hh = h / 2;
+    const drawZigzag = () => {
+      ctx.beginPath();
+      for (let i = 0; i <= 6; i += 1) {
+        const x = -hw + (w / 6) * i;
+        const y = i % 2 ? -hh * 0.25 : hh * 0.25;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    };
+
+    if (symbol === 'prise_electrique') {
+      ctx.strokeRect(-hw * 0.75, -hh * 0.75, w * 0.75, h * 0.75);
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.min(w, h) * 0.16, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
+    if (symbol === 'interrupteur') {
+      ctx.strokeRect(-hw * 0.65, -hh * 0.65, w * 0.65, h * 0.65);
+      ctx.beginPath();
+      ctx.moveTo(-hw * 0.25, hh * 0.2);
+      ctx.lineTo(hw * 0.28, -hh * 0.28);
+      ctx.stroke();
+      return;
+    }
+    if (symbol === 'radiateur') {
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.strokeRect((i * w) / 7 - w / 18, -hh * 0.65, w / 9, h * 0.85);
+      }
+      return;
+    }
+    if (symbol === 'poutre' || symbol === 'ipn') {
+      ctx.beginPath();
+      ctx.moveTo(-hw, -hh * 0.55);
+      ctx.lineTo(hw, -hh * 0.55);
+      ctx.moveTo(-hw, hh * 0.55);
+      ctx.lineTo(hw, hh * 0.55);
+      ctx.moveTo(0, -hh * 0.55);
+      ctx.lineTo(0, hh * 0.55);
+      ctx.stroke();
+      return;
+    }
+    if (symbol === 'poteau' || symbol === 'point_fixation') {
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.min(w, h) * 0.28, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-hw * 0.35, 0);
+      ctx.lineTo(hw * 0.35, 0);
+      ctx.moveTo(0, -hh * 0.35);
+      ctx.lineTo(0, hh * 0.35);
+      ctx.stroke();
+      return;
+    }
+    if (symbol === 'fenetre') {
+      ctx.strokeRect(-hw * 0.75, -hh * 0.6, w * 0.75, h * 0.6);
+      ctx.beginPath();
+      ctx.moveTo(0, -hh * 0.6);
+      ctx.lineTo(0, hh * 0.6);
+      ctx.moveTo(-hw * 0.75, 0);
+      ctx.lineTo(hw * 0.75, 0);
+      ctx.stroke();
+      return;
+    }
+    if (symbol === 'porte') {
+      ctx.beginPath();
+      ctx.moveTo(-hw * 0.55, hh * 0.65);
+      ctx.lineTo(-hw * 0.55, -hh * 0.65);
+      ctx.lineTo(hw * 0.2, -hh * 0.65);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(-hw * 0.55, hh * 0.65, w * 0.75, -Math.PI / 2, 0);
+      ctx.stroke();
+      return;
+    }
+    if (symbol === 'mur_beton' || symbol === 'dalle') {
+      ctx.strokeRect(-hw, -hh * 0.35, w, h * 0.7);
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo((i * w) / 5, -hh * 0.35);
+        ctx.lineTo((i * w) / 5 - w * 0.18, hh * 0.35);
+        ctx.stroke();
+      }
+      return;
+    }
+    if (symbol === 'mur_pierre') {
+      ctx.strokeRect(-hw, -hh * 0.38, w, h * 0.76);
+      for (let i = -2; i <= 2; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(-hw, (i * h) / 8);
+        ctx.lineTo(hw, (i * h) / 8);
+        ctx.stroke();
+      }
+      return;
+    }
+    if (symbol === 'cloison') {
+      ctx.setLineDash([6, 5]);
+      ctx.beginPath();
+      ctx.moveTo(0, -hh);
+      ctx.lineTo(0, hh);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
+    if (symbol === 'niveau') {
+      ctx.strokeRect(-hw * 0.8, -hh * 0.18, w * 0.8, h * 0.36);
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.min(w, h) * 0.12, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
+    if (symbol === 'sens_montee') {
+      ctx.beginPath();
+      ctx.moveTo(-hw * 0.75, hh * 0.5);
+      ctx.lineTo(hw * 0.65, -hh * 0.45);
+      ctx.stroke();
+      drawArrowHead(ctx, { x: -hw * 0.75, y: hh * 0.5 }, { x: hw * 0.65, y: -hh * 0.45 }, ctx.strokeStyle, ctx.lineWidth);
+      return;
+    }
+    if (symbol === 'depart' || symbol === 'arrivee') {
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.min(w, h) * 0.35, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = `700 ${Math.max(14, Math.min(w, h) * 0.35)}px Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(symbol === 'depart' ? 'D' : 'A', 0, 1);
+      return;
+    }
+    if (symbol === 'obstacle') {
+      ctx.strokeRect(-hw * 0.65, -hh * 0.65, w * 0.65, h * 0.65);
+      ctx.beginPath();
+      ctx.moveTo(-hw * 0.55, -hh * 0.55);
+      ctx.lineTo(hw * 0.55, hh * 0.55);
+      ctx.moveTo(hw * 0.55, -hh * 0.55);
+      ctx.lineTo(-hw * 0.55, hh * 0.55);
+      ctx.stroke();
+      return;
+    }
+    if (symbol === 'gaine_technique') {
+      ctx.strokeRect(-hw * 0.55, -hh * 0.7, w * 0.55, h * 0.7);
+      drawZigzag();
+      return;
+    }
+    if (symbol === 'tremie') {
+      ctx.setLineDash([7, 5]);
+      ctx.strokeRect(-hw * 0.8, -hh * 0.6, w * 0.8, h * 0.6);
+      ctx.setLineDash([]);
+      return;
+    }
+    drawZigzag();
+  }
+
+  function drawSketchAnnotation(ctx, annotation, index) {
     const item = normalizeSketchAnnotation(annotation);
     if (!item) return;
     const color = item.color || '#111827';
@@ -326,6 +534,40 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(String(item.number || 1), p.x, p.y + 1);
+      ctx.restore();
+      return;
+    }
+
+    if (item.type === 'symbol') {
+      const p = sketchUnitToCanvasPoint(item.x, item.y);
+      const size = sketchCssSize();
+      const w = Math.max(24, item.width * size.cssWidth);
+      const h = Math.max(20, item.height * size.cssHeight);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate((Number(item.rotation || 0) * Math.PI) / 180);
+      ctx.lineWidth = Math.max(2, Number(item.strokeWidth || width || 2));
+      drawSymbolShape(ctx, item.symbol, w, h);
+      if (item.label) {
+        ctx.font = `700 ${Math.max(11, Math.min(16, h * 0.22))}px Arial, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(item.label, 0, h / 2 + 4);
+      }
+      ctx.restore();
+      if (index === sketchSelectedAnnotationIndex) {
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = '#f97316';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(p.x - w / 2 - 6, p.y - h / 2 - 6, w + 12, h + 12);
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath();
+        ctx.arc(p.x + w / 2 + 6, p.y + h / 2 + 6, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
       ctx.restore();
       return;
     }
@@ -399,7 +641,7 @@
 
     sketchCtx.drawImage(sketchInkCanvas, 0, 0, size.cssWidth, size.cssHeight);
     if (includeAnnotations) {
-      sketchAnnotations.forEach((annotation) => drawSketchAnnotation(sketchCtx, annotation));
+      sketchAnnotations.forEach((annotation, index) => drawSketchAnnotation(sketchCtx, annotation, index));
       if (sketchDraftAnnotation) drawSketchAnnotation(sketchCtx, sketchDraftAnnotation);
     }
   }
@@ -431,6 +673,46 @@
     if (sketchPhotoPickerBackdrop) {
       sketchPhotoPickerBackdrop.hidden = true;
       sketchPhotoPickerBackdrop.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function closeSketchSymbolPicker() {
+    if (!sketchSymbolPicker) return;
+    sketchSymbolPicker.hidden = true;
+    sketchSymbolPicker.setAttribute('aria-hidden', 'true');
+    if (sketchSymbolPickerBackdrop) {
+      sketchSymbolPickerBackdrop.hidden = true;
+      sketchSymbolPickerBackdrop.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function renderSketchSymbolPicker() {
+    if (!sketchSymbolPickerList) return;
+    sketchSymbolPickerList.innerHTML = SYMBOL_LIBRARY
+      .map((symbol) => `
+        <button type="button" class="sketch-symbol-choice" data-sketch-symbol="${escapeHtml(symbol.key)}">
+          <span>${escapeHtml(symbol.icon)}</span>
+          <span>${escapeHtml(symbol.label)}</span>
+        </button>
+      `)
+      .join('');
+    sketchSymbolPickerList.querySelectorAll('[data-sketch-symbol]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const key = String(button.getAttribute('data-sketch-symbol') || '').trim();
+        addSketchSymbol(key);
+        closeSketchSymbolPicker();
+      });
+    });
+  }
+
+  function openSketchSymbolPicker() {
+    if (!sketchSymbolPicker || !sketchSymbolPickerList) return;
+    renderSketchSymbolPicker();
+    sketchSymbolPicker.hidden = false;
+    sketchSymbolPicker.setAttribute('aria-hidden', 'false');
+    if (sketchSymbolPickerBackdrop) {
+      sketchSymbolPickerBackdrop.hidden = false;
+      sketchSymbolPickerBackdrop.setAttribute('aria-hidden', 'false');
     }
   }
 
@@ -593,6 +875,8 @@
       await sketchLoadDataUrl(state && state.ink ? state.ink : '');
     }
     sketchDraftAnnotation = null;
+    sketchMoveState = null;
+    setSelectedSketchAnnotation(-1);
     sketchRenderComposite();
     sketchLoadingState = false;
   }
@@ -729,10 +1013,119 @@
     closeSketchTextDialog();
   }
 
+  function setSelectedSketchAnnotation(index) {
+    sketchSelectedAnnotationIndex = Number.isInteger(index) ? index : -1;
+    if (sketchSymbolControls) {
+      const selected = sketchAnnotations[sketchSelectedAnnotationIndex];
+      const hasSymbol = Boolean(selected && selected.type === 'symbol');
+      sketchSymbolControls.hidden = !hasSymbol;
+      sketchSymbolControls.setAttribute('aria-hidden', hasSymbol ? 'false' : 'true');
+    }
+    sketchRenderComposite();
+  }
+
+  function symbolBounds(annotation) {
+    const item = normalizeSketchAnnotation(annotation);
+    if (!item || item.type !== 'symbol') return null;
+    const size = sketchCssSize();
+    const center = sketchUnitToCanvasPoint(item.x, item.y);
+    const width = Math.max(24, item.width * size.cssWidth);
+    const height = Math.max(20, item.height * size.cssHeight);
+    return {
+      center,
+      width,
+      height,
+      left: center.x - width / 2,
+      top: center.y - height / 2,
+      right: center.x + width / 2,
+      bottom: center.y + height / 2,
+    };
+  }
+
+  function findSketchSymbolAtPoint(point) {
+    for (let i = sketchAnnotations.length - 1; i >= 0; i -= 1) {
+      const bounds = symbolBounds(sketchAnnotations[i]);
+      if (!bounds) continue;
+      if (
+        point.x >= bounds.left - 10 &&
+        point.x <= bounds.right + 10 &&
+        point.y >= bounds.top - 10 &&
+        point.y <= bounds.bottom + 10
+      ) {
+        const onResize = point.x >= bounds.right - 8 && point.y >= bounds.bottom - 8;
+        return { index: i, bounds, mode: onResize ? 'resize' : 'move' };
+      }
+    }
+    return null;
+  }
+
+  function addSketchSymbol(symbolKey) {
+    const symbol = SYMBOL_LIBRARY.find((item) => item.key === symbolKey) || SYMBOL_LIBRARY.find((item) => item.key === 'obstacle');
+    if (!symbol) return;
+    const annotation = normalizeSketchAnnotation({
+      type: 'symbol',
+      symbol: symbol.key,
+      x: 0.5,
+      y: 0.5,
+      width: 0.12,
+      height: 0.08,
+      rotation: 0,
+      color: sketchColor,
+      strokeWidth: Math.max(1, sketchSize * 2),
+      label: symbol.label,
+    });
+    sketchAnnotations.push(annotation);
+    dirty = true;
+    setSelectedSketchAnnotation(sketchAnnotations.length - 1);
+    sketchPushHistory();
+    setSketchStatus(`${symbol.label} ajoute`);
+  }
+
+  function resizeSelectedSketchSymbol(factor) {
+    const annotation = sketchAnnotations[sketchSelectedAnnotationIndex];
+    if (!annotation || annotation.type !== 'symbol') return;
+    annotation.width = normalizeUnit(Math.max(0.035, Math.min(0.5, Number(annotation.width || 0.12) * factor)));
+    annotation.height = normalizeUnit(Math.max(0.03, Math.min(0.5, Number(annotation.height || 0.08) * factor)));
+    dirty = true;
+    sketchRenderComposite();
+    sketchPushHistory();
+  }
+
+  function deleteSelectedSketchSymbol() {
+    const annotation = sketchAnnotations[sketchSelectedAnnotationIndex];
+    if (!annotation || annotation.type !== 'symbol') return;
+    sketchAnnotations.splice(sketchSelectedAnnotationIndex, 1);
+    sketchSelectedAnnotationIndex = -1;
+    dirty = true;
+    setSelectedSketchAnnotation(-1);
+    sketchPushHistory();
+    setSketchStatus('Symbole supprime');
+  }
+
   function sketchStartDrawing(event) {
     if (!sketchInkCtx || !sketchCanvas) return;
     event.preventDefault();
-    const point = sketchCanvasPointToUnit(sketchCanvasPoint(event));
+    const canvasPoint = sketchCanvasPoint(event);
+    const point = sketchCanvasPointToUnit(canvasPoint);
+    const symbolHit = findSketchSymbolAtPoint(canvasPoint);
+
+    if (symbolHit) {
+      setSelectedSketchAnnotation(symbolHit.index);
+      const annotation = sketchAnnotations[symbolHit.index];
+      sketchMoveState = {
+        index: symbolHit.index,
+        mode: symbolHit.mode,
+        start: point,
+        original: cloneSketchAnnotations([annotation])[0],
+      };
+      sketchDrawing = true;
+      try {
+        sketchCanvas.setPointerCapture(event.pointerId);
+      } catch {}
+      return;
+    }
+
+    setSelectedSketchAnnotation(-1);
 
     if (sketchTool === 'text') {
       openSketchTextDialog({ type: 'text', point, title: 'Texte' });
@@ -773,7 +1166,22 @@
   function sketchDraw(event) {
     if (!sketchDrawing || !sketchInkCtx) return;
     event.preventDefault();
-    if (sketchDraftAnnotation && ANNOTATION_TOOLS.has(sketchTool)) {
+    if (sketchMoveState) {
+      const point = sketchCanvasPointToUnit(sketchCanvasPoint(event));
+      const annotation = sketchAnnotations[sketchMoveState.index];
+      if (annotation && annotation.type === 'symbol') {
+        const dx = point.x - sketchMoveState.start.x;
+        const dy = point.y - sketchMoveState.start.y;
+        if (sketchMoveState.mode === 'resize') {
+          annotation.width = normalizeUnit(Math.max(0.035, Math.min(0.5, Number(sketchMoveState.original.width || 0.12) + dx)));
+          annotation.height = normalizeUnit(Math.max(0.03, Math.min(0.5, Number(sketchMoveState.original.height || 0.08) + dy)));
+        } else {
+          annotation.x = normalizeUnit(Number(sketchMoveState.original.x || 0.5) + dx);
+          annotation.y = normalizeUnit(Number(sketchMoveState.original.y || 0.5) + dy);
+        }
+        dirty = true;
+      }
+    } else if (sketchDraftAnnotation && ANNOTATION_TOOLS.has(sketchTool)) {
       const point = sketchCanvasPointToUnit(sketchCanvasPoint(event));
       sketchDraftAnnotation = makeSketchAnnotationFromDrag(sketchTool, {
         x: sketchDraftAnnotation.x1,
@@ -790,6 +1198,15 @@
   function sketchStopDrawing(event) {
     if (!sketchDrawing || !sketchCanvas) return;
     sketchDrawing = false;
+    if (sketchMoveState) {
+      sketchMoveState = null;
+      try {
+        sketchCanvas.releasePointerCapture(event.pointerId);
+      } catch {}
+      sketchRenderComposite();
+      sketchPushHistory();
+      return;
+    }
     const draft = sketchDraftAnnotation ? normalizeSketchAnnotation(sketchDraftAnnotation) : null;
     sketchDraftAnnotation = null;
     try {
@@ -892,6 +1309,7 @@
     sketchModal.hidden = true;
     sketchModal.setAttribute('aria-hidden', 'true');
     closeSketchPhotoPicker();
+    closeSketchSymbolPicker();
     closeSketchTextDialog();
     sketchDraftAnnotation = null;
     document.body.classList.remove('sketch-open');
@@ -1309,6 +1727,7 @@
     sketchBackgroundUrl = '';
     sketchBackgroundImage = null;
     sketchDraftAnnotation = null;
+    setSelectedSketchAnnotation(-1);
     setSketchBackgroundUi();
     setSketchStatus(sketchUpdatedAt ? 'Croquis existant' : 'Pret');
     photoSlots = normalizePhotoSlots(item.photoSlots || item.fields?.photo_slots || []);
@@ -1352,6 +1771,7 @@
     sketchAnnotations = [];
     sketchDraftAnnotation = null;
     sketchMarkerCounter = 0;
+    setSelectedSketchAnnotation(-1);
     setSketchBackgroundUi();
     setSketchStatus('Pret');
     photoSlots = makeEmptyPhotoSlots();
@@ -1543,6 +1963,10 @@
     removeSketchPhotoBtn.addEventListener('click', removeSketchBackground);
   }
 
+  if (openSketchSymbolBtn) {
+    openSketchSymbolBtn.addEventListener('click', openSketchSymbolPicker);
+  }
+
   if (sketchToolbarToggle) {
     sketchToolbarToggle.addEventListener('click', () => {
       const collapsed = Boolean(sketchModalContent && sketchModalContent.classList.contains('sketch-tools-collapsed'));
@@ -1556,6 +1980,26 @@
 
   if (sketchPhotoPickerBackdrop) {
     sketchPhotoPickerBackdrop.addEventListener('click', closeSketchPhotoPicker);
+  }
+
+  if (closeSketchSymbolPickerBtn) {
+    closeSketchSymbolPickerBtn.addEventListener('click', closeSketchSymbolPicker);
+  }
+
+  if (sketchSymbolPickerBackdrop) {
+    sketchSymbolPickerBackdrop.addEventListener('click', closeSketchSymbolPicker);
+  }
+
+  if (sketchSymbolSmallerBtn) {
+    sketchSymbolSmallerBtn.addEventListener('click', () => resizeSelectedSketchSymbol(0.86));
+  }
+
+  if (sketchSymbolLargerBtn) {
+    sketchSymbolLargerBtn.addEventListener('click', () => resizeSelectedSketchSymbol(1.16));
+  }
+
+  if (sketchSymbolDeleteBtn) {
+    sketchSymbolDeleteBtn.addEventListener('click', deleteSelectedSketchSymbol);
   }
 
   if (sketchTextCancelBtn) {
@@ -1608,6 +2052,10 @@
       }
       if (sketchPhotoPicker && !sketchPhotoPicker.hidden) {
         closeSketchPhotoPicker();
+        return;
+      }
+      if (sketchSymbolPicker && !sketchSymbolPicker.hidden) {
+        closeSketchSymbolPicker();
         return;
       }
       closeSketchModal();

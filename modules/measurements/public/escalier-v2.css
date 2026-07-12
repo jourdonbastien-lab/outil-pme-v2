@@ -657,11 +657,13 @@ select {
   backdrop-filter: blur(2px);
 }
 
-.sketch-photo-picker-backdrop[hidden] {
+.sketch-photo-picker-backdrop[hidden],
+.sketch-symbol-picker-backdrop[hidden] {
   display: none !important;
 }
 
-.sketch-photo-picker {
+.sketch-photo-picker,
+.sketch-symbol-picker {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -679,22 +681,34 @@ select {
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
 }
 
-.sketch-photo-picker[hidden] {
+.sketch-photo-picker[hidden],
+.sketch-symbol-picker[hidden] {
   display: none !important;
 }
 
-.sketch-photo-picker-head {
+.sketch-symbol-picker-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(2px);
+}
+
+.sketch-photo-picker-head,
+.sketch-symbol-picker-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.sketch-photo-picker-head strong {
+.sketch-photo-picker-head strong,
+.sketch-symbol-picker-head strong {
   font-size: 0.84rem;
 }
 
-.sketch-photo-picker-list {
+.sketch-photo-picker-list,
+.sketch-symbol-picker-list {
   display: grid;
   gap: 8px;
   grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
@@ -702,7 +716,8 @@ select {
   -webkit-overflow-scrolling: touch;
 }
 
-.sketch-photo-choice {
+.sketch-photo-choice,
+.sketch-symbol-choice {
   display: grid;
   gap: 4px;
   border: 1px solid var(--line);
@@ -710,6 +725,54 @@ select {
   background: #ffffff;
   padding: 6px;
   text-align: left;
+}
+
+.sketch-symbol-choice {
+  min-height: 78px;
+  place-items: center;
+  text-align: center;
+  color: #111827;
+  font-weight: 800;
+}
+
+.sketch-symbol-choice span:first-child {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 30px;
+  color: #111827;
+  font-size: 1.2rem;
+}
+
+.sketch-symbol-choice span:last-child {
+  font-size: 0.72rem;
+  color: #374151;
+}
+
+.sketch-symbol-controls {
+  position: absolute;
+  right: calc(env(safe-area-inset-right) + 10px);
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(12px);
+}
+
+.sketch-symbol-controls[hidden] {
+  display: none !important;
+}
+
+.sketch-symbol-controls button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
 }
 
 .sketch-photo-choice img {
