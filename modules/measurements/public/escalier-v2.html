@@ -149,6 +149,13 @@
       <div class="sketch-toolbar-left" id="sketchToolbarLeft">
         <button type="button" id="toolPenBtn" class="is-active sketch-icon-btn" aria-label="Stylo" title="Stylo" aria-pressed="true">✎</button>
         <button type="button" id="toolEraserBtn" class="sketch-icon-btn" aria-label="Gomme" title="Gomme" aria-pressed="false">⌫</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="line" aria-label="Ligne droite" title="Ligne droite" aria-pressed="false">╱</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="arrow" aria-label="Flèche" title="Flèche" aria-pressed="false">➜</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="rect" aria-label="Rectangle" title="Rectangle" aria-pressed="false">□</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="ellipse" aria-label="Cercle ou ellipse" title="Cercle ou ellipse" aria-pressed="false">○</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="text" aria-label="Texte" title="Texte" aria-pressed="false">T</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="marker" aria-label="Repère numéroté" title="Repère numéroté" aria-pressed="false">1</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="dimension" aria-label="Cotation simple" title="Cotation simple" aria-pressed="false">⇔</button>
         <button type="button" id="useSketchPhotoBtn" class="sketch-icon-btn" aria-label="Choisir une photo de fond" title="Choisir une photo de fond">▧</button>
         <button type="button" id="removeSketchPhotoBtn" class="sketch-icon-btn" aria-label="Retirer la photo de fond" title="Retirer la photo de fond">▨</button>
         <div class="sketch-toolbar-card">
@@ -184,6 +191,16 @@
       </div>
       <div class="sketch-canvas-wrap">
         <canvas id="sketchCanvas" aria-label="Zone de croquis Escalier V2"></canvas>
+      </div>
+      <div id="sketchTextDialog" class="sketch-text-dialog" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sketchTextDialogTitle">
+        <div class="sketch-text-dialog-card">
+          <strong id="sketchTextDialogTitle">Annotation</strong>
+          <textarea id="sketchTextInput" rows="3" placeholder="Saisir le texte"></textarea>
+          <div class="sketch-text-dialog-actions">
+            <button type="button" id="sketchTextCancelBtn">Annuler</button>
+            <button type="button" id="sketchTextConfirmBtn">Valider</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

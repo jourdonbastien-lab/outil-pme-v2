@@ -51,6 +51,14 @@
   const sketchPhotoPickerBackdrop = document.getElementById('sketchPhotoPickerBackdrop');
   const sketchPhotoPickerList = document.getElementById('sketchPhotoPickerList');
   const closeSketchPhotoPickerBtn = document.getElementById('closeSketchPhotoPickerBtn');
+  const sketchToolButtons = Array.from(document.querySelectorAll('[data-sketch-tool]'));
+  const sketchTextDialog = document.getElementById('sketchTextDialog');
+  const sketchTextDialogTitle = document.getElementById('sketchTextDialogTitle');
+  const sketchTextInput = document.getElementById('sketchTextInput');
+  const sketchTextCancelBtn = document.getElementById('sketchTextCancelBtn');
+  const sketchTextConfirmBtn = document.getElementById('sketchTextConfirmBtn');
+
+  const ANNOTATION_TOOLS = new Set(['line', 'arrow', 'rect', 'ellipse', 'text', 'marker', 'dimension']);
 
   const params = new URLSearchParams(window.location.search);
   const initialOrderId = normalizeId(params.get('client_order_id'));
@@ -75,6 +83,10 @@
   let sketchBackgroundPhotoId = '';
   let sketchBackgroundUrl = '';
   let sketchBackgroundImage = null;
+  let sketchAnnotations = [];
+  let sketchDraftAnnotation = null;
+  let sketchMarkerCounter = 0;
+  let sketchTextRequest = null;
 
   function normalizeId(value) {
     const num = Number(value || 0);
@@ -196,7 +208,180 @@
     };
   }
 
-  function sketchRenderComposite() {
+  function cloneSketchAnnotations(value) {
+    try {
+      return JSON.parse(JSON.stringify(Array.isArray(value) ? value : []));
+    } catch {
+      return [];
+    }
+  }
+
+  function normalizeUnit(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0;
+    return Math.min(1, Math.max(0, num));
+  }
+
+  function normalizeSketchAnnotation(annotation) {
+    if (!annotation || typeof annotation !== 'object') return null;
+    const type = String(annotation.type || '').trim();
+    if (!ANNOTATION_TOOLS.has(type)) return null;
+    const base = {
+      type,
+      color: String(annotation.color || '#111827'),
+      width: Math.max(1, Number(annotation.width || 2)),
+    };
+    if (type === 'text') {
+      return {
+        ...base,
+        x: normalizeUnit(annotation.x),
+        y: normalizeUnit(annotation.y),
+        text: String(annotation.text || '').slice(0, 500),
+      };
+    }
+    if (type === 'marker') {
+      return {
+        ...base,
+        x: normalizeUnit(annotation.x),
+        y: normalizeUnit(annotation.y),
+        number: Math.max(1, Number(annotation.number || 1)),
+      };
+    }
+    return {
+      ...base,
+      x1: normalizeUnit(annotation.x1),
+      y1: normalizeUnit(annotation.y1),
+      x2: normalizeUnit(annotation.x2),
+      y2: normalizeUnit(annotation.y2),
+      text: type === 'dimension' ? String(annotation.text || '').slice(0, 200) : undefined,
+    };
+  }
+
+  function normalizeSketchAnnotations(value) {
+    return (Array.isArray(value) ? value : [])
+      .map(normalizeSketchAnnotation)
+      .filter(Boolean);
+  }
+
+  function sketchCanvasPointToUnit(point) {
+    const size = sketchCssSize();
+    return {
+      x: normalizeUnit(point.x / size.cssWidth),
+      y: normalizeUnit(point.y / size.cssHeight),
+    };
+  }
+
+  function sketchUnitToCanvasPoint(x, y) {
+    const size = sketchCssSize();
+    return {
+      x: normalizeUnit(x) * size.cssWidth,
+      y: normalizeUnit(y) * size.cssHeight,
+    };
+  }
+
+  function drawArrowHead(ctx, from, to, color, width) {
+    const angle = Math.atan2(to.y - from.y, to.x - from.x);
+    const length = Math.max(10, width * 5);
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(to.x, to.y);
+    ctx.lineTo(to.x - length * Math.cos(angle - Math.PI / 7), to.y - length * Math.sin(angle - Math.PI / 7));
+    ctx.lineTo(to.x - length * Math.cos(angle + Math.PI / 7), to.y - length * Math.sin(angle + Math.PI / 7));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSketchAnnotation(ctx, annotation) {
+    const item = normalizeSketchAnnotation(annotation);
+    if (!item) return;
+    const color = item.color || '#111827';
+    const width = Math.max(1, Number(item.width || 2));
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = width;
+    ctx.font = `${Math.max(16, width * 4 + 10)}px Arial, sans-serif`;
+    ctx.textBaseline = 'top';
+
+    if (item.type === 'text') {
+      const p = sketchUnitToCanvasPoint(item.x, item.y);
+      String(item.text || '').split(/\n/).forEach((line, index) => {
+        ctx.fillText(line, p.x, p.y + index * Math.max(20, width * 5 + 14));
+      });
+      ctx.restore();
+      return;
+    }
+
+    if (item.type === 'marker') {
+      const p = sketchUnitToCanvasPoint(item.x, item.y);
+      const radius = Math.max(12, width * 5);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = `700 ${Math.max(14, radius)}px Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(item.number || 1), p.x, p.y + 1);
+      ctx.restore();
+      return;
+    }
+
+    const p1 = sketchUnitToCanvasPoint(item.x1, item.y1);
+    const p2 = sketchUnitToCanvasPoint(item.x2, item.y2);
+
+    if (item.type === 'line' || item.type === 'arrow' || item.type === 'dimension') {
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+      if (item.type === 'arrow') drawArrowHead(ctx, p1, p2, color, width);
+      if (item.type === 'dimension') {
+        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        const tick = Math.max(10, width * 5);
+        const drawTick = (p) => {
+          ctx.beginPath();
+          ctx.moveTo(p.x + Math.cos(angle + Math.PI / 2) * tick * 0.5, p.y + Math.sin(angle + Math.PI / 2) * tick * 0.5);
+          ctx.lineTo(p.x - Math.cos(angle + Math.PI / 2) * tick * 0.5, p.y - Math.sin(angle + Math.PI / 2) * tick * 0.5);
+          ctx.stroke();
+        };
+        drawTick(p1);
+        drawTick(p2);
+        drawArrowHead(ctx, p2, p1, color, Math.max(1, width * 0.8));
+        drawArrowHead(ctx, p1, p2, color, Math.max(1, width * 0.8));
+        if (item.text) {
+          const mx = (p1.x + p2.x) / 2;
+          const my = (p1.y + p2.y) / 2;
+          ctx.save();
+          ctx.font = `700 ${Math.max(15, width * 4 + 9)}px Arial, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(item.text, mx, my - 8);
+          ctx.restore();
+        }
+      }
+      ctx.restore();
+      return;
+    }
+
+    const x = Math.min(p1.x, p2.x);
+    const y = Math.min(p1.y, p2.y);
+    const w = Math.abs(p2.x - p1.x);
+    const h = Math.abs(p2.y - p1.y);
+    if (item.type === 'rect') {
+      ctx.strokeRect(x, y, w, h);
+    } else if (item.type === 'ellipse') {
+      ctx.beginPath();
+      ctx.ellipse(x + w / 2, y + h / 2, Math.max(1, w / 2), Math.max(1, h / 2), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function sketchRenderComposite(includeAnnotations = true) {
     if (!sketchCtx || !sketchCanvas || !sketchInkCanvas) return;
     const size = sketchCssSize();
 
@@ -213,6 +398,10 @@
     }
 
     sketchCtx.drawImage(sketchInkCanvas, 0, 0, size.cssWidth, size.cssHeight);
+    if (includeAnnotations) {
+      sketchAnnotations.forEach((annotation) => drawSketchAnnotation(sketchCtx, annotation));
+      if (sketchDraftAnnotation) drawSketchAnnotation(sketchCtx, sketchDraftAnnotation);
+    }
   }
 
   function sketchClearInk() {
@@ -375,6 +564,39 @@
     return sketchInkCanvas.toDataURL('image/png');
   }
 
+  function sketchCaptureHistoryState() {
+    return {
+      ink: sketchCaptureState(),
+      annotations: cloneSketchAnnotations(sketchAnnotations),
+      markerCounter: sketchMarkerCounter,
+    };
+  }
+
+  function serializeSketchHistoryState(state) {
+    if (typeof state === 'string') return state;
+    try {
+      return JSON.stringify(state || {});
+    } catch {
+      return '';
+    }
+  }
+
+  async function sketchRestoreHistoryState(state) {
+    sketchLoadingState = true;
+    if (typeof state === 'string') {
+      sketchAnnotations = [];
+      sketchMarkerCounter = 0;
+      await sketchLoadDataUrl(state);
+    } else {
+      sketchAnnotations = normalizeSketchAnnotations(state && state.annotations);
+      sketchMarkerCounter = Math.max(0, Number(state && state.markerCounter ? state.markerCounter : 0));
+      await sketchLoadDataUrl(state && state.ink ? state.ink : '');
+    }
+    sketchDraftAnnotation = null;
+    sketchRenderComposite();
+    sketchLoadingState = false;
+  }
+
   function sketchLoadDataUrl(dataUrl) {
     return new Promise((resolve) => {
       if (!sketchInkCtx || !sketchInkCanvas) return resolve(false);
@@ -406,16 +628,16 @@
   }
 
   function sketchReplaceHistoryWithCurrent() {
-    const state = sketchCaptureState();
+    const state = sketchCaptureHistoryState();
     sketchHistory = state ? [state] : [];
     sketchHistoryIndex = sketchHistory.length ? 0 : -1;
   }
 
   function sketchPushHistory() {
     if (!sketchCanvas || sketchLoadingState) return;
-    const state = sketchCaptureState();
+    const state = sketchCaptureHistoryState();
     if (!state) return;
-    if (sketchHistoryIndex >= 0 && sketchHistory[sketchHistoryIndex] === state) return;
+    if (sketchHistoryIndex >= 0 && serializeSketchHistoryState(sketchHistory[sketchHistoryIndex]) === serializeSketchHistoryState(state)) return;
 
     sketchHistory = sketchHistory.slice(0, sketchHistoryIndex + 1);
     sketchHistory.push(state);
@@ -428,18 +650,14 @@
   async function sketchUndo() {
     if (sketchHistoryIndex <= 0) return;
     sketchHistoryIndex -= 1;
-    sketchLoadingState = true;
-    await sketchLoadDataUrl(sketchHistory[sketchHistoryIndex]);
-    sketchLoadingState = false;
+    await sketchRestoreHistoryState(sketchHistory[sketchHistoryIndex]);
     setSketchStatus('Annulation');
   }
 
   async function sketchRedo() {
     if (sketchHistoryIndex < 0 || sketchHistoryIndex >= sketchHistory.length - 1) return;
     sketchHistoryIndex += 1;
-    sketchLoadingState = true;
-    await sketchLoadDataUrl(sketchHistory[sketchHistoryIndex]);
-    sketchLoadingState = false;
+    await sketchRestoreHistoryState(sketchHistory[sketchHistoryIndex]);
     setSketchStatus('Refaire');
   }
 
@@ -451,14 +669,102 @@
     };
   }
 
+  function makeSketchAnnotationFromDrag(type, start, end, text) {
+    return normalizeSketchAnnotation({
+      type,
+      x1: start.x,
+      y1: start.y,
+      x2: end.x,
+      y2: end.y,
+      color: sketchColor,
+      width: Math.max(1, sketchSize * 2),
+      text: text || '',
+    });
+  }
+
+  function openSketchTextDialog(options) {
+    if (!sketchTextDialog || !sketchTextInput || !sketchTextDialogTitle) return;
+    sketchTextRequest = options || null;
+    sketchTextDialogTitle.textContent = options && options.title ? options.title : 'Annotation';
+    sketchTextInput.value = options && options.value ? options.value : '';
+    sketchTextDialog.hidden = false;
+    sketchTextDialog.setAttribute('aria-hidden', 'false');
+    window.setTimeout(() => sketchTextInput.focus(), 30);
+  }
+
+  function closeSketchTextDialog() {
+    if (!sketchTextDialog || !sketchTextInput) return;
+    sketchTextDialog.hidden = true;
+    sketchTextDialog.setAttribute('aria-hidden', 'true');
+    sketchTextInput.value = '';
+    sketchTextRequest = null;
+  }
+
+  function confirmSketchTextDialog() {
+    if (!sketchTextRequest || !sketchTextInput) {
+      closeSketchTextDialog();
+      return;
+    }
+    const text = String(sketchTextInput.value || '').trim();
+    if (!text) {
+      closeSketchTextDialog();
+      return;
+    }
+    if (sketchTextRequest.type === 'text') {
+      sketchAnnotations.push(normalizeSketchAnnotation({
+        type: 'text',
+        x: sketchTextRequest.point.x,
+        y: sketchTextRequest.point.y,
+        text,
+        color: sketchColor,
+        width: Math.max(1, sketchSize * 2),
+      }));
+    } else if (sketchTextRequest.type === 'dimension') {
+      sketchAnnotations.push(makeSketchAnnotationFromDrag('dimension', sketchTextRequest.start, sketchTextRequest.end, text));
+    }
+    sketchDraftAnnotation = null;
+    dirty = true;
+    sketchRenderComposite();
+    sketchPushHistory();
+    closeSketchTextDialog();
+  }
+
   function sketchStartDrawing(event) {
     if (!sketchInkCtx || !sketchCanvas) return;
     event.preventDefault();
+    const point = sketchCanvasPointToUnit(sketchCanvasPoint(event));
+
+    if (sketchTool === 'text') {
+      openSketchTextDialog({ type: 'text', point, title: 'Texte' });
+      return;
+    }
+
+    if (sketchTool === 'marker') {
+      sketchMarkerCounter += 1;
+      sketchAnnotations.push(normalizeSketchAnnotation({
+        type: 'marker',
+        x: point.x,
+        y: point.y,
+        number: sketchMarkerCounter,
+        color: sketchColor,
+        width: Math.max(1, sketchSize * 2),
+      }));
+      dirty = true;
+      sketchRenderComposite();
+      sketchPushHistory();
+      setSketchStatus(`Repere ${sketchMarkerCounter}`);
+      return;
+    }
+
     sketchDrawing = true;
-    sketchApplyBrush();
-    const point = sketchCanvasPoint(event);
-    sketchInkCtx.beginPath();
-    sketchInkCtx.moveTo(point.x, point.y);
+    if (ANNOTATION_TOOLS.has(sketchTool)) {
+      sketchDraftAnnotation = makeSketchAnnotationFromDrag(sketchTool, point, point);
+    } else {
+      sketchApplyBrush();
+      const drawPoint = sketchCanvasPoint(event);
+      sketchInkCtx.beginPath();
+      sketchInkCtx.moveTo(drawPoint.x, drawPoint.y);
+    }
     try {
       sketchCanvas.setPointerCapture(event.pointerId);
     } catch {}
@@ -467,18 +773,47 @@
   function sketchDraw(event) {
     if (!sketchDrawing || !sketchInkCtx) return;
     event.preventDefault();
-    const point = sketchCanvasPoint(event);
-    sketchInkCtx.lineTo(point.x, point.y);
-    sketchInkCtx.stroke();
+    if (sketchDraftAnnotation && ANNOTATION_TOOLS.has(sketchTool)) {
+      const point = sketchCanvasPointToUnit(sketchCanvasPoint(event));
+      sketchDraftAnnotation = makeSketchAnnotationFromDrag(sketchTool, {
+        x: sketchDraftAnnotation.x1,
+        y: sketchDraftAnnotation.y1,
+      }, point, sketchDraftAnnotation.text || '');
+    } else {
+      const point = sketchCanvasPoint(event);
+      sketchInkCtx.lineTo(point.x, point.y);
+      sketchInkCtx.stroke();
+    }
     sketchRenderComposite();
   }
 
   function sketchStopDrawing(event) {
     if (!sketchDrawing || !sketchCanvas) return;
     sketchDrawing = false;
+    const draft = sketchDraftAnnotation ? normalizeSketchAnnotation(sketchDraftAnnotation) : null;
+    sketchDraftAnnotation = null;
     try {
       sketchCanvas.releasePointerCapture(event.pointerId);
     } catch {}
+    if (draft && ANNOTATION_TOOLS.has(draft.type)) {
+      const dx = Math.abs(Number(draft.x2 || 0) - Number(draft.x1 || 0));
+      const dy = Math.abs(Number(draft.y2 || 0) - Number(draft.y1 || 0));
+      if (dx > 0.004 || dy > 0.004) {
+        if (draft.type === 'dimension') {
+          openSketchTextDialog({
+            type: 'dimension',
+            start: { x: draft.x1, y: draft.y1 },
+            end: { x: draft.x2, y: draft.y2 },
+            title: 'Valeur de cote',
+          });
+          sketchRenderComposite();
+          return;
+        }
+        sketchAnnotations.push(draft);
+        dirty = true;
+        sketchRenderComposite();
+      }
+    }
     sketchPushHistory();
   }
 
@@ -557,6 +892,8 @@
     sketchModal.hidden = true;
     sketchModal.setAttribute('aria-hidden', 'true');
     closeSketchPhotoPicker();
+    closeSketchTextDialog();
+    sketchDraftAnnotation = null;
     document.body.classList.remove('sketch-open');
   }
 
@@ -573,7 +910,8 @@
   }
 
   function setSketchTool(nextTool) {
-    sketchTool = nextTool === 'eraser' ? 'eraser' : 'pen';
+    sketchTool = nextTool === 'eraser' || ANNOTATION_TOOLS.has(nextTool) ? nextTool : 'pen';
+    sketchDraftAnnotation = null;
     if (toolPenBtn) {
       const active = sketchTool === 'pen';
       toolPenBtn.classList.toggle('is-active', active);
@@ -584,7 +922,13 @@
       toolEraserBtn.classList.toggle('is-active', active);
       toolEraserBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
     }
+    sketchToolButtons.forEach((button) => {
+      const active = String(button.getAttribute('data-sketch-tool') || '') === sketchTool;
+      button.classList.toggle('annotation-active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
     sketchApplyBrush();
+    sketchRenderComposite();
   }
 
   function setSketchColor(nextColor) {
@@ -616,8 +960,11 @@
   }
 
   async function clearSketchWithConfirm() {
-    if (!window.confirm('Effacer uniquement les annotations ?')) return;
+    if (!window.confirm('Effacer le croquis et les annotations ?')) return;
     sketchClearInk();
+    sketchAnnotations = [];
+    sketchDraftAnnotation = null;
+    sketchMarkerCounter = 0;
     sketchPushHistory();
     setSketchStatus('Annotations effacees');
   }
@@ -631,7 +978,7 @@
 
     setSketchStatus('Enregistrement...');
     try {
-      sketchRenderComposite();
+      sketchRenderComposite(false);
       const response = await fetch(`/api/measurements/${recordId}/sketch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -642,8 +989,10 @@
       sketchUpdatedAt = new Date().toISOString();
       dirty = true;
       await saveRecord();
+      sketchRenderComposite();
       setSketchStatus('Enregistre');
     } catch {
+      sketchRenderComposite();
       setSketchStatus('Erreur enregistrement', true);
     }
   }
@@ -955,8 +1304,11 @@
     applyFieldValues(item.fields || {});
     sketchUpdatedAt = String(item.fields?.sketch_updated_at || '').trim();
     sketchBackgroundPhotoId = String(item.fields?.sketch_background_photo_id || '').trim();
+    sketchAnnotations = normalizeSketchAnnotations(item.fields?.sketch_annotations || []);
+    sketchMarkerCounter = Math.max(0, Number(item.fields?.sketch_marker_counter || 0));
     sketchBackgroundUrl = '';
     sketchBackgroundImage = null;
+    sketchDraftAnnotation = null;
     setSketchBackgroundUi();
     setSketchStatus(sketchUpdatedAt ? 'Croquis existant' : 'Pret');
     photoSlots = normalizePhotoSlots(item.photoSlots || item.fields?.photo_slots || []);
@@ -997,6 +1349,9 @@
     sketchBackgroundPhotoId = '';
     sketchBackgroundUrl = '';
     sketchBackgroundImage = null;
+    sketchAnnotations = [];
+    sketchDraftAnnotation = null;
+    sketchMarkerCounter = 0;
     setSketchBackgroundUi();
     setSketchStatus('Pret');
     photoSlots = makeEmptyPhotoSlots();
@@ -1019,6 +1374,9 @@
       client_order_id: getValue('client_order_id'),
       sketch_updated_at: sketchUpdatedAt || null,
       sketch_background_photo_id: sketchBackgroundPhotoId || null,
+      sketch_annotations: cloneSketchAnnotations(sketchAnnotations),
+      sketch_marker_counter: sketchMarkerCounter,
+      sketch_version: 2,
       photo_slots: serializePhotoSlotsForSave(),
     };
 
@@ -1159,6 +1517,12 @@
     toolEraserBtn.addEventListener('click', () => setSketchTool('eraser'));
   }
 
+  sketchToolButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      setSketchTool(String(button.getAttribute('data-sketch-tool') || 'pen'));
+    });
+  });
+
   if (undoSketchBtn) {
     undoSketchBtn.addEventListener('click', sketchUndo);
   }
@@ -1194,6 +1558,24 @@
     sketchPhotoPickerBackdrop.addEventListener('click', closeSketchPhotoPicker);
   }
 
+  if (sketchTextCancelBtn) {
+    sketchTextCancelBtn.addEventListener('click', () => {
+      sketchDraftAnnotation = null;
+      closeSketchTextDialog();
+      sketchRenderComposite();
+    });
+  }
+
+  if (sketchTextConfirmBtn) {
+    sketchTextConfirmBtn.addEventListener('click', confirmSketchTextDialog);
+  }
+
+  if (sketchTextInput) {
+    sketchTextInput.addEventListener('keydown', (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') confirmSketchTextDialog();
+    });
+  }
+
   if (sketchColorPalette) {
     sketchColorPalette.querySelectorAll('[data-sketch-color]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -1218,6 +1600,12 @@
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && sketchModal && !sketchModal.hidden) {
+      if (sketchTextDialog && !sketchTextDialog.hidden) {
+        sketchDraftAnnotation = null;
+        closeSketchTextDialog();
+        sketchRenderComposite();
+        return;
+      }
       if (sketchPhotoPicker && !sketchPhotoPicker.hidden) {
         closeSketchPhotoPicker();
         return;
