@@ -363,6 +363,13 @@ select {
   font-weight: 800;
 }
 
+.cad-unit-label {
+  fill: #64748b;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
 .cad-caption {
   fill: #6b7280;
   font-size: 18px;
@@ -376,6 +383,10 @@ select {
   stroke-width: 2.4;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.cad-cut {
+  stroke-width: 3;
 }
 
 .cad-dalle {
@@ -399,22 +410,29 @@ select {
 
 .cad-walkline {
   fill: none;
-  stroke: #475569;
-  stroke-width: 1.6;
-  stroke-dasharray: 7 6;
+  stroke: #334155;
+  stroke-width: 1.35;
+  stroke-dasharray: 12 5 2 5;
 }
 
 .cad-arrow {
   fill: none;
-  stroke: #475569;
-  stroke-width: 2;
+  stroke: #334155;
+  stroke-width: 1.8;
   stroke-linecap: round;
 }
 
 .cad-small-label {
   fill: #475569;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 800;
+}
+
+.cad-rise-label {
+  fill: #334155;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
 }
 
 .measure-dimension,
@@ -425,7 +443,7 @@ select {
 
 .measure-hit {
   stroke: transparent;
-  stroke-width: 44;
+  stroke-width: 42;
   stroke-linecap: round;
 }
 
@@ -433,15 +451,14 @@ select {
 .measure-ext,
 .measure-tick {
   fill: none;
-  stroke: #9ca3af;
-  stroke-width: 1.6;
+  stroke: #475569;
+  stroke-width: 1.2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .measure-line {
-  marker-start: url("#measureArrow");
-  marker-end: url("#measureArrow");
+  stroke-width: 1.35;
 }
 
 .measure-label-bg {
@@ -449,8 +466,8 @@ select {
 }
 
 .measure-label {
-  fill: #374151;
-  font-size: 15px;
+  fill: #334155;
+  font-size: 14px;
   font-weight: 800;
   text-anchor: middle;
   dominant-baseline: middle;
@@ -473,15 +490,15 @@ select {
 .measure-dimension.is-missing .measure-ext,
 .measure-dimension.is-missing .measure-tick,
 .measure-note.is-missing .measure-note-dot {
-  stroke: #ea580c;
-  stroke-dasharray: 5 4;
+  stroke: #64748b;
+  stroke-dasharray: none;
 }
 
 .measure-dimension.is-complete .measure-line,
 .measure-dimension.is-complete .measure-ext,
 .measure-dimension.is-complete .measure-tick,
 .measure-note.is-complete .measure-note-dot {
-  stroke: #16a34a;
+  stroke: #15803d;
 }
 
 .measure-dimension.is-complete .measure-label-bg,
@@ -494,7 +511,7 @@ select {
 .measure-dimension.is-active .measure-tick,
 .measure-note.is-active .measure-note-dot {
   stroke: #f97316;
-  stroke-width: 3;
+  stroke-width: 2;
 }
 
 .measure-dimension.is-active .measure-label-bg,

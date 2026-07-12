@@ -107,7 +107,7 @@
     totalRun: { label: 'Reculement / longueur disponible', unit: 'mm', kind: 'number', group: 'general', ref: 'R', help: 'Longueur au sol disponible depuis le depart jusqu a l arrivee.' },
     stairWidth: { label: 'Largeur escalier', unit: 'mm', kind: 'number', group: 'general', ref: 'L', help: 'Largeur utile de passage ou largeur de fabrication demandee.' },
     openingLength: { label: 'Longueur tremie', unit: 'mm', kind: 'number', group: 'opening', ref: 'TL', help: 'Longueur de l ouverture disponible dans la dalle.' },
-    openingWidth: { label: 'Largeur tremie', unit: 'mm', kind: 'number', group: 'opening', ref: 'Tl', help: 'Largeur de l ouverture disponible dans la dalle.' },
+    openingWidth: { label: 'Largeur tremie', unit: 'mm', kind: 'number', group: 'opening', ref: 'TI', help: 'Largeur de l ouverture disponible dans la dalle.' },
     headroom: { label: 'Echappee', unit: 'mm', kind: 'number', group: 'safety', ref: 'E', help: 'Hauteur libre au passage, a verifier aux points critiques.' },
     lowerRun: { label: 'Volée basse', unit: 'mm', kind: 'number', group: 'lowerFlight', ref: 'VB', help: 'Longueur disponible sur la premiere volee.' },
     upperRun: { label: 'Volée haute', unit: 'mm', kind: 'number', group: 'upperFlight', ref: 'VH', help: 'Longueur disponible sur la volee apres le tournant ou le palier.' },
@@ -349,7 +349,8 @@
 
   function measurementShortLabel(key) {
     const def = MEASURE_FIELD_DEFS[key] || {};
-    return `${def.ref || key}: ${measurementDisplayValue(key)}`;
+    const value = measureValue(key);
+    return `${def.ref || key}  ${value || '—'}`;
   }
 
   function measurementLegendLabel(key) {
@@ -363,19 +364,24 @@
     const label = measurementShortLabel(key);
     const required = isRequiredMeasurement(key) ? 'obligatoire' : 'facultative';
     const isVertical = Math.abs(x1 - x2) < Math.abs(y1 - y2);
+    const tick = 7;
+    const ext = 16;
     const ext1 = isVertical
-      ? `x1="${x1}" y1="${y1}" x2="${x1 - 18}" y2="${y1}"`
-      : `x1="${x1}" y1="${y1}" x2="${x1}" y2="${y1 - 18}"`;
+      ? `x1="${x1}" y1="${y1}" x2="${x1 - ext}" y2="${y1}"`
+      : `x1="${x1}" y1="${y1}" x2="${x1}" y2="${y1 - ext}"`;
     const ext2 = isVertical
-      ? `x1="${x2}" y1="${y2}" x2="${x2 - 18}" y2="${y2}"`
-      : `x1="${x2}" y1="${y2}" x2="${x2}" y2="${y2 - 18}"`;
+      ? `x1="${x2}" y1="${y2}" x2="${x2 - ext}" y2="${y2}"`
+      : `x1="${x2}" y1="${y2}" x2="${x2}" y2="${y2 - ext}"`;
+    const tickPath = isVertical
+      ? `M${x1 - tick} ${y1 - tick}L${x1 + tick} ${y1 + tick}M${x2 - tick} ${y2 - tick}L${x2 + tick} ${y2 + tick}`
+      : `M${x1 - tick} ${y1 + tick}L${x1 + tick} ${y1 - tick}M${x2 - tick} ${y2 + tick}L${x2 + tick} ${y2 - tick}`;
     return `
       <g class="measure-dimension ${className}" data-measure-key="${escapeHtml(key)}" tabindex="0" role="button" aria-label="${escapeHtml(`${def.label || key}, ${required}, ${measurementDisplayValue(key)}`)}">
         <line class="measure-hit" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />
         <line class="measure-ext" ${ext1} />
         <line class="measure-ext" ${ext2} />
         <line class="measure-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />
-        <path class="measure-tick" d="M${x1 - 8} ${y1 + 8}L${x1 + 8} ${y1 - 8}M${x2 - 8} ${y2 + 8}L${x2 + 8} ${y2 - 8}" />
+        <path class="measure-tick" d="${tickPath}" />
         <text class="measure-label" x="${tx}" y="${ty}">${escapeHtml(label)}</text>
       </g>
     `;
@@ -394,129 +400,150 @@
   function renderPlanGeometry(type) {
     const planByType = {
       straight: `
-        <rect class="cad-opening" x="90" y="120" width="300" height="126" />
-        <rect class="cad-main" x="128" y="154" width="224" height="58" />
-        ${[156, 184, 212, 240, 268, 296, 324].map((x) => `<line class="cad-step" x1="${x}" y1="154" x2="${x}" y2="212" />`).join('')}
-        <text class="cad-small-label" x="132" y="232">Départ</text>
-        <text class="cad-small-label" x="304" y="148">Arrivée</text>
-        <path class="cad-walkline" d="M140 183H340" />
-        <path class="cad-arrow" d="M340 183l-13-8M340 183l-13 8" />
+        <rect class="cad-opening" x="100" y="120" width="390" height="155" />
+        <rect class="cad-main cad-cut" x="140" y="172" width="300" height="70" />
+        ${[170, 200, 230, 260, 290, 320, 350, 380, 410].map((x) => `<line class="cad-step" x1="${x}" y1="172" x2="${x}" y2="242" />`).join('')}
+        <text class="cad-small-label" x="138" y="264">DÉPART</text>
+        <text class="cad-small-label" x="382" y="164">ARRIVÉE</text>
+        <path class="cad-walkline" d="M152 207H424" />
+        <path class="cad-arrow" d="M424 207l-15-8M424 207l-15 8" />
+        <text class="cad-rise-label" x="276" y="198">MONTÉE</text>
       `,
       quarter_low: `
-        <path class="cad-opening" d="M90 98H392V268H90Z" />
-        <path class="cad-main" d="M126 194H244V106H306V250H126Z" />
-        <line class="cad-step" x1="156" y1="194" x2="156" y2="250" />
-        <line class="cad-step" x1="186" y1="194" x2="186" y2="250" />
-        <line class="cad-step" x1="216" y1="194" x2="216" y2="250" />
-        <line class="cad-step" x1="244" y1="194" x2="306" y2="156" />
-        <line class="cad-step" x1="244" y1="156" x2="306" y2="130" />
-        <line class="cad-step" x1="244" y1="130" x2="306" y2="130" />
-        <text class="cad-small-label" x="130" y="270">Départ</text>
-        <text class="cad-small-label" x="312" y="106">Arrivée</text>
-        <path class="cad-walkline" d="M136 222H268Q286 222 286 202V116" />
-        <path class="cad-arrow" d="M286 116l-8 13M286 116l8 13" />
+        <path class="cad-opening" d="M95 80H505V365H95Z" />
+        <path class="cad-main cad-cut" d="M140 250H320V110H390V320H140Z" />
+        <line class="cad-step" x1="170" y1="250" x2="170" y2="320" />
+        <line class="cad-step" x1="200" y1="250" x2="200" y2="320" />
+        <line class="cad-step" x1="230" y1="250" x2="230" y2="320" />
+        <line class="cad-step" x1="260" y1="250" x2="260" y2="320" />
+        <line class="cad-step" x1="320" y1="250" x2="390" y2="222" />
+        <line class="cad-step" x1="320" y1="250" x2="390" y2="194" />
+        <line class="cad-step" x1="320" y1="250" x2="356" y2="180" />
+        <line class="cad-step" x1="320" y1="220" x2="390" y2="220" />
+        <line class="cad-step" x1="320" y1="190" x2="390" y2="190" />
+        <line class="cad-step" x1="320" y1="160" x2="390" y2="160" />
+        <text class="cad-small-label" x="140" y="342">DÉPART</text>
+        <text class="cad-small-label" x="398" y="112">ARRIVÉE</text>
+        <path class="cad-walkline" d="M156 285H294Q354 285 354 225V124" />
+        <path class="cad-arrow" d="M354 124l-9 16M354 124l9 16" />
+        <text class="cad-rise-label" x="260" y="276">MONTÉE</text>
       `,
       quarter_high: `
-        <path class="cad-opening" d="M90 98H392V268H90Z" />
-        <path class="cad-main" d="M126 116H306V176H192V250H126Z" />
-        <line class="cad-step" x1="156" y1="116" x2="156" y2="176" />
-        <line class="cad-step" x1="186" y1="116" x2="186" y2="176" />
-        <line class="cad-step" x1="216" y1="116" x2="192" y2="176" />
-        <line class="cad-step" x1="192" y1="176" x2="126" y2="208" />
-        <line class="cad-step" x1="192" y1="208" x2="126" y2="232" />
-        <text class="cad-small-label" x="130" y="270">Départ</text>
-        <text class="cad-small-label" x="308" y="110">Arrivée</text>
-        <path class="cad-walkline" d="M138 146H256Q274 146 254 166L154 240" />
-        <path class="cad-arrow" d="M154 240l3-15M154 240l15-3" />
+        <path class="cad-opening" d="M95 80H505V365H95Z" />
+        <path class="cad-main cad-cut" d="M140 110H390V180H250V320H180V180H140Z" />
+        <line class="cad-step" x1="170" y1="110" x2="170" y2="180" />
+        <line class="cad-step" x1="200" y1="110" x2="200" y2="180" />
+        <line class="cad-step" x1="230" y1="110" x2="250" y2="180" />
+        <line class="cad-step" x1="250" y1="180" x2="180" y2="218" />
+        <line class="cad-step" x1="250" y1="180" x2="180" y2="250" />
+        <line class="cad-step" x1="250" y1="210" x2="180" y2="210" />
+        <line class="cad-step" x1="250" y1="240" x2="180" y2="240" />
+        <line class="cad-step" x1="250" y1="270" x2="180" y2="270" />
+        <text class="cad-small-label" x="178" y="342">DÉPART</text>
+        <text class="cad-small-label" x="392" y="108">ARRIVÉE</text>
+        <path class="cad-walkline" d="M190 285V216Q190 145 262 145H376" />
+        <path class="cad-arrow" d="M376 145l-15-8M376 145l-15 8" />
+        <text class="cad-rise-label" x="214" y="226">MONTÉE</text>
       `,
       double_quarter: `
-        <path class="cad-opening" d="M86 82H402V278H86Z" />
-        <path class="cad-main" d="M118 204H214V116H334V178H272V260H118Z" />
-        <line class="cad-step" x1="148" y1="204" x2="148" y2="260" />
-        <line class="cad-step" x1="178" y1="204" x2="178" y2="260" />
-        <line class="cad-step" x1="214" y1="204" x2="272" y2="178" />
-        <line class="cad-step" x1="214" y1="158" x2="334" y2="158" />
-        <line class="cad-step" x1="244" y1="116" x2="244" y2="178" />
-        <line class="cad-step" x1="272" y1="178" x2="272" y2="260" />
-        <text class="cad-small-label" x="122" y="282">Départ</text>
-        <text class="cad-small-label" x="336" y="112">Arrivée</text>
-        <path class="cad-walkline" d="M130 232H232Q254 232 254 210V146H320" />
-        <path class="cad-arrow" d="M320 146l-13-8M320 146l-13 8" />
+        <path class="cad-opening" d="M90 70H510V372H90Z" />
+        <path class="cad-main cad-cut" d="M130 260H260V130H440V200H330V330H130Z" />
+        <line class="cad-step" x1="165" y1="260" x2="165" y2="330" />
+        <line class="cad-step" x1="200" y1="260" x2="200" y2="330" />
+        <line class="cad-step" x1="235" y1="260" x2="235" y2="330" />
+        <line class="cad-step" x1="260" y1="260" x2="330" y2="226" />
+        <line class="cad-step" x1="260" y1="210" x2="440" y2="210" />
+        <line class="cad-step" x1="300" y1="130" x2="300" y2="200" />
+        <line class="cad-step" x1="340" y1="130" x2="340" y2="200" />
+        <line class="cad-step" x1="330" y1="200" x2="330" y2="330" />
+        <text class="cad-small-label" x="132" y="354">DÉPART</text>
+        <text class="cad-small-label" x="442" y="126">ARRIVÉE</text>
+        <path class="cad-walkline" d="M146 296H286Q310 296 310 272V166H424" />
+        <path class="cad-arrow" d="M424 166l-15-8M424 166l-15 8" />
       `,
       landing_two_flights: `
-        <path class="cad-opening" d="M90 92H402V262H90Z" />
-        <path class="cad-main" d="M122 194H212V150H292V108H352V212H122Z" />
-        <line class="cad-step" x1="152" y1="194" x2="152" y2="212" />
-        <line class="cad-step" x1="182" y1="194" x2="182" y2="212" />
-        <line class="cad-step" x1="212" y1="150" x2="292" y2="150" />
-        <line class="cad-step" x1="292" y1="130" x2="352" y2="130" />
-        <line class="cad-step" x1="292" y1="160" x2="352" y2="160" />
-        <text class="cad-small-label" x="126" y="236">Départ</text>
-        <text class="cad-small-label" x="354" y="106">Arrivée</text>
-        <path class="cad-walkline" d="M132 204H252Q272 204 272 184V140H340" />
-        <path class="cad-arrow" d="M340 140l-13-8M340 140l-13 8" />
+        <path class="cad-opening" d="M95 85H500V345H95Z" />
+        <path class="cad-main cad-cut" d="M140 245H260V190H345V135H420V220H260V315H140Z" />
+        <line class="cad-step" x1="170" y1="245" x2="170" y2="315" />
+        <line class="cad-step" x1="200" y1="245" x2="200" y2="315" />
+        <line class="cad-step" x1="230" y1="245" x2="230" y2="315" />
+        <line class="cad-step" x1="260" y1="190" x2="345" y2="190" />
+        <line class="cad-step" x1="345" y1="158" x2="420" y2="158" />
+        <line class="cad-step" x1="345" y1="188" x2="420" y2="188" />
+        <text class="cad-small-label" x="142" y="338">DÉPART</text>
+        <text class="cad-small-label" x="422" y="132">ARRIVÉE</text>
+        <path class="cad-walkline" d="M156 280H306Q325 280 325 245V176H404" />
+        <path class="cad-arrow" d="M404 176l-15-8M404 176l-15 8" />
       `,
       helical: `
-        <circle class="cad-opening" cx="250" cy="180" r="118" />
-        <circle class="cad-main" cx="250" cy="180" r="76" />
+        <circle class="cad-opening" cx="290" cy="205" r="122" />
+        <circle class="cad-main cad-cut" cx="290" cy="205" r="78" />
         ${[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((angle) => {
           const rad = (angle * Math.PI) / 180;
-          const x = 250 + Math.cos(rad) * 76;
-          const y = 180 + Math.sin(rad) * 76;
-          return `<line class="cad-step" x1="250" y1="180" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" />`;
+          const x = 290 + Math.cos(rad) * 78;
+          const y = 205 + Math.sin(rad) * 78;
+          return `<line class="cad-step" x1="290" y1="205" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" />`;
         }).join('')}
-        <text class="cad-small-label" x="170" y="270">Départ</text>
-        <text class="cad-small-label" x="310" y="98">Arrivée</text>
-        <path class="cad-walkline" d="M216 220C188 186 204 130 254 122C306 115 334 172 305 211" />
-        <path class="cad-arrow" d="M305 211l-2-15M305 211l-14-5" />
+        <text class="cad-small-label" x="206" y="300">DÉPART</text>
+        <text class="cad-small-label" x="354" y="120">ARRIVÉE</text>
+        <path class="cad-walkline" d="M254 245C226 210 242 154 292 146C344 139 372 196 343 235" />
+        <path class="cad-arrow" d="M343 235l-2-15M343 235l-14-5" />
       `,
       other: `
-        <rect class="cad-opening" x="90" y="118" width="300" height="132" />
-        <path class="cad-main" d="M128 154H352V214H128Z" stroke-dasharray="9 7" />
-        <line class="cad-step" x1="128" y1="176" x2="352" y2="176" />
-        <line class="cad-step" x1="128" y1="196" x2="352" y2="196" />
-        <text class="cad-small-label" x="132" y="270">Départ</text>
-        <text class="cad-small-label" x="308" y="148">Arrivée</text>
-        <path class="cad-walkline" d="M140 184H338" />
-        <path class="cad-arrow" d="M338 184l-13-8M338 184l-13 8" />
+        <rect class="cad-opening" x="105" y="120" width="370" height="170" />
+        <path class="cad-main cad-cut" d="M150 175H430V245H150Z" stroke-dasharray="9 7" />
+        <line class="cad-step" x1="150" y1="198" x2="430" y2="198" />
+        <line class="cad-step" x1="150" y1="222" x2="430" y2="222" />
+        <text class="cad-small-label" x="154" y="312">DÉPART</text>
+        <text class="cad-small-label" x="386" y="170">ARRIVÉE</text>
+        <path class="cad-walkline" d="M162 210H416" />
+        <path class="cad-arrow" d="M416 210l-15-8M416 210l-15 8" />
       `,
     };
     return planByType[type] || planByType.straight;
   }
 
   function renderPlanDimensions(type) {
-    const common = [
-      renderCadDimension('openingLength', 90, 68, 392, 68, 241, 54),
-      renderCadDimension('openingWidth', 430, 98, 430, 268, 474, 183),
-      renderCadDimension('stairWidth', 128, 316, 352, 316, 240, 302),
-    ];
     if (type === 'straight' || type === 'other') {
       return [
-        ...common,
-        renderCadDimension('totalRun', 128, 284, 352, 284, 240, 270),
+        renderCadDimension('openingLength', 100, 72, 490, 72, 295, 58),
+        renderCadDimension('openingWidth', 525, 120, 525, 275, 562, 198),
+        renderCadDimension('totalRun', 140, 312, 440, 312, 290, 298),
+        renderCadDimension('stairWidth', 462, 172, 462, 242, 504, 207),
       ].join('');
     }
     if (type === 'helical') {
       return [
-        renderCadDimension('diameter', 132, 46, 368, 46, 250, 32),
-        renderCadDimension('openingLength', 132, 322, 368, 322, 250, 308),
-        renderCadDimension('openingWidth', 410, 62, 410, 298, 456, 180),
-        renderCadNote('rotationDirection', 334, 118),
+        renderCadDimension('diameter', 168, 54, 412, 54, 290, 40),
+        renderCadDimension('openingLength', 168, 360, 412, 360, 290, 346),
+        renderCadDimension('openingWidth', 456, 83, 456, 327, 496, 205),
       ].join('');
     }
     if (type === 'landing_two_flights') {
       return [
-        ...common,
-        renderCadDimension('lowerRun', 122, 304, 212, 304, 167, 290),
-        renderCadDimension('landingLength', 212, 70, 292, 70, 252, 56),
-        renderCadDimension('upperRun', 292, 284, 352, 284, 322, 270),
+        renderCadDimension('openingLength', 95, 58, 500, 58, 298, 44),
+        renderCadDimension('openingWidth', 536, 85, 536, 345, 574, 215),
+        renderCadDimension('lowerRun', 140, 362, 260, 362, 200, 348),
+        renderCadDimension('landingLength', 260, 82, 345, 82, 302, 68),
+        renderCadDimension('upperRun', 345, 300, 420, 300, 382, 286),
+        renderCadDimension('stairWidth', 105, 245, 105, 315, 67, 280),
+      ].join('');
+    }
+    if (type === 'double_quarter') {
+      return [
+        renderCadDimension('openingLength', 90, 48, 510, 48, 300, 34),
+        renderCadDimension('openingWidth', 548, 70, 548, 372, 586, 221),
+        renderCadDimension('lowerRun', 130, 372, 260, 372, 195, 358),
+        renderCadDimension('upperRun', 330, 356, 440, 356, 385, 342),
+        renderCadDimension('stairWidth', 100, 260, 100, 330, 62, 295),
       ].join('');
     }
     return [
-      ...common,
-      renderCadDimension('lowerRun', 126, 304, 244, 304, 185, 290),
-      renderCadDimension('upperRun', 336, 106, 336, 250, 382, 178),
-      renderCadNote('turnSide', 268, 168),
+      renderCadDimension('openingLength', 95, 52, 505, 52, 300, 38),
+      renderCadDimension('openingWidth', 540, 80, 540, 365, 578, 222),
+      renderCadDimension('lowerRun', 140, 350, 320, 350, 230, 336),
+      renderCadDimension('upperRun', 420, 110, 420, 250, 458, 180),
+      renderCadDimension('stairWidth', 112, 250, 112, 320, 74, 285),
     ].join('');
   }
 
@@ -560,13 +587,9 @@
       <div class="measure-schema-grid">
         <figure class="measure-view">
           <figcaption>Vue en plan · ${escapeHtml(config.label)}</figcaption>
-          <svg class="measurements-v2-svg" viewBox="0 0 520 360" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Vue en plan cotee ${escapeHtml(config.label)}">
-            <defs>
-              <marker id="measureArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M0 0L10 5L0 10Z" />
-              </marker>
-            </defs>
-            <rect class="cad-sheet" x="10" y="10" width="500" height="340" rx="4" />
+          <svg class="measurements-v2-svg" viewBox="0 0 620 420" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Vue en plan cotee ${escapeHtml(config.label)}">
+            <rect class="cad-sheet" x="10" y="10" width="600" height="400" rx="2" />
+            <text class="cad-unit-label" x="28" y="36">Cotes en mm</text>
             <g class="cad-plan">
               ${renderPlanGeometry(type)}
               ${renderPlanDimensions(type)}
@@ -576,12 +599,8 @@
         <figure class="measure-view">
           <figcaption>Vue de côté</figcaption>
           <svg class="measurements-v2-svg" viewBox="0 0 520 360" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Vue de cote cotee ${escapeHtml(config.label)}">
-            <defs>
-              <marker id="measureArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M0 0L10 5L0 10Z" />
-              </marker>
-            </defs>
-            <rect class="cad-sheet" x="10" y="10" width="500" height="340" rx="4" />
+            <rect class="cad-sheet" x="10" y="10" width="500" height="340" rx="2" />
+            <text class="cad-unit-label" x="28" y="36">Cotes en mm</text>
             ${renderSideElevation()}
           </svg>
         </figure>
