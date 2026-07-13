@@ -5408,6 +5408,13 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                   ${isLate ? '<span class="modern-late-badge">Retard</span>' : ''}
                 </div>
 
+                <div class="modern-client-order-meta-grid">
+                  <div><span>Date</span><strong>${escHtml(dateLabel || 'Non renseignée')}</strong></div>
+                  <div><span>Heures prévues</span><strong>${plannedHours > 0 ? `${plannedHours.toFixed(1)} h` : 'Non renseigné'}</strong></div>
+                  <div><span>Heures réalisées</span><strong>${actualHours.toFixed(1)} h</strong></div>
+                  <div><span>Date fin</span><strong>${escHtml(endDate || 'Non renseignée')}</strong></div>
+                </div>
+
                 ${!isAtelier ? `
                 <div class="modern-client-order-price">
                   <div><span>Prix HT</span><strong>${escHtml(chantierPriceLabel)}</strong></div>
@@ -5501,89 +5508,87 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                     <span>Heures</span>
                     <b aria-hidden="true">›</b>
                   </a>
-                  <details class="modern-client-order-edit">
-                    <summary class="modern-client-order-open modern-client-order-edit-trigger">
-                      ${clientPageIcon('edit', 'modern-client-order-open-icon')}
-                      <span>Modifier</span>
-                      <b aria-hidden="true">›</b>
-                    </summary>
-                    <form method="POST" action="/orders/client/${o.id}/update" class="modern-client-order-edit-form" data-order-edit-form onsubmit="const b=this.querySelector('[type=submit]'); if (b && b.disabled) return false; if (b) b.disabled = true;">
-                      <div class="modern-client-order-edit-note">
-                        <strong>Nom du chantier verrouillé</strong>
-                        <span>${escHtml(o.description || `Commande #${o.id}`)}</span>
-                        <small>Le nom sert au dossier physique. Il sera modifiable plus tard avec migration de dossier sécurisée.</small>
-                      </div>
-                      <div class="modern-client-order-edit-grid">
-                        <label class="clients-field">
-                          <span>Date commande</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('calendar')}
-                            <input type="date" name="date" value="${escHtml(dateLabel)}">
-                          </div>
-                        </label>
-                        ${!isAtelier ? `
-                        <label class="clients-field">
-                          <span>Prix HT (€)</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('postal')}
-                            <input type="number" name="price" step="0.01" min="0" value="${escHtml(editPriceValue)}" data-order-edit-price-ht>
-                          </div>
-                        </label>
-                        <label class="clients-field">
-                          <span>TVA</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('postal')}
-                            <select name="vat_rate" data-order-edit-vat-rate>${editVatOptions}</select>
-                          </div>
-                        </label>
-                        <label class="clients-field">
-                          <span>Prix TTC (€)</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('postal')}
-                            <input type="number" step="0.01" readonly data-order-edit-price-ttc>
-                          </div>
-                        </label>
-                        ` : ''}
-                        <label class="clients-field">
-                          <span>Heures prévues</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('calendar')}
-                            <input type="number" name="planned_hours" min="0" step="0.25" value="${plannedHoursValue > 0 ? escHtml(String(plannedHoursValue)) : ''}">
-                          </div>
-                        </label>
-                        <label class="clients-field">
-                          <span>Date fin prévue</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('calendar')}
-                            <input type="date" name="chantier_end_date" value="${escHtml(endDate || '')}">
-                          </div>
-                        </label>
-                        <label class="clients-field">
-                          <span>Étape chantier</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('database')}
-                            <select name="chantier_status">${chantierStatusOptions(chantierStatus)}</select>
-                          </div>
-                        </label>
-                        <label class="clients-field">
-                          <span>Avancement (%)</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('tasks')}
-                            <input type="number" name="chantier_progress" min="0" max="100" step="1" value="${escHtml(String(Number(o.chantier_progress || progress || 0)))}">
-                          </div>
-                        </label>
-                      </div>
-                      <div class="modern-client-order-edit-actions">
-                        <button type="submit" class="clients-submit-btn">${clientPageIcon('check', 'clients-submit-icon')} Enregistrer</button>
-                        <button type="button" class="modern-cancel-link" onclick="this.closest('details').removeAttribute('open')">Annuler</button>
-                      </div>
-                    </form>
-                  </details>
+                  <button type="button" class="modern-client-order-open modern-client-order-edit-trigger" aria-expanded="false" aria-controls="order-edit-${o.id}" data-order-edit-toggle>
+                    ${clientPageIcon('edit', 'modern-client-order-open-icon')}
+                    <span>Modifier</span>
+                    <b aria-hidden="true">›</b>
+                  </button>
                   <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');">
                     <input type="hidden" name="id" value="${o.id}" />
                     <button type="submit" class="modern-order-done-btn" title="Terminer">${clientPageIcon('check', 'modern-action-icon')} Terminer</button>
                   </form>
                 </div>
+                <form method="POST" action="/orders/client/${o.id}/update" id="order-edit-${o.id}" class="modern-client-order-edit-form" data-order-edit-form hidden onsubmit="const b=this.querySelector('[type=submit]'); if (b && b.disabled) return false; if (b) b.disabled = true;">
+                  <div class="modern-client-order-edit-note">
+                    <strong>Nom verrouillé</strong>
+                    <span>${escHtml(o.description || `Commande #${o.id}`)}</span>
+                    <small>Utilisé par le dossier physique.</small>
+                  </div>
+                  <div class="modern-client-order-edit-grid">
+                    <label class="clients-field">
+                      <span>Date commande</span>
+                      <div class="clients-input-shell">
+                        ${clientPageIcon('calendar')}
+                        <input type="date" name="date" value="${escHtml(dateLabel)}">
+                      </div>
+                    </label>
+                    ${!isAtelier ? `
+                    <label class="clients-field">
+                      <span>Prix HT (€)</span>
+                      <div class="clients-input-shell">
+                        ${clientPageIcon('postal')}
+                        <input type="number" name="price" step="0.01" min="0" value="${escHtml(editPriceValue)}" data-order-edit-price-ht>
+                      </div>
+                    </label>
+                    <label class="clients-field">
+                      <span>TVA</span>
+                      <div class="clients-input-shell">
+                        ${clientPageIcon('postal')}
+                        <select name="vat_rate" data-order-edit-vat-rate>${editVatOptions}</select>
+                      </div>
+                    </label>
+                    <label class="clients-field">
+                      <span>Prix TTC (€)</span>
+                      <div class="clients-input-shell">
+                        ${clientPageIcon('postal')}
+                        <input type="number" step="0.01" readonly data-order-edit-price-ttc>
+                      </div>
+                    </label>
+                    ` : ''}
+                    <label class="clients-field">
+                      <span>Heures prévues</span>
+                      <div class="clients-input-shell">
+                        ${clientPageIcon('calendar')}
+                        <input type="number" name="planned_hours" min="0" step="0.25" value="${plannedHoursValue > 0 ? escHtml(String(plannedHoursValue)) : ''}">
+                      </div>
+                    </label>
+                    <label class="clients-field">
+                      <span>Date fin prévue</span>
+                      <div class="clients-input-shell">
+                        ${clientPageIcon('calendar')}
+                        <input type="date" name="chantier_end_date" value="${escHtml(endDate || '')}">
+                      </div>
+                    </label>
+                    <label class="clients-field">
+                      <span>Étape chantier</span>
+                      <div class="clients-input-shell">
+                        ${clientPageIcon('database')}
+                        <select name="chantier_status">${chantierStatusOptions(chantierStatus)}</select>
+                      </div>
+                    </label>
+                    <label class="clients-field">
+                      <span>Avancement (%)</span>
+                      <div class="clients-input-shell">
+                        ${clientPageIcon('tasks')}
+                        <input type="number" name="chantier_progress" min="0" max="100" step="1" value="${escHtml(String(Number(o.chantier_progress || progress || 0)))}">
+                      </div>
+                    </label>
+                  </div>
+                  <div class="modern-client-order-edit-actions">
+                    <button type="submit" class="clients-submit-btn">${clientPageIcon('check', 'clients-submit-icon')} Enregistrer</button>
+                    <button type="button" class="modern-cancel-link" data-order-edit-cancel>Annuler</button>
+                  </div>
+                </form>
               </article>
             `;
           })
@@ -5780,6 +5785,24 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
               editVatRate.addEventListener('change', syncEditTtc);
               syncEditTtc();
             }
+          });
+          document.querySelectorAll('[data-order-edit-toggle]').forEach(function(toggle){
+            var panel = document.getElementById(toggle.getAttribute('aria-controls') || '');
+            if (!panel) return;
+            toggle.addEventListener('click', function(){
+              var isOpen = toggle.getAttribute('aria-expanded') === 'true';
+              toggle.setAttribute('aria-expanded', String(!isOpen));
+              panel.hidden = isOpen;
+            });
+          });
+          document.querySelectorAll('[data-order-edit-cancel]').forEach(function(button){
+            button.addEventListener('click', function(){
+              var panel = button.closest('[data-order-edit-form]');
+              if (!panel) return;
+              panel.hidden = true;
+              var toggle = document.querySelector('[data-order-edit-toggle][aria-controls="' + panel.id + '"]');
+              if (toggle) toggle.setAttribute('aria-expanded', 'false');
+            });
           });
           toggle.addEventListener('click', function(){
             var isOpen = toggle.getAttribute('aria-expanded') === 'true';
