@@ -1138,6 +1138,7 @@ function runSqliteMigrations(ensureColumn) {
   ensureColumn('client_orders', 'chantier_progress', 'REAL DEFAULT 0');
   ensureColumn('client_orders', 'chantier_notes', 'TEXT');
   ensureColumn('client_orders', 'status', 'TEXT');
+  ensureColumn('client_orders', 'vat_rate', 'REAL NULL');
   ensureColumn('supplier_orders', 'status', 'TEXT');
   ensureColumn('chantier_hours', 'client_order_id', 'INTEGER NULL');
   ensureColumn('tasks', 'status', 'TEXT');
@@ -1732,6 +1733,21 @@ function quoteStatusClass(status) {
 function normalizeVatRate(value) {
   const rate = Number(value);
   return rate === 10 || rate === 20 ? rate : 20;
+}
+
+function parseOptionalVatRate(value) {
+  const rate = Number(value);
+  return rate === 10 || rate === 20 ? rate : null;
+}
+
+function inferVatRateFromHtTtc(amountHt, amountTtc) {
+  const ht = Number(amountHt || 0);
+  const ttc = Number(amountTtc || 0);
+  if (!Number.isFinite(ht) || !Number.isFinite(ttc) || ht <= 0 || ttc <= 0) return null;
+  const rate = ((ttc / ht) - 1) * 100;
+  if (Math.abs(rate - 10) <= 0.25) return 10;
+  if (Math.abs(rate - 20) <= 0.25) return 20;
+  return null;
 }
 
 function quoteVatOptions(selected) {
@@ -3513,6 +3529,7 @@ app.get('/agenda', requireLogin, (req, res) => {
   purgeExpiredLocalAgendaEventsSafely();
   const requestedView = String(req.query.view || 'week').trim().toLowerCase();
   const agendaView = ['day', 'week', 'month'].includes(requestedView) ? requestedView : 'week';
+  const requestedMonth = String(req.query.month || '').trim();
 
   const events = db.prepare(`
     SELECT *
@@ -3535,6 +3552,15 @@ app.get('/agenda', requireLogin, (req, res) => {
 
   const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
   const nextMonth = new Date(todayStart.getFullYear(), todayStart.getMonth() + 1, 1);
+  const selectedMonthStart = /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)
+    ? new Date(Number(requestedMonth.slice(0, 4)), Number(requestedMonth.slice(5, 7)) - 1, 1)
+    : new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
+  if (Number.isNaN(selectedMonthStart.getTime())) {
+    selectedMonthStart.setFullYear(todayStart.getFullYear(), todayStart.getMonth(), 1);
+  }
+  selectedMonthStart.setHours(0, 0, 0, 0);
+  const selectedNextMonth = new Date(selectedMonthStart.getFullYear(), selectedMonthStart.getMonth() + 1, 1);
+  const selectedMonthKey = `${selectedMonthStart.getFullYear()}-${String(selectedMonthStart.getMonth() + 1).padStart(2, '0')}`;
 
   function eventDate(event) {
     const date = new Date(event.start_date);
@@ -3544,6 +3570,42 @@ app.get('/agenda', requireLogin, (req, res) => {
   function inRange(event, start, end) {
     const date = eventDate(event);
     return date && date >= start && date < end;
+  }
+
+  function localDateTime(value) {
+    const normalized = googleSync.normalizeAgendaDateTime(value, APP_TIME_ZONE);
+    if (!normalized) return null;
+    const date = new Date(`${normalized}:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function eventEndDate(event) {
+    const start = localDateTime(event.start_date);
+    if (!start) return null;
+    const end = localDateTime(event.end_date);
+    if (end && end >= start) return end;
+    const fallback = new Date(start);
+    fallback.setHours(fallback.getHours() + 1);
+    return fallback;
+  }
+
+  function isAllDayAgendaEvent(event) {
+    const startRaw = String(event?.start_date || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(startRaw)) return true;
+    const start = googleSync.normalizeAgendaDateTime(event?.start_date, APP_TIME_ZONE);
+    const end = googleSync.normalizeAgendaDateTime(event?.end_date, APP_TIME_ZONE);
+    return Boolean(start && end && start.slice(11, 16) === '00:00' && end.slice(11, 16) === '23:59');
+  }
+
+  function eventOverlapsDay(event, dayStart, dayEnd) {
+    const start = localDateTime(event.start_date);
+    const end = eventEndDate(event);
+    return Boolean(start && end && start < dayEnd && end > dayStart);
+  }
+
+  function monthHref(monthDate) {
+    const key = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
+    return `/agenda?view=month&month=${key}`;
   }
 
   function formatAgendaDate(date) {
@@ -3579,6 +3641,30 @@ app.get('/agenda', requireLogin, (req, res) => {
     `;
   }
 
+  function renderMonthAgendaEvent(event, dayStart) {
+    const startDate = localDateTime(event.start_date);
+    const endDate = eventEndDate(event);
+    const isMultiDay = startDate && endDate && startDate.toDateString() !== endDate.toDateString();
+    const showTime = startDate && startDate.toDateString() === dayStart.toDateString();
+    const start = showTime && !isAllDayAgendaEvent(event)
+      ? startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      : '';
+    return `
+      <button
+        type="button"
+        class="planning-event planning-month-event ${escHtml(event.type || 'rdv')}"
+        data-event-id="${event.id}"
+        data-event-title="${escHtml(event.title || '')}"
+        data-event-type="${escHtml(event.type || 'rdv')}"
+        data-event-start="${escHtml(event.start_date || '')}"
+        data-event-end="${escHtml(event.end_date || '')}"
+      >
+        ${start ? `<span class="planning-event-time">${escHtml(start)}</span>` : ''}
+        <span class="planning-event-title">${isMultiDay ? '↔ ' : ''}${escHtml(event.title || 'Événement')}</span>
+      </button>
+    `;
+  }
+
   function renderEventsList(list) {
     const sorted = list.slice().sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
     return sorted.length
@@ -3587,6 +3673,7 @@ app.get('/agenda', requireLogin, (req, res) => {
   }
 
   const dayLabels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+  const workDayLabels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
   function renderDayView() {
     const dayEvents = events.filter((event) => inRange(event, todayStart, tomorrow));
@@ -3620,25 +3707,68 @@ app.get('/agenda', requireLogin, (req, res) => {
   }
 
   function renderMonthView() {
-    const days = [];
-    for (let date = new Date(monthStart); date < nextMonth; date.setDate(date.getDate() + 1)) {
-      const dayStart = new Date(date);
-      const dayEnd = new Date(date);
-      dayEnd.setDate(date.getDate() + 1);
-      const dayEvents = events.filter((event) => inRange(event, dayStart, dayEnd));
+    const gridStart = new Date(selectedMonthStart);
+    gridStart.setDate(selectedMonthStart.getDate() - ((selectedMonthStart.getDay() + 6) % 7));
+    const gridEnd = new Date(selectedNextMonth);
+    gridEnd.setDate(selectedNextMonth.getDate() - 1);
+    const endWeekdayOffset = (gridEnd.getDay() + 6) % 7;
+    gridEnd.setDate(gridEnd.getDate() + (4 - Math.min(endWeekdayOffset, 4)));
 
-      days.push(`
-        <div class="planning-month-day${dayStart.toDateString() === todayStart.toDateString() ? ' today' : ''}">
-          <div class="planning-month-header">
-            <strong>${dayStart.toLocaleDateString('fr-FR', { day: '2-digit' })}</strong>
-            <span>${dayStart.toLocaleDateString('fr-FR', { weekday: 'short' })}</span>
+    const previousMonth = new Date(selectedMonthStart.getFullYear(), selectedMonthStart.getMonth() - 1, 1);
+    const followingMonth = new Date(selectedMonthStart.getFullYear(), selectedMonthStart.getMonth() + 1, 1);
+    const monthTitle = selectedMonthStart.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+
+    const weeks = [];
+    for (let weekStart = new Date(gridStart); weekStart <= gridEnd; weekStart.setDate(weekStart.getDate() + 7)) {
+      const days = [];
+      for (let index = 0; index < 5; index += 1) {
+        const dayStart = new Date(weekStart);
+        dayStart.setDate(weekStart.getDate() + index);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayStart.getDate() + 1);
+        const dayEvents = events
+          .filter((event) => eventOverlapsDay(event, dayStart, dayEnd))
+          .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+        const visibleEvents = dayEvents.slice(0, 3);
+        const hiddenCount = dayEvents.length - visibleEvents.length;
+        const isOutsideMonth = dayStart < selectedMonthStart || dayStart >= selectedNextMonth;
+        const isToday = dayStart.toDateString() === todayStart.toDateString();
+
+        days.push(`
+          <div class="planning-month-workday${isToday ? ' today' : ''}${isOutsideMonth ? ' outside-month' : ''}">
+            <div class="planning-month-header">
+              <strong>${dayStart.toLocaleDateString('fr-FR', { day: '2-digit' })}</strong>
+              <span>${dayStart.toLocaleDateString('fr-FR', { month: 'short' })}</span>
+            </div>
+            <div class="planning-events planning-month-events">
+              ${visibleEvents.map((event) => renderMonthAgendaEvent(event, dayStart)).join('')}
+              ${hiddenCount > 0 ? `<div class="planning-month-more">+${hiddenCount} autre${hiddenCount > 1 ? 's' : ''}</div>` : ''}
+            </div>
           </div>
-          <div class="planning-events">${renderEventsList(dayEvents)}</div>
-        </div>
-      `);
+        `);
+      }
+      weeks.push(`<div class="planning-month-week">${days.join('')}</div>`);
     }
 
-    return `<div class="planning-month">${days.join('')}</div>`;
+    return `
+      <section class="planning-month-shell">
+        <div class="planning-month-nav">
+          <a class="btn btn-secondary" href="${monthHref(previousMonth)}">‹ Mois précédent</a>
+          <div>
+            <h2>${escHtml(monthTitle)}</h2>
+            <span>Du lundi au vendredi</span>
+          </div>
+          <a class="btn btn-secondary" href="/agenda?view=month&month=${dateKeyInTimeZone(new Date(), APP_TIME_ZONE).slice(0, 7)}">Aujourd’hui</a>
+          <a class="btn btn-secondary" href="${monthHref(followingMonth)}">Mois suivant ›</a>
+        </div>
+        <div class="planning-month-workgrid" aria-label="Agenda mensuel ${escHtml(monthTitle)}">
+          <div class="planning-month-weekdays">
+            ${workDayLabels.map((label) => `<div><span class="weekday-long">${label}</span><span class="weekday-short">${label[0]}</span></div>`).join('')}
+          </div>
+          ${weeks.join('')}
+        </div>
+      </section>
+    `;
   }
 
   const agendaLabels = {
@@ -3657,7 +3787,7 @@ app.get('/agenda', requireLogin, (req, res) => {
     <nav class="agenda-view-switch" aria-label="Vue agenda">
       <a class="${agendaView === 'day' ? 'active' : ''}" href="/agenda?view=day">Jour</a>
       <a class="${agendaView === 'week' ? 'active' : ''}" href="/agenda?view=week">Semaine</a>
-      <a class="${agendaView === 'month' ? 'active' : ''}" href="/agenda?view=month">Mois</a>
+      <a class="${agendaView === 'month' ? 'active' : ''}" href="/agenda?view=month&month=${selectedMonthKey}">Mois</a>
     </nav>
   `;
 
@@ -4870,6 +5000,8 @@ for (const folder of pcFolders) {
 }
 
   merged.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }));
+  const clientCreateError = String(req.query.error || '').trim();
+  const clientCreateOpen = Boolean(clientCreateError);
 
   const cards = merged.length
     ? merged
@@ -4935,66 +5067,72 @@ for (const folder of pcFolders) {
       'Clients',
       `
       <div class="clients-page-modern">
-        <form method="POST" action="/clients" class="clients-create-card">
-          <div class="clients-create-head">
-            ${clientPageIcon('clients', 'clients-title-icon')}
-            <h1>Ajouter un client</h1>
-          </div>
-
-          <div class="clients-form-grid">
-            <label class="clients-field">
-              <span>Nom *</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('user')}
-                <input name="name" required placeholder="Nom du client" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Email</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('mail')}
-                <input name="email" type="email" placeholder="client@email.com" />
-              </div>
-            </label>
-
-            <label class="clients-field clients-field-wide">
-              <span>Adresse</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('location')}
-                <input name="address" placeholder="Adresse" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Code postal</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('postal')}
-                <input name="postal_code" placeholder="00000" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Ville</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('building')}
-                <input name="city" placeholder="Ville" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Téléphone</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('phone')}
-                <input name="phone" placeholder="06…" />
-              </div>
-            </label>
-          </div>
-
-          <button class="clients-submit-btn" type="submit">
-            <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-            Ajouter le client
+        <form method="POST" action="/clients" class="clients-create-card clients-create-collapsible ${clientCreateOpen ? 'is-open' : 'is-collapsed'}" data-clients-create-card>
+          <button type="button" class="clients-create-head clients-create-toggle" aria-expanded="${clientCreateOpen ? 'true' : 'false'}" aria-controls="client-create-panel" data-clients-create-toggle>
+            <span class="clients-create-title">
+              ${clientPageIcon('add', 'clients-title-icon')}
+              <h1>Nouveau client</h1>
+            </span>
+            <span class="clients-create-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
           </button>
+
+          <div class="clients-create-panel" id="client-create-panel" ${clientCreateOpen ? '' : 'hidden'} data-clients-create-panel>
+            ${clientCreateError ? `<p class="error">${escHtml(clientCreateError)}</p>` : ''}
+            <div class="clients-form-grid">
+              <label class="clients-field">
+                <span>Nom *</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('user')}
+                  <input name="name" required placeholder="Nom du client" />
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Email</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('mail')}
+                  <input name="email" type="email" placeholder="client@email.com" />
+                </div>
+              </label>
+
+              <label class="clients-field clients-field-wide">
+                <span>Adresse</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('location')}
+                  <input name="address" placeholder="Adresse" />
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Code postal</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('postal')}
+                  <input name="postal_code" placeholder="00000" />
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Ville</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('building')}
+                  <input name="city" placeholder="Ville" />
+                </div>
+              </label>
+
+              <label class="clients-field">
+                <span>Téléphone</span>
+                <div class="clients-input-shell">
+                  ${clientPageIcon('phone')}
+                  <input name="phone" placeholder="06…" />
+                </div>
+              </label>
+            </div>
+
+            <button class="clients-submit-btn" type="submit">
+              <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+              Ajouter le client
+            </button>
+          </div>
         </form>
 
         <section class="clients-list-card">
@@ -5017,6 +5155,31 @@ for (const folder of pcFolders) {
 
       <script>
         (function(){
+          const createCard = document.querySelector('[data-clients-create-card]');
+          if (createCard) {
+            const toggle = createCard.querySelector('[data-clients-create-toggle]');
+            const panel = createCard.querySelector('[data-clients-create-panel]');
+            if (toggle && panel) {
+              toggle.addEventListener('click', function(){
+                const isOpen = toggle.getAttribute('aria-expanded') === 'true';
+                toggle.setAttribute('aria-expanded', String(!isOpen));
+                if (isOpen) {
+                  createCard.classList.remove('is-open');
+                  createCard.classList.add('is-collapsed');
+                  window.setTimeout(function(){
+                    if (toggle.getAttribute('aria-expanded') !== 'true') panel.hidden = true;
+                  }, 230);
+                } else {
+                  panel.hidden = false;
+                  window.requestAnimationFrame(function(){
+                    createCard.classList.add('is-open');
+                    createCard.classList.remove('is-collapsed');
+                  });
+                }
+              });
+            }
+          }
+
           const input = document.getElementById('clientSearch');
           const cards = document.querySelectorAll('.client-card-modern');
           if (!input) return;
@@ -5185,7 +5348,11 @@ app.get('/orders/clients', requireLogin, (req, res) => {
 
             const dateLabel = (o.date || '').slice(0, 10);
             const chantierPrice = Number(o.price || 0);
+            const chantierVatRate = parseOptionalVatRate(o.vat_rate);
+            const chantierPriceTtc = chantierVatRate !== null ? round2(chantierPrice * (1 + chantierVatRate / 100)) : null;
             const chantierPriceLabel = chantierPrice > 0 ? `${formatEuroFr(chantierPrice)} HT` : 'Non renseigné';
+            const chantierVatLabel = chantierVatRate !== null ? `TVA : ${chantierVatRate} %` : 'TVA non renseignée';
+            const chantierPriceTtcLabel = chantierPrice > 0 && chantierPriceTtc !== null ? `${formatEuroFr(chantierPriceTtc)} TTC` : 'TTC non calculé';
             const statusLabel = o.status || 'En cours';
 const actualMinutes =
   (chantierHoursByOrderId.get(Number(o.id)) || 0)
@@ -5228,8 +5395,9 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
 
                 ${!isAtelier ? `
                 <div class="modern-client-order-price">
-                  <span>Prix du chantier HT</span>
-                  <strong>${escHtml(chantierPriceLabel)}</strong>
+                  <div><span>Prix HT</span><strong>${escHtml(chantierPriceLabel)}</strong></div>
+                  <div><span>TVA</span><strong>${escHtml(chantierVatLabel)}</strong></div>
+                  <div><span>Prix TTC</span><strong>${escHtml(chantierPriceTtcLabel)}</strong></div>
                 </div>
                 ` : ''}
 
@@ -5429,10 +5597,27 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
 
                 ${!isAtelier ? `
                 <label class="clients-field">
-                  <span>Prix (€)</span>
+                  <span>Prix HT (€)</span>
                   <div class="clients-input-shell">
                     ${clientPageIcon('postal')}
-                    <input type="number" name="price" step="0.01" placeholder="0.00" />
+                    <input type="number" name="price" step="0.01" min="0" placeholder="0.00" data-order-price-ht />
+                  </div>
+                </label>
+                <label class="clients-field">
+                  <span>TVA</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('postal')}
+                    <select name="vat_rate" data-order-vat-rate>
+                      <option value="20" selected>TVA 20 %</option>
+                      <option value="10">TVA 10 %</option>
+                    </select>
+                  </div>
+                </label>
+                <label class="clients-field">
+                  <span>Prix TTC (€)</span>
+                  <div class="clients-input-shell">
+                    ${clientPageIcon('postal')}
+                    <input type="number" step="0.01" placeholder="0.00" readonly data-order-price-ttc />
                   </div>
                 </label>
                 ` : ''}
@@ -5470,6 +5655,20 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
           var toggle = card.querySelector('[data-client-order-add-toggle]');
           var panel = card.querySelector('[data-client-order-add-panel]');
           if (!toggle || !panel) return;
+          var priceHt = card.querySelector('[data-order-price-ht]');
+          var vatRate = card.querySelector('[data-order-vat-rate]');
+          var priceTtc = card.querySelector('[data-order-price-ttc]');
+          function syncOrderTtc(){
+            if (!priceHt || !vatRate || !priceTtc) return;
+            var ht = Number(String(priceHt.value || '').replace(',', '.'));
+            var rate = Number(vatRate.value || 20);
+            priceTtc.value = Number.isFinite(ht) && ht > 0 ? (ht * (1 + rate / 100)).toFixed(2) : '';
+          }
+          if (priceHt && vatRate && priceTtc) {
+            priceHt.addEventListener('input', syncOrderTtc);
+            vatRate.addEventListener('change', syncOrderTtc);
+            syncOrderTtc();
+          }
           toggle.addEventListener('click', function(){
             var isOpen = toggle.getAttribute('aria-expanded') === 'true';
             toggle.setAttribute('aria-expanded', String(!isOpen));
@@ -5998,6 +6197,7 @@ app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
       console.warn('Scan EBP: montant TTC détecté sans HT fiable, client_orders.price laissé à 0.');
     }
     const price = amountHt > 0 ? amountHt : 0;
+    const vatRate = inferVatRateFromHtTtc(amountHt, amountTtc);
 
     const info = db.prepare(
       `
@@ -6006,6 +6206,7 @@ app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
         description,
         date,
         price,
+        vat_rate,
         planned_hours,
         chantier_status,
         chantier_start_date,
@@ -6013,13 +6214,14 @@ app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
         status,
         created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 'En cours', ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'En cours', ?)
     `
     ).run(
       finalClientName,
       description,
       quoteDate,
       price,
+      vatRate,
       0,
       'À préparer',
       new Date().toISOString()
@@ -6076,6 +6278,7 @@ app.post('/orders/client', requireLogin, (req, res) => {
   const description = String(req.body.description || '').trim();
   const date = String(req.body.date || '').trim();
   const price = req.body.price;
+  const vatRate = parseOptionalVatRate(req.body.vat_rate) || 20;
   const chantierStatus = normalizeChantierStatus(req.body.chantier_status);
   const plannedHours = parsePositiveNumber(req.body.planned_hours);
   const chantierStartDate = String(req.body.chantier_start_date || '').trim() || null;
@@ -6093,6 +6296,7 @@ app.post('/orders/client', requireLogin, (req, res) => {
         description,
         date,
         price,
+        vat_rate,
         planned_hours,
         chantier_status,
         chantier_start_date,
@@ -6100,7 +6304,7 @@ app.post('/orders/client', requireLogin, (req, res) => {
         status,
         created_at
       )
-	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'En cours', ?)
+	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'En cours', ?)
 	  `
     )
 	    .run(
@@ -6108,6 +6312,7 @@ app.post('/orders/client', requireLogin, (req, res) => {
         description || null,
         dateValue,
         price ? parseFloat(price) : 0,
+        vatRate,
         plannedHours,
         chantierStatus,
         chantierStartDate,
@@ -8983,17 +9188,19 @@ console.log('orderTitle =', orderTitle);
     description,
     date,
     price,
+    vat_rate,
     planned_hours,
     status,
     created_at
   )
-  VALUES (?, ?, ?, ?, ?, 'En cours', ?)
+  VALUES (?, ?, ?, ?, ?, ?, 'En cours', ?)
   `
 ).run(
   clientName,
   orderTitle,
   isoDate(),
   totalWithMargin,
+  parseOptionalVatRate(quote.vat_rate),
   plannedHours,
   new Date().toISOString()
 );
