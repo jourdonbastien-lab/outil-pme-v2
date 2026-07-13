@@ -156,6 +156,15 @@ function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
+function formatEuroFr(value) {
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(Number(value || 0));
+}
+
 function parseDecimalInput(value, fallback = 0) {
   const normalized = String(value ?? '').trim().replace(/\s+/g, '').replace(',', '.');
   if (!normalized) return fallback;
@@ -5175,7 +5184,8 @@ app.get('/orders/clients', requireLogin, (req, res) => {
             const chantierHoursUrl = `${clientFolderUrl}/Heure%20chantier`;
 
             const dateLabel = (o.date || '').slice(0, 10);
-            const priceLabel = (o.price || 0).toFixed(2) + ' €';
+            const chantierPrice = Number(o.price || 0);
+            const chantierPriceLabel = chantierPrice > 0 ? `${formatEuroFr(chantierPrice)} HT` : 'Non renseigné';
             const statusLabel = o.status || 'En cours';
 const actualMinutes =
   (chantierHoursByOrderId.get(Number(o.id)) || 0)
@@ -5215,6 +5225,13 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                   <span class="modern-client-order-hours-total">${actualHours.toFixed(1)} h</span>
                   ${isLate ? '<span class="modern-late-badge">Retard</span>' : ''}
                 </div>
+
+                ${!isAtelier ? `
+                <div class="modern-client-order-price">
+                  <span>Prix du chantier HT</span>
+                  <strong>${escHtml(chantierPriceLabel)}</strong>
+                </div>
+                ` : ''}
 
                 <div class="modern-client-order-progress">
                   <div class="chantier-progress client-order-stage-progress ${isOverHours ? 'over-hours' : 'ok-hours'}"><span style="width:${progress}%"></span></div>
@@ -5510,6 +5527,7 @@ async function renderEbpScanValidationPage(req, res, options) {
     || (analysis.source === 'pdf' && pdfTooShort ? 'Le PDF est peu textuel: vérifiez les champs détectés.' : '')
     || (analysis.source === 'ocr' && ocrTooShort ? 'OCR vide ou trop court: vérifiez le fichier, puis corrigez les champs manuellement.' : '')
     || (!extractedText ? 'Analyse incertaine: vérifiez et corrigez les champs.' : '');
+  const htMissingWithTtc = fields.amount_ht === null && fields.amount_ttc !== null;
 
   const optionsHtml = candidates
     .map((c) => {
@@ -5537,6 +5555,7 @@ async function renderEbpScanValidationPage(req, res, options) {
 
         <section class="clients-create-card modern-form-card modern-client-order-form">
           ${warning ? `<p class="info">${escHtml(warning)}</p>` : ''}
+          ${htMissingWithTtc ? '<p class="info">Montant TTC détecté, mais aucun montant HT fiable. Renseignez le montant HT avant création si vous voulez afficher un prix chantier HT.</p>' : ''}
 
           <form method="POST" action="/orders/clients/scan-ebp/create" class="modern-client-order-add-form">
             <input type="hidden" name="scan_file" value="${escHtml(scanFileName)}" />
@@ -5974,7 +5993,11 @@ app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
     const quoteDate = String(req.body.quote_date || '').trim() || isoDate();
     const amountTtc = parseDecimalInput(req.body.amount_ttc, 0);
     const amountHt = parseDecimalInput(req.body.amount_ht, 0);
-    const price = amountTtc > 0 ? amountTtc : amountHt;
+    const hasOnlyTtc = amountHt <= 0 && amountTtc > 0;
+    if (hasOnlyTtc) {
+      console.warn('Scan EBP: montant TTC détecté sans HT fiable, client_orders.price laissé à 0.');
+    }
+    const price = amountHt > 0 ? amountHt : 0;
 
     const info = db.prepare(
       `

@@ -4283,6 +4283,32 @@ button:hover {
   font-weight:900;
 }
 
+.modern-client-order-price{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-width:0;
+  padding:9px 10px;
+  border:1px solid #e7edf5;
+  border-radius:14px;
+  background:#f8fafc;
+}
+
+.modern-client-order-price span{
+  color:#667085;
+  font-size:12px;
+  font-weight:900;
+}
+
+.modern-client-order-price strong{
+  color:#101827;
+  font-size:14px;
+  font-weight:950;
+  text-align:right;
+  white-space:nowrap;
+}
+
 .modern-client-order-progress{
   display:grid;
   gap:0;
@@ -8035,6 +8061,14 @@ body.sketchpad-drawing{
 
   .modern-client-order-row{
     align-items:center;
+  }
+
+  .modern-client-order-price{
+    padding:8px 9px;
+  }
+
+  .modern-client-order-price strong{
+    white-space:normal;
   }
 
   .modern-client-order-actions{
