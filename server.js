@@ -2286,6 +2286,7 @@ function clientPageIcon(name, className = 'clients-ui-icon') {
     barreaudage: '<path d="M5 4v16M19 4v16"/><path d="M8 7v10M11 7v10M14 7v10M17 7v10"/><path d="M4 7h16M4 17h16"/>',
     supplierOrders: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><path d="M6.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
     folder: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
+    edit: '<path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="m14 7 3 3"/>',
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   };
   const svg = icons[name] || icons.user;
@@ -5166,9 +5167,7 @@ for (const folder of pcFolders) {
                 if (isOpen) {
                   createCard.classList.remove('is-open');
                   createCard.classList.add('is-collapsed');
-                  window.setTimeout(function(){
-                    if (toggle.getAttribute('aria-expanded') !== 'true') panel.hidden = true;
-                  }, 230);
+                  panel.hidden = true;
                 } else {
                   panel.hidden = false;
                   window.requestAnimationFrame(function(){
@@ -5334,6 +5333,15 @@ app.get('/orders/clients', requireLogin, (req, res) => {
         : poseAgendaStatus === 'error'
           ? 'Impossible d’ajouter l’événement de pose. Vérifiez les champs.'
           : '';
+  const orderUpdateStatus = String(req.query.orderUpdate || '').trim();
+  const orderUpdateFlash =
+    orderUpdateStatus === 'ok'
+      ? 'Commande mise à jour.'
+      : orderUpdateStatus === 'notfound'
+        ? 'Commande introuvable.'
+        : orderUpdateStatus === 'error'
+          ? 'Impossible de mettre à jour la commande.'
+          : '';
 
   const todayIso = isoDate();
 
@@ -5354,6 +5362,13 @@ app.get('/orders/clients', requireLogin, (req, res) => {
             const chantierVatLabel = chantierVatRate !== null ? `TVA : ${chantierVatRate} %` : 'TVA non renseignée';
             const chantierPriceTtcLabel = chantierPrice > 0 && chantierPriceTtc !== null ? `${formatEuroFr(chantierPriceTtc)} TTC` : 'TTC non calculé';
             const statusLabel = o.status || 'En cours';
+            const plannedHoursValue = Number(o.planned_hours || 0);
+            const editPriceValue = chantierPrice > 0 ? chantierPrice.toFixed(2) : '';
+            const editVatOptions = `
+              <option value=""${chantierVatRate === null ? ' selected' : ''}>TVA non renseignée</option>
+              <option value="20"${chantierVatRate === 20 ? ' selected' : ''}>TVA 20 %</option>
+              <option value="10"${chantierVatRate === 10 ? ' selected' : ''}>TVA 10 %</option>
+            `;
 const actualMinutes =
   (chantierHoursByOrderId.get(Number(o.id)) || 0)
   + (legacyChantierHoursTotals.get(`${safeClientFolder}\u0000${orderFolderName}`) || 0);
@@ -5486,6 +5501,84 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                     <span>Heures</span>
                     <b aria-hidden="true">›</b>
                   </a>
+                  <details class="modern-client-order-edit">
+                    <summary class="modern-client-order-open modern-client-order-edit-trigger">
+                      ${clientPageIcon('edit', 'modern-client-order-open-icon')}
+                      <span>Modifier</span>
+                      <b aria-hidden="true">›</b>
+                    </summary>
+                    <form method="POST" action="/orders/client/${o.id}/update" class="modern-client-order-edit-form" data-order-edit-form onsubmit="const b=this.querySelector('[type=submit]'); if (b && b.disabled) return false; if (b) b.disabled = true;">
+                      <div class="modern-client-order-edit-note">
+                        <strong>Nom du chantier verrouillé</strong>
+                        <span>${escHtml(o.description || `Commande #${o.id}`)}</span>
+                        <small>Le nom sert au dossier physique. Il sera modifiable plus tard avec migration de dossier sécurisée.</small>
+                      </div>
+                      <div class="modern-client-order-edit-grid">
+                        <label class="clients-field">
+                          <span>Date commande</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('calendar')}
+                            <input type="date" name="date" value="${escHtml(dateLabel)}">
+                          </div>
+                        </label>
+                        ${!isAtelier ? `
+                        <label class="clients-field">
+                          <span>Prix HT (€)</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('postal')}
+                            <input type="number" name="price" step="0.01" min="0" value="${escHtml(editPriceValue)}" data-order-edit-price-ht>
+                          </div>
+                        </label>
+                        <label class="clients-field">
+                          <span>TVA</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('postal')}
+                            <select name="vat_rate" data-order-edit-vat-rate>${editVatOptions}</select>
+                          </div>
+                        </label>
+                        <label class="clients-field">
+                          <span>Prix TTC (€)</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('postal')}
+                            <input type="number" step="0.01" readonly data-order-edit-price-ttc>
+                          </div>
+                        </label>
+                        ` : ''}
+                        <label class="clients-field">
+                          <span>Heures prévues</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('calendar')}
+                            <input type="number" name="planned_hours" min="0" step="0.25" value="${plannedHoursValue > 0 ? escHtml(String(plannedHoursValue)) : ''}">
+                          </div>
+                        </label>
+                        <label class="clients-field">
+                          <span>Date fin prévue</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('calendar')}
+                            <input type="date" name="chantier_end_date" value="${escHtml(endDate || '')}">
+                          </div>
+                        </label>
+                        <label class="clients-field">
+                          <span>Étape chantier</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('database')}
+                            <select name="chantier_status">${chantierStatusOptions(chantierStatus)}</select>
+                          </div>
+                        </label>
+                        <label class="clients-field">
+                          <span>Avancement (%)</span>
+                          <div class="clients-input-shell">
+                            ${clientPageIcon('tasks')}
+                            <input type="number" name="chantier_progress" min="0" max="100" step="1" value="${escHtml(String(Number(o.chantier_progress || progress || 0)))}">
+                          </div>
+                        </label>
+                      </div>
+                      <div class="modern-client-order-edit-actions">
+                        <button type="submit" class="clients-submit-btn">${clientPageIcon('check', 'clients-submit-icon')} Enregistrer</button>
+                        <button type="button" class="modern-cancel-link" onclick="this.closest('details').removeAttribute('open')">Annuler</button>
+                      </div>
+                    </form>
+                  </details>
                   <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');">
                     <input type="hidden" name="id" value="${o.id}" />
                     <button type="submit" class="modern-order-done-btn" title="Terminer">${clientPageIcon('check', 'modern-action-icon')} Terminer</button>
@@ -5516,6 +5609,7 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
         </section>
 
         ${poseAgendaFlash ? `<section class="clients-create-card modern-form-card"><p class="info">${escHtml(poseAgendaFlash)}</p></section>` : ''}
+        ${orderUpdateFlash ? `<section class="clients-create-card modern-form-card"><p class="${orderUpdateStatus === 'ok' ? 'info' : 'error'}">${escHtml(orderUpdateFlash)}</p></section>` : ''}
 
         <section class="clients-create-card modern-form-card modern-client-order-form modern-client-order-add-card is-collapsed" id="new-client-order" data-client-order-add-card>
           <button type="button" class="modern-client-order-add-toggle" aria-expanded="false" aria-controls="client-order-add-panel" data-client-order-add-toggle>
@@ -5669,6 +5763,24 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
             vatRate.addEventListener('change', syncOrderTtc);
             syncOrderTtc();
           }
+          document.querySelectorAll('[data-order-edit-form]').forEach(function(form){
+            var editPriceHt = form.querySelector('[data-order-edit-price-ht]');
+            var editVatRate = form.querySelector('[data-order-edit-vat-rate]');
+            var editPriceTtc = form.querySelector('[data-order-edit-price-ttc]');
+            function syncEditTtc(){
+              if (!editPriceHt || !editVatRate || !editPriceTtc) return;
+              var ht = Number(String(editPriceHt.value || '').replace(',', '.'));
+              var rate = Number(editVatRate.value || '');
+              editPriceTtc.value = Number.isFinite(ht) && ht > 0 && (rate === 10 || rate === 20)
+                ? (ht * (1 + rate / 100)).toFixed(2)
+                : '';
+            }
+            if (editPriceHt && editVatRate && editPriceTtc) {
+              editPriceHt.addEventListener('input', syncEditTtc);
+              editVatRate.addEventListener('change', syncEditTtc);
+              syncEditTtc();
+            }
+          });
           toggle.addEventListener('click', function(){
             var isOpen = toggle.getAttribute('aria-expanded') === 'true';
             toggle.setAttribute('aria-expanded', String(!isOpen));
@@ -6354,6 +6466,75 @@ ensureDir(internalDir);
   ensureStandardSubfolders(pcOrderDir);
 
   res.redirect('/orders/clients');
+});
+
+app.post('/orders/client/:id/update', requireLogin, (req, res) => {
+  try {
+    const orderId = Number(req.params.id || 0);
+    if (!Number.isFinite(orderId) || orderId <= 0) {
+      return res.redirect('/orders/clients?orderUpdate=notfound');
+    }
+
+    const existing = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
+    if (!existing) {
+      return res.redirect('/orders/clients?orderUpdate=notfound');
+    }
+
+    const isAtelier = req.session?.user?.role === 'atelier';
+    const dateValue = String(req.body.date || '').trim() || existing.date || isoDate();
+    const plannedHours = parsePositiveNumber(req.body.planned_hours);
+    const chantierEndDate = String(req.body.chantier_end_date || '').trim() || null;
+    const chantierStatus = normalizeChantierStatus(req.body.chantier_status || existing.chantier_status);
+    const chantierProgressRaw = parseDecimalInput(req.body.chantier_progress, Number(existing.chantier_progress || 0));
+    const chantierProgress = Math.max(0, Math.min(100, chantierProgressRaw));
+
+    if (isAtelier) {
+      db.prepare(`
+        UPDATE client_orders
+        SET date = ?,
+            planned_hours = ?,
+            chantier_end_date = ?,
+            chantier_status = ?,
+            chantier_progress = ?
+        WHERE id = ?
+      `).run(
+        dateValue,
+        plannedHours,
+        chantierEndDate,
+        chantierStatus,
+        chantierProgress,
+        orderId
+      );
+    } else {
+      const priceHt = parseDecimalInput(req.body.price, 0);
+      const vatRate = parseOptionalVatRate(req.body.vat_rate);
+      db.prepare(`
+        UPDATE client_orders
+        SET date = ?,
+            price = ?,
+            vat_rate = ?,
+            planned_hours = ?,
+            chantier_end_date = ?,
+            chantier_status = ?,
+            chantier_progress = ?
+        WHERE id = ?
+      `).run(
+        dateValue,
+        priceHt,
+        vatRate,
+        plannedHours,
+        chantierEndDate,
+        chantierStatus,
+        chantierProgress,
+        orderId
+      );
+    }
+
+    return res.redirect('/orders/clients?orderUpdate=ok');
+  } catch (e) {
+    console.error('Erreur modification commande client', e);
+    return res.redirect('/orders/clients?orderUpdate=error');
+  }
 });
 
 app.post('/orders/client/done', requireLogin, (req, res) => {
