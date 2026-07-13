@@ -4281,65 +4281,41 @@ button:hover {
   font-weight:900;
 }
 
-.modern-client-order-meta-grid{
+.modern-client-order-info-list{
   display:grid;
   grid-template-columns:repeat(4, minmax(0, 1fr));
-  gap:8px;
+  gap:0;
   min-width:0;
-}
-
-.modern-client-order-meta-grid div{
-  display:grid;
-  gap:2px;
-  min-width:0;
-  padding:8px 9px;
   border:1px solid #e7edf5;
   border-radius:12px;
-  background:#f8fafc;
+  overflow:hidden;
 }
 
-.modern-client-order-meta-grid span{
+.modern-client-order-info-list div{
+  display:grid;
+  gap:1px;
+  min-width:0;
+  padding:6px 8px;
+  border-right:1px solid #e7edf5;
+  background:#fff;
+}
+
+.modern-client-order-info-list div:last-child{
+  border-right:0;
+}
+
+.modern-client-order-info-list span{
   color:#667085;
-  font-size:11px;
+  font-size:10.5px;
   font-weight:900;
   line-height:1.1;
 }
 
-.modern-client-order-meta-grid strong{
+.modern-client-order-info-list strong{
   color:#101827;
   font-size:12px;
   font-weight:950;
   line-height:1.15;
-  overflow-wrap:anywhere;
-}
-
-.modern-client-order-price{
-  display:grid;
-  grid-template-columns:repeat(3, minmax(0, 1fr));
-  gap:8px;
-  min-width:0;
-  padding:8px;
-  border:1px solid #e7edf5;
-  border-radius:14px;
-  background:#f8fafc;
-}
-
-.modern-client-order-price div{
-  display:grid;
-  gap:3px;
-  min-width:0;
-}
-
-.modern-client-order-price span{
-  color:#667085;
-  font-size:12px;
-  font-weight:900;
-}
-
-.modern-client-order-price strong{
-  color:#101827;
-  font-size:14px;
-  font-weight:950;
   overflow-wrap:anywhere;
 }
 
@@ -4399,8 +4375,8 @@ button:hover {
 }
 
 .modern-client-order-open-icon svg{
-  width:16px;
-  height:16px;
+  width:15px;
+  height:15px;
   fill:none;
   stroke:currentColor;
   stroke-width:2;
@@ -4515,7 +4491,7 @@ button:hover {
 .modern-client-order-actions-bottom{
   display:grid;
   grid-template-columns:repeat(4, minmax(0, 1fr));
-  gap:8px;
+  gap:6px;
   align-items:stretch;
 }
 
@@ -4652,15 +4628,30 @@ button:hover {
   padding:0 10px;
 }
 
+.order-done-label-short{
+  display:none;
+}
+
 @media (max-width:720px){
   .modern-client-order-actions-bottom{
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:4px;
+  }
+
+  .modern-client-order-info-list{
     grid-template-columns:repeat(2, minmax(0, 1fr));
   }
 
-  .modern-client-order-meta-grid,
-  .modern-client-order-price{
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    gap:6px;
+  .modern-client-order-info-list div{
+    padding:5px 7px;
+  }
+
+  .modern-client-order-info-list div:nth-child(2){
+    border-right:0;
+  }
+
+  .modern-client-order-info-list div:nth-child(n+3){
+    border-top:1px solid #e7edf5;
   }
 
   .modern-client-order-edit-grid{
@@ -4687,6 +4678,34 @@ button:hover {
   .modern-client-order-edit-actions .clients-submit-btn,
   .modern-client-order-edit-actions .modern-cancel-link{
     width:100%;
+  }
+
+  .modern-client-order-open,
+  .modern-order-done-btn{
+    min-height:36px;
+    gap:3px;
+    padding:0 4px;
+    border-radius:12px;
+    font-size:10.5px;
+    line-height:1;
+  }
+
+  .modern-client-order-open-icon svg,
+  .modern-action-icon svg{
+    width:13px;
+    height:13px;
+  }
+
+  .modern-client-order-open b{
+    display:none;
+  }
+
+  .order-done-label-full{
+    display:none;
+  }
+
+  .order-done-label-short{
+    display:inline;
   }
 }
 
@@ -8600,11 +8619,6 @@ body.sketchpad-drawing{
     align-items:center;
   }
 
-  .modern-client-order-price{
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-    padding:8px 9px;
-  }
-
   .modern-client-order-actions{
     display:grid;
     grid-template-columns:auto auto minmax(0, 1fr);
@@ -8613,8 +8627,8 @@ body.sketchpad-drawing{
 
   .modern-client-order-open,
   .modern-order-done-btn{
-    min-height:40px;
-    padding:0 10px;
+    min-height:36px;
+    padding:0 5px;
   }
 
   .modern-client-order-open{
@@ -8801,8 +8815,7 @@ body.sketchpad-drawing{
   .modern-client-order-head,
   .modern-client-order-row,
   .modern-client-order-progress,
-  .modern-client-order-meta-grid,
-  .modern-client-order-price,
+  .modern-client-order-info-list,
   .modern-client-order-agenda-block,
   .modern-client-order-agenda-inline,
   .modern-client-order-edit-form,
@@ -8855,9 +8868,9 @@ body.sketchpad-drawing{
 
   .modern-client-order-actions-bottom{
     display:grid !important;
-    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
-    gap:8px !important;
-    margin-top:12px !important;
+    grid-template-columns:repeat(4, minmax(0, 1fr)) !important;
+    gap:4px !important;
+    margin-top:0 !important;
   }
 
   .modern-client-order-actions-bottom .modern-client-order-open,

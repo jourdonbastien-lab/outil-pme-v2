@@ -5408,20 +5408,14 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                   ${isLate ? '<span class="modern-late-badge">Retard</span>' : ''}
                 </div>
 
-                <div class="modern-client-order-meta-grid">
-                  <div><span>Date</span><strong>${escHtml(dateLabel || 'Non renseignée')}</strong></div>
-                  <div><span>Heures prévues</span><strong>${plannedHours > 0 ? `${plannedHours.toFixed(1)} h` : 'Non renseigné'}</strong></div>
-                  <div><span>Heures réalisées</span><strong>${actualHours.toFixed(1)} h</strong></div>
-                  <div><span>Date fin</span><strong>${escHtml(endDate || 'Non renseignée')}</strong></div>
-                </div>
-
-                ${!isAtelier ? `
-                <div class="modern-client-order-price">
+                <div class="modern-client-order-info-list">
+                  <div><span>Date commande</span><strong>${escHtml(dateLabel || 'Non renseignée')}</strong></div>
+                  ${!isAtelier ? `
                   <div><span>Prix HT</span><strong>${escHtml(chantierPriceLabel)}</strong></div>
                   <div><span>TVA</span><strong>${escHtml(chantierVatLabel)}</strong></div>
                   <div><span>Prix TTC</span><strong>${escHtml(chantierPriceTtcLabel)}</strong></div>
+                  ` : ''}
                 </div>
-                ` : ''}
 
                 <div class="modern-client-order-progress">
                   <div class="chantier-progress client-order-stage-progress ${isOverHours ? 'over-hours' : 'ok-hours'}"><span style="width:${progress}%"></span></div>
@@ -5515,7 +5509,11 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                   </button>
                   <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');">
                     <input type="hidden" name="id" value="${o.id}" />
-                    <button type="submit" class="modern-order-done-btn" title="Terminer">${clientPageIcon('check', 'modern-action-icon')} Terminer</button>
+                    <button type="submit" class="modern-order-done-btn" title="Terminer">
+                      ${clientPageIcon('check', 'modern-action-icon')}
+                      <span class="order-done-label-full">Terminer</span>
+                      <span class="order-done-label-short">Finir</span>
+                    </button>
                   </form>
                 </div>
                 <form method="POST" action="/orders/client/${o.id}/update" id="order-edit-${o.id}" class="modern-client-order-edit-form" data-order-edit-form hidden onsubmit="const b=this.querySelector('[type=submit]'); if (b && b.disabled) return false; if (b) b.disabled = true;">
