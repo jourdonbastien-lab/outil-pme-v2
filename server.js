@@ -3138,10 +3138,12 @@ function renderDashboardPrototype(req, res) {
       SELECT
         p.id,
         p.designation,
+        p.category,
         p.qty,
         p.unit,
         p.reference,
         p.supplier,
+        p.needed_date,
         p.status,
         co.id AS order_id,
         co.name AS client_name,
@@ -3156,7 +3158,7 @@ function renderDashboardPrototype(req, res) {
           ELSE 2
         END,
         p.id DESC
-      LIMIT 5
+      LIMIT 12
     `)
     .all();
 
@@ -3296,30 +3298,63 @@ function renderDashboardPrototype(req, res) {
         .join('')
     : '<p class="prototype-empty">Aucune commande / chantier actif</p>';
 
-  const supplierOrdersHtml = activeSupplierOrders.length
-    ? activeSupplierOrders
-        .map((order) => {
-          const status = String(order.status || 'En cours').trim() || 'En cours';
-          return `
-            <article class="prototype-supplier-order-card prototype-carousel-slide">
-              <header>
-                <span class="prototype-order-icon">${kpiIcon('suppliers')}</span>
-                <div>
-                  <strong>${escHtml(order.name || 'Commande fournisseur')}</strong>
-                  <small>${escHtml(order.description || 'Aucune désignation')}</small>
-                </div>
-                <span class="prototype-status">${escHtml(status)}</span>
-              </header>
-              <div class="prototype-supplier-order-meta">
-                <span>Date</span>
-                <strong>${escHtml(formatDateShort(order.date))}</strong>
+  const supplierDashboardItems = [
+    ...pendingPurchases.map((item) => ({
+      key: `purchase-${item.id}`,
+      source: 'Achat chantier',
+      bucket: normalizePurchaseStatus(item.status) === 'À commander' ? 0 : 1,
+      title: item.designation || 'Article',
+      subtitle: `${item.client_name || 'Client'} · ${item.order_description || `Commande #${item.order_id}`}`,
+      meta: [
+        item.category || '',
+        item.reference ? `Réf. ${item.reference}` : '',
+        item.supplier || 'Fournisseur non renseigné',
+        item.needed_date ? `Besoin ${formatDateShort(item.needed_date)}` : '',
+      ].filter(Boolean).join(' · '),
+      status: normalizePurchaseStatus(item.status),
+      href: `/pc-folders/${encodeURIComponent(safeName(item.client_name))}/${encodeURIComponent(clientOrderFolderName({
+        id: item.order_id,
+        description: item.order_description,
+      }))}/Commandes`,
+    })),
+    ...activeSupplierOrders.map((order) => {
+      const status = String(order.status || 'En cours').trim() || 'En cours';
+      return {
+        key: `supplier-${order.id}`,
+        source: 'Commande fournisseur',
+        bucket: status === 'Terminée' ? 2 : 1,
+        title: order.name || 'Commande fournisseur',
+        subtitle: order.description || 'Aucune désignation',
+        meta: `Date ${formatDateShort(order.date)}`,
+        status,
+        href: `/orders/suppliers#supplier-${order.id}`,
+      };
+    }),
+  ]
+    .sort((a, b) => a.bucket - b.bucket || String(a.title).localeCompare(String(b.title), 'fr'))
+    .slice(0, 12);
+
+  const supplierOrdersHtml = supplierDashboardItems.length
+    ? supplierDashboardItems
+        .map((item) => `
+          <article class="prototype-supplier-order-card prototype-carousel-slide" id="dashboard-${escHtml(item.key)}">
+            <header>
+              <span class="prototype-order-icon">${kpiIcon('suppliers')}</span>
+              <div>
+                <em class="prototype-source-badge">${escHtml(item.source)}</em>
+                <strong>${escHtml(item.title)}</strong>
+                <small>${escHtml(item.subtitle)}</small>
               </div>
-              <a class="prototype-open-button" href="/orders/suppliers#supplier-order-${order.id}">Ouvrir</a>
-            </article>
-          `;
-        })
+              <span class="prototype-status">${escHtml(item.status)}</span>
+            </header>
+            <div class="prototype-supplier-order-meta">
+              <span>${escHtml(item.meta || 'Informations non renseignées')}</span>
+            </div>
+            <a class="prototype-open-button" href="${item.href}">Ouvrir</a>
+          </article>
+        `)
         .join('')
-    : '<p class="prototype-empty">Aucune commande fournisseur active.</p>';
+    : '<p class="prototype-empty">Aucune commande fournisseur ou achat actif.</p>';
 
   const renderDashboardCarousel = ({ title, href, linkLabel, itemsHtml, count, kind }) => `
     <div class="prototype-carousel" data-dashboard-carousel data-carousel-count="${count}">
@@ -3339,35 +3374,6 @@ function renderDashboardPrototype(req, res) {
       </div>
     </div>
   `;
-
-  const pendingPurchasesHtml = pendingPurchases.length
-    ? pendingPurchases
-        .map((item) => {
-          const orderFolderName = safeName(
-            item.order_description && String(item.order_description).trim() !== ''
-              ? item.order_description
-              : `Commande_${item.order_id}`
-          );
-          const url = `/pc-folders/${encodeURIComponent(safeName(item.client_name))}/${encodeURIComponent(orderFolderName)}/Commandes`;
-          const status = normalizePurchaseStatus(item.status);
-          const qty = Number(item.qty || 0);
-          return `
-            <a class="prototype-purchase-card" href="${url}">
-              <div>
-                <strong>${escHtml(item.designation || 'Article')}</strong>
-                <span>${escHtml(item.client_name || 'Client')} · ${escHtml(item.order_description || `Commande #${item.order_id}`)}</span>
-                <small>
-                  ${qty.toLocaleString('fr-FR')} ${escHtml(item.unit || '')}
-                  ${item.reference ? ` · Réf. ${escHtml(item.reference)}` : ''}
-                  ${item.supplier ? ` · ${escHtml(item.supplier)}` : ''}
-                </small>
-              </div>
-              <em class="order-purchase-status ${purchaseStatusClass(status)}">${escHtml(status)}</em>
-            </a>
-          `;
-        })
-        .join('')
-    : '<p class="prototype-empty">Aucun achat à commander.</p>';
 
   res.send(
     dashboardTemplate(
@@ -3400,11 +3406,11 @@ function renderDashboardPrototype(req, res) {
 
             <article class="prototype-panel prototype-supplier-orders-panel">
               ${renderDashboardCarousel({
-                title: 'Commandes fournisseurs',
+                title: 'Commandes fournisseurs et achats',
                 href: '/orders/suppliers',
                 linkLabel: 'Voir toutes les commandes',
                 itemsHtml: supplierOrdersHtml,
-                count: activeSupplierOrders.length,
+                count: supplierDashboardItems.length,
                 kind: 'suppliers',
               })}
             </article>
@@ -3418,16 +3424,6 @@ function renderDashboardPrototype(req, res) {
               </div>
               <div class="prototype-appointments-list">
                 ${upcomingEventsHtml}
-              </div>
-            </article>
-
-            <article class="prototype-panel prototype-purchases-panel">
-              <div class="prototype-panel-head">
-                <h2>Achats à commander</h2>
-                <a href="/orders/suppliers">Commandes fournisseurs ›</a>
-              </div>
-              <div class="prototype-purchases-list">
-                ${pendingPurchasesHtml}
               </div>
             </article>
 
@@ -6806,61 +6802,7 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
     .all();
 
   const activeCount = orders.filter((o) => String(o.status || 'En cours') !== 'Terminée').length;
-  const cards = orders.length > 0
-    ? orders.map((o) => {
-        const status = String(o.status || 'En cours');
-        const statusClass = status === 'Terminée' ? 'done' : 'progress';
-        const dateLabel = String(o.date || '').slice(0, 10) || 'Date non renseignée';
-        return `
-          <article class="supplier-modern-card" id="supplier-order-${o.id}">
-            <header>
-              <span class="supplier-modern-icon">${clientPageIcon('supplierOrders', 'modern-client-order-svg')}</span>
-              <div>
-                <h2>${escHtml(o.name || 'Commande fournisseur')}</h2>
-                <p>${escHtml(o.description || 'Aucune description')}</p>
-              </div>
-              <span class="modern-status-badge ${statusClass}">${escHtml(status)}</span>
-            </header>
 
-            <div class="supplier-modern-meta">
-              <span>${clientPageIcon('calendar', 'modern-action-icon')} ${escHtml(dateLabel)}</span>
-            </div>
-
-            <div class="supplier-modern-actions">
-              <form method="POST" action="/orders/supplier/delete" onsubmit="return confirm('Supprimer cette commande ?');">
-                <input type="hidden" name="id" value="${o.id}">
-                <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
-              </form>
-            </div>
-          </article>
-        `;
-      }).join('')
-    : '<div class="empty-state">Aucune commande fournisseur</div>';
-
-  const purchaseStatusFilter = ['À commander', 'Commandé', 'Reçu'].includes(String(req.query.purchase_status || '').trim())
-    ? String(req.query.purchase_status).trim()
-    : 'all';
-  const purchaseSupplierFilter = String(req.query.purchase_supplier || 'all').trim() || 'all';
-  const purchaseWhere = [];
-  const purchaseParams = [];
-  if (purchaseStatusFilter !== 'all') {
-    purchaseWhere.push("COALESCE(NULLIF(TRIM(p.status), ''), 'À commander') = ?");
-    purchaseParams.push(purchaseStatusFilter);
-  }
-  if (purchaseSupplierFilter === '__missing') {
-    purchaseWhere.push("(p.supplier IS NULL OR TRIM(p.supplier) = '')");
-  } else if (purchaseSupplierFilter !== 'all') {
-    purchaseWhere.push('p.supplier = ?');
-    purchaseParams.push(purchaseSupplierFilter);
-  }
-
-  const supplierChoices = db
-    .prepare(`
-      SELECT DISTINCT TRIM(COALESCE(supplier, '')) AS supplier
-      FROM client_order_purchases
-      ORDER BY supplier COLLATE NOCASE ASC
-    `)
-    .all();
   const chantierPurchases = db
     .prepare(`
       SELECT
@@ -6878,7 +6820,6 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
         co.description AS order_description
       FROM client_order_purchases p
       JOIN client_orders co ON co.id = p.client_order_id
-      ${purchaseWhere.length ? `WHERE ${purchaseWhere.join(' AND ')}` : ''}
       ORDER BY
         CASE COALESCE(NULLIF(TRIM(p.status), ''), 'À commander')
           WHEN 'À commander' THEN 0
@@ -6888,77 +6829,171 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
         COALESCE(NULLIF(TRIM(p.needed_date), ''), '9999-12-31') ASC,
         p.id DESC
     `)
-    .all(...purchaseParams);
+    .all();
 
-  const purchaseFilterUrl = (status, supplier) => {
+  const statusFilter = ['todo', 'ordered', 'done'].includes(String(req.query.status || '').trim())
+    ? String(req.query.status).trim()
+    : 'all';
+  const supplierFilter = String(req.query.supplier || 'all').trim() || 'all';
+  const searchFilter = normalizeSearchText(req.query.q || '');
+
+  const combinedSupplierItems = [
+    ...chantierPurchases.map((item) => {
+      const status = normalizePurchaseStatus(item.status);
+      const bucket = status === 'À commander' ? 'todo' : status === 'Commandé' ? 'ordered' : 'done';
+      const orderFolderName = clientOrderFolderName({
+        id: item.order_id,
+        description: item.order_description,
+      });
+      const orderUrl = `/pc-folders/${encodeURIComponent(safeName(item.client_name))}/${encodeURIComponent(orderFolderName)}/Commandes`;
+      return {
+        type: 'purchase',
+        key: `purchase-${item.id}`,
+        id: item.id,
+        sourceLabel: 'Achat chantier',
+        bucket,
+        sortRank: bucket === 'todo' ? 0 : bucket === 'ordered' ? 1 : 2,
+        status,
+        supplier: String(item.supplier || '').trim(),
+        title: item.designation || 'Article',
+        subtitle: `${item.client_name || 'Client'} · ${item.order_description || `Commande #${item.order_id}`}`,
+        meta: [
+          item.category || 'Catégorie non renseignée',
+          `${Number(item.qty || 0).toLocaleString('fr-FR')} ${item.unit || ''}`.trim(),
+          item.reference ? `Réf. ${item.reference}` : 'Référence non renseignée',
+          item.supplier || 'Fournisseur non renseigné',
+          item.needed_date ? `Besoin ${formatDateLabel(item.needed_date)}` : 'Besoin non renseigné',
+        ],
+        searchText: normalizeSearchText([
+          item.designation,
+          item.category,
+          item.reference,
+          item.supplier,
+          item.client_name,
+          item.order_description,
+        ].join(' ')),
+        href: orderUrl,
+      };
+    }),
+    ...orders.map((order) => {
+      const status = String(order.status || 'En cours').trim() || 'En cours';
+      const bucket = status === 'Terminée' ? 'done' : 'ordered';
+      return {
+        type: 'supplier',
+        key: `supplier-${order.id}`,
+        id: order.id,
+        sourceLabel: 'Commande fournisseur',
+        bucket,
+        sortRank: bucket === 'ordered' ? 1 : 2,
+        status,
+        supplier: String(order.name || '').trim(),
+        title: order.name || 'Commande fournisseur',
+        subtitle: order.description || 'Aucune description',
+        meta: [
+          `Date ${formatDateLabel(order.date)}`,
+          order.description || '',
+        ].filter(Boolean),
+        searchText: normalizeSearchText([order.name, order.description, order.date, status].join(' ')),
+        href: `/orders/suppliers#supplier-${order.id}`,
+      };
+    }),
+  ]
+    .filter((item) => statusFilter === 'all' || item.bucket === statusFilter)
+    .filter((item) => {
+      if (supplierFilter === 'all') return true;
+      if (supplierFilter === '__missing') return item.supplier === '';
+      return item.supplier === supplierFilter;
+    })
+    .filter((item) => !searchFilter || item.searchText.includes(searchFilter))
+    .sort((a, b) => a.sortRank - b.sortRank || String(a.supplier).localeCompare(String(b.supplier), 'fr') || String(a.title).localeCompare(String(b.title), 'fr'));
+
+  const supplierChoices = Array.from(
+    new Set(
+      [
+        ...orders.map((order) => String(order.name || '').trim()),
+        ...chantierPurchases.map((item) => String(item.supplier || '').trim()),
+      ]
+    )
+  ).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+
+  const currentListUrl = () => {
     const params = new URLSearchParams();
-    if (status && status !== 'all') params.set('purchase_status', status);
-    if (supplier && supplier !== 'all') params.set('purchase_supplier', supplier);
+    if (statusFilter !== 'all') params.set('status', statusFilter);
+    if (supplierFilter !== 'all') params.set('supplier', supplierFilter);
+    if (String(req.query.q || '').trim()) params.set('q', String(req.query.q).trim());
     const query = params.toString();
-    return `/orders/suppliers${query ? `?${query}` : ''}#supplier-purchases`;
+    return `/orders/suppliers${query ? `?${query}` : ''}#supplier-list`;
   };
 
   const supplierFilterOptions = [
     '<option value="all">Tous fournisseurs</option>',
-    ...supplierChoices.map((row) => {
-      const supplier = String(row.supplier || '').trim();
+    ...supplierChoices.map((supplier) => {
       const value = supplier ? supplier : '__missing';
       const label = supplier || 'Fournisseur non renseigné';
-      return `<option value="${escHtml(value)}"${value === purchaseSupplierFilter ? ' selected' : ''}>${escHtml(label)}</option>`;
+      return `<option value="${escHtml(value)}"${value === supplierFilter ? ' selected' : ''}>${escHtml(label)}</option>`;
     }),
   ].join('');
 
-  const purchaseStatusFilterOptions = ['all', 'À commander', 'Commandé', 'Reçu']
-    .map((status) => {
-      const label = status === 'all' ? 'Tous statuts' : status;
-      return `<option value="${escHtml(status)}"${status === purchaseStatusFilter ? ' selected' : ''}>${escHtml(label)}</option>`;
+  const statusFilterOptions = [
+    ['all', 'Tous'],
+    ['todo', 'À commander'],
+    ['ordered', 'Commandés'],
+    ['done', 'Reçus ou terminés'],
+  ]
+    .map(([value, label]) => {
+      return `<option value="${escHtml(value)}"${value === statusFilter ? ' selected' : ''}>${escHtml(label)}</option>`;
     })
     .join('');
 
-  const chantierPurchaseCards = chantierPurchases.length
-    ? chantierPurchases
+  const combinedSupplierCards = combinedSupplierItems.length
+    ? combinedSupplierItems
         .map((item) => {
-          const status = normalizePurchaseStatus(item.status);
-          const qty = Number(item.qty || 0);
-          const orderFolderName = clientOrderFolderName({
-            id: item.order_id,
-            description: item.order_description,
-          });
-          const orderUrl = `/pc-folders/${encodeURIComponent(safeName(item.client_name))}/${encodeURIComponent(orderFolderName)}/Commandes`;
-          const redirect = purchaseFilterUrl(purchaseStatusFilter, purchaseSupplierFilter);
+          const isPurchase = item.type === 'purchase';
+          const statusClass = isPurchase
+            ? purchaseStatusClass(item.status)
+            : item.status === 'Terminée' ? 'done' : 'ordered';
+          const redirect = currentListUrl();
           return `
-            <article class="supplier-purchase-card">
+            <article class="supplier-purchase-card supplier-combined-card" id="${escHtml(item.key)}">
               <div class="supplier-purchase-context">
-                <span>${escHtml(item.client_name || 'Client')}</span>
-                <strong>${escHtml(item.order_description || `Commande #${item.order_id}`)}</strong>
+                <span class="supplier-source-badge ${isPurchase ? 'purchase' : 'supplier'}">${escHtml(item.sourceLabel)}</span>
+                <strong>${escHtml(item.subtitle)}</strong>
               </div>
               <div class="supplier-purchase-main">
                 <div>
-                  <h3>${escHtml(item.designation || 'Article')}</h3>
+                  <h3>${escHtml(item.title)}</h3>
                   <p>
-                    <span>${escHtml(item.category || 'Catégorie non renseignée')}</span>
-                    <span>${qty.toLocaleString('fr-FR')} ${escHtml(item.unit || '')}</span>
-                    <span>${item.reference ? `Réf. ${escHtml(item.reference)}` : 'Référence non renseignée'}</span>
-                    <span>${escHtml(item.supplier || 'Fournisseur non renseigné')}</span>
-                    <span>Besoin ${escHtml(item.needed_date ? formatDateLabel(item.needed_date) : 'non renseigné')}</span>
+                    ${item.meta.map((meta) => `<span>${escHtml(meta)}</span>`).join('')}
                   </p>
                 </div>
-                <span class="order-purchase-status ${purchaseStatusClass(status)}">${escHtml(status)}</span>
+                <span class="order-purchase-status ${statusClass}">${escHtml(item.status)}</span>
               </div>
               <div class="supplier-purchase-actions">
-                <a class="supplier-purchase-link" href="${orderUrl}">Ouvrir chantier</a>
-                ${status !== 'Commandé' ? `
+                <a class="supplier-purchase-link" href="${item.href}">${isPurchase ? 'Ouvrir chantier' : 'Ouvrir'}</a>
+                ${isPurchase && item.status !== 'Commandé' ? `
                   <form method="POST" action="/orders/suppliers/purchases/${item.id}/status">
                     <input type="hidden" name="status" value="Commandé">
                     <input type="hidden" name="redirect" value="${escHtml(redirect)}">
                     <button type="submit">Marquer commandé</button>
                   </form>
                 ` : ''}
-                ${status !== 'Reçu' ? `
+                ${isPurchase && item.status !== 'Reçu' ? `
                   <form method="POST" action="/orders/suppliers/purchases/${item.id}/status">
                     <input type="hidden" name="status" value="Reçu">
                     <input type="hidden" name="redirect" value="${escHtml(redirect)}">
                     <button type="submit">Marquer reçu</button>
+                  </form>
+                ` : ''}
+                ${!isPurchase && item.status !== 'Terminée' ? `
+                  <form method="POST" action="/orders/suppliers/done">
+                    <input type="hidden" name="id" value="${item.id}">
+                    <button type="submit">Marquer terminé</button>
+                  </form>
+                ` : ''}
+                ${!isPurchase ? `
+                  <form method="POST" action="/orders/supplier/delete" onsubmit="return confirm('Supprimer cette commande ?');">
+                    <input type="hidden" name="id" value="${item.id}">
+                    <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
                   </form>
                 ` : ''}
               </div>
@@ -6966,7 +7001,7 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
           `;
         })
         .join('')
-    : '<div class="empty-state">Aucun achat chantier ne correspond aux filtres.</div>';
+    : '<div class="empty-state">Aucune commande fournisseur ou achat ne correspond aux filtres.</div>';
 
   res.send(
     pageTemplate(req, 'Commandes fournisseurs', `
@@ -6975,8 +7010,8 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
           <div class="clients-create-head">
             ${clientPageIcon('supplierOrders', 'clients-title-icon')}
             <div>
-              <h1>Commandes fournisseurs</h1>
-              <span>${orders.length} commande${orders.length > 1 ? 's' : ''} · ${activeCount} en cours</span>
+              <h1>Commandes fournisseurs et achats</h1>
+              <span>${orders.length} commande${orders.length > 1 ? 's' : ''} fournisseur · ${chantierPurchases.length} achat${chantierPurchases.length > 1 ? 's' : ''} chantier · ${activeCount} fournisseur${activeCount > 1 ? 's' : ''} en cours</span>
             </div>
           </div>
         </section>
@@ -7028,31 +7063,26 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
           </div>
         </section>
 
-        <section class="supplier-modern-grid">
-          ${cards}
-        </section>
-
-        <section class="supplier-purchases-section" id="supplier-purchases">
-          <div class="modern-section-title">
-            ${clientPageIcon('materials', 'clients-title-icon')}
-            <div>
-              <h2>Achats chantiers à commander</h2>
-              <p>${chantierPurchases.length} article${chantierPurchases.length > 1 ? 's' : ''} affiché${chantierPurchases.length > 1 ? 's' : ''}</p>
-            </div>
-          </div>
+        <section class="supplier-purchases-section" id="supplier-list">
+          <p class="supplier-list-summary">${combinedSupplierItems.length} élément${combinedSupplierItems.length > 1 ? 's' : ''} affiché${combinedSupplierItems.length > 1 ? 's' : ''}</p>
           <form method="GET" action="/orders/suppliers" class="supplier-purchase-filters">
             <label>
               <span>Statut</span>
-              <select name="purchase_status" onchange="this.form.submit()">${purchaseStatusFilterOptions}</select>
+              <select name="status" onchange="this.form.submit()">${statusFilterOptions}</select>
             </label>
             <label>
               <span>Fournisseur</span>
-              <select name="purchase_supplier" onchange="this.form.submit()">${supplierFilterOptions}</select>
+              <select name="supplier" onchange="this.form.submit()">${supplierFilterOptions}</select>
             </label>
-            <a href="/orders/suppliers#supplier-purchases">Réinitialiser</a>
+            <label>
+              <span>Recherche</span>
+              <input name="q" value="${escHtml(String(req.query.q || ''))}" placeholder="Désignation, client, chantier, référence">
+            </label>
+            <button type="submit">Rechercher</button>
+            <a href="/orders/suppliers#supplier-list">Réinitialiser</a>
           </form>
           <div class="supplier-purchase-list">
-            ${chantierPurchaseCards}
+            ${combinedSupplierCards}
           </div>
         </section>
       </div>
@@ -7110,10 +7140,10 @@ app.post('/orders/supplier/delete', requireLogin, (req, res) => {
 app.post('/orders/suppliers/purchases/:purchaseId/status', requireLogin, (req, res) => {
   const purchaseId = Number(req.params.purchaseId || 0);
   const status = normalizePurchaseStatus(req.body.status);
-  const redirect = String(req.body.redirect || '/orders/suppliers#supplier-purchases');
+  const redirect = String(req.body.redirect || '/orders/suppliers#supplier-list');
   const safeRedirect = redirect.startsWith('/orders/suppliers')
     ? redirect
-    : '/orders/suppliers#supplier-purchases';
+    : '/orders/suppliers#supplier-list';
 
   const existing = db.prepare('SELECT id FROM client_order_purchases WHERE id = ?').get(purchaseId);
   if (!existing) return res.status(404).send('Article introuvable');

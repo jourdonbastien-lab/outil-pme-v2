@@ -3253,6 +3253,22 @@ button:hover {
   overflow-wrap:anywhere;
 }
 
+.prototype-source-badge{
+  display:inline-flex;
+  align-items:center;
+  min-height:20px;
+  margin-bottom:4px;
+  padding:2px 7px;
+  border-radius:999px;
+  background:#fff7ed;
+  color:#9a3412;
+  font-size:10px;
+  font-style:normal;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.02em;
+}
+
 .prototype-supplier-order-card header strong{
   color:#111827;
   font-size:15px;
@@ -5127,9 +5143,16 @@ button:hover {
   box-shadow:0 8px 20px rgba(15,23,42,.06);
 }
 
+.supplier-list-summary{
+  margin:0;
+  color:#64748b;
+  font-size:13px;
+  font-weight:900;
+}
+
 .supplier-purchase-filters{
   display:grid;
-  grid-template-columns:minmax(0, 220px) minmax(0, 260px) auto;
+  grid-template-columns:minmax(0, 180px) minmax(0, 220px) minmax(220px, 1fr) auto auto;
   align-items:end;
   gap:10px;
 }
@@ -5143,7 +5166,8 @@ button:hover {
   font-weight:900;
 }
 
-.supplier-purchase-filters select{
+.supplier-purchase-filters select,
+.supplier-purchase-filters input{
   width:100%;
   min-height:42px;
   padding:0 12px;
@@ -5155,6 +5179,7 @@ button:hover {
   font-weight:800;
 }
 
+.supplier-purchase-filters button,
 .supplier-purchase-filters a{
   display:inline-flex;
   align-items:center;
@@ -5163,10 +5188,20 @@ button:hover {
   padding:0 12px;
   border:1px solid #e5e7eb;
   border-radius:12px;
-  color:#101827;
   font-size:13px;
   font-weight:900;
   text-decoration:none;
+}
+
+.supplier-purchase-filters button{
+  background:#ff7a00;
+  color:#fff;
+  cursor:pointer;
+}
+
+.supplier-purchase-filters a{
+  background:#fff;
+  color:#101827;
 }
 
 .supplier-purchase-list{
@@ -5196,6 +5231,28 @@ button:hover {
 
 .supplier-purchase-context span{
   color:#c75f00;
+}
+
+.supplier-source-badge{
+  display:inline-flex;
+  align-items:center;
+  min-height:24px;
+  padding:3px 8px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.02em;
+}
+
+.supplier-source-badge.purchase{
+  background:#fff7ed;
+  color:#9a3412;
+}
+
+.supplier-source-badge.supplier{
+  background:#eef2ff;
+  color:#3730a3;
 }
 
 .supplier-purchase-context strong{
@@ -7008,6 +7065,7 @@ a.mobile-bottom-item:visited,
 .order-purchase-status.todo{ background:#fff7ed; color:#9a3412; }
 .order-purchase-status.ordered{ background:#dbeafe; color:#1d4ed8; }
 .order-purchase-status.received{ background:#dcfce7; color:#166534; }
+.order-purchase-status.done{ background:#dcfce7; color:#166534; }
 
 .order-purchase-edit summary{
   display:inline-flex;
