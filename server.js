@@ -5509,11 +5509,7 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                   </button>
                   <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');">
                     <input type="hidden" name="id" value="${o.id}" />
-                    <button type="submit" class="modern-order-done-btn" title="Terminer">
-                      ${clientPageIcon('check', 'modern-action-icon')}
-                      <span class="order-done-label-full">Terminer</span>
-                      <span class="order-done-label-short">Finir</span>
-                    </button>
+                    <button type="submit" class="modern-order-done-btn" aria-label="Terminer la commande" title="Terminer la commande">✅</button>
                   </form>
                 </div>
                 <form method="POST" action="/orders/client/${o.id}/update" id="order-edit-${o.id}" class="modern-client-order-edit-form" data-order-edit-form hidden onsubmit="const b=this.querySelector('[type=submit]'); if (b && b.disabled) return false; if (b) b.disabled = true;">

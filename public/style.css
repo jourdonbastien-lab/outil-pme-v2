@@ -4182,35 +4182,35 @@ button:hover {
 .modern-client-order-card{
   position:relative;
   display:grid;
-  gap:8px;
+  gap:7px;
   min-width:0;
-  padding:12px;
+  padding:10px 10px 7px;
   border:1px solid #e7edf5;
-  border-radius:18px;
+  border-radius:16px;
   background:#fff;
   box-shadow:0 8px 20px rgba(15,23,42,.07);
 }
 
 .modern-client-order-head{
   display:grid;
-  grid-template-columns:44px minmax(0, 1fr) auto;
-  gap:10px;
+  grid-template-columns:38px minmax(0, 1fr) auto;
+  gap:8px;
   align-items:center;
 }
 
 .modern-client-order-icon{
   display:grid;
   place-items:center;
-  width:44px;
-  height:44px;
-  border-radius:14px;
+  width:38px;
+  height:38px;
+  border-radius:12px;
   background:#fff1e4;
   color:#f97316;
 }
 
 .modern-client-order-svg svg{
-  width:22px;
-  height:22px;
+  width:19px;
+  height:19px;
   fill:none;
   stroke:currentColor;
   stroke-width:2;
@@ -4232,13 +4232,13 @@ button:hover {
 .modern-client-order-title h2{
   margin:0;
   color:#101827;
-  font-size:17px;
-  line-height:1.15;
+  font-size:16px;
+  line-height:1.08;
   overflow-wrap:anywhere;
 }
 
 .modern-client-order-title p{
-  margin:5px 0 0;
+  margin:2px 0 0;
   color:#667085;
   font-size:12px;
   font-weight:800;
@@ -4249,7 +4249,7 @@ button:hover {
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:8px;
+  gap:5px;
   flex-wrap:wrap;
 }
 
@@ -4262,7 +4262,7 @@ button:hover {
 .modern-late-badge{
   display:inline-flex;
   align-items:center;
-  padding:5px 8px;
+  padding:4px 7px;
   border-radius:999px;
   background:#fee2e2;
   color:#991b1b;
@@ -4273,7 +4273,7 @@ button:hover {
 .modern-client-order-hours-total{
   display:inline-flex;
   align-items:center;
-  padding:5px 8px;
+  padding:4px 7px;
   border-radius:999px;
   background:#f8fafc;
   color:#334155;
@@ -4295,7 +4295,7 @@ button:hover {
   display:grid;
   gap:1px;
   min-width:0;
-  padding:6px 8px;
+  padding:5px 7px;
   border-right:1px solid #e7edf5;
   background:#fff;
 }
@@ -4306,14 +4306,14 @@ button:hover {
 
 .modern-client-order-info-list span{
   color:#667085;
-  font-size:10.5px;
+  font-size:10px;
   font-weight:900;
   line-height:1.1;
 }
 
 .modern-client-order-info-list strong{
   color:#101827;
-  font-size:12px;
+  font-size:11px;
   font-weight:950;
   line-height:1.15;
   overflow-wrap:anywhere;
@@ -4493,6 +4493,11 @@ button:hover {
   grid-template-columns:repeat(4, minmax(0, 1fr));
   gap:6px;
   align-items:stretch;
+  margin-bottom:0;
+}
+
+.modern-client-order-actions-bottom > *{
+  min-width:0;
 }
 
 .modern-client-order-actions-bottom .modern-client-order-open,
@@ -4500,6 +4505,16 @@ button:hover {
 .modern-client-order-actions-bottom .modern-order-done-btn{
   width:100%;
   min-width:0;
+}
+
+.modern-client-order-actions-bottom .modern-client-order-open,
+.modern-client-order-actions-bottom .modern-order-done-btn{
+  height:34px;
+  min-height:34px;
+  padding:0 5px;
+  border-radius:11px;
+  font-size:11px;
+  white-space:nowrap;
 }
 
 .modern-client-order-edit-trigger{
@@ -4617,19 +4632,17 @@ button:hover {
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  gap:7px;
-  min-height:32px;
+  gap:0;
+  min-height:34px;
   margin:0;
   border:0;
-  border-radius:999px;
+  border-radius:11px;
   background:#ecfdf3;
   color:#15803d;
+  font-size:15px;
   font-weight:900;
-  padding:0 10px;
-}
-
-.order-done-label-short{
-  display:none;
+  line-height:1;
+  padding:0 6px;
 }
 
 @media (max-width:720px){
@@ -4643,7 +4656,7 @@ button:hover {
   }
 
   .modern-client-order-info-list div{
-    padding:5px 7px;
+    padding:4px 6px;
   }
 
   .modern-client-order-info-list div:nth-child(2){
@@ -4682,12 +4695,17 @@ button:hover {
 
   .modern-client-order-open,
   .modern-order-done-btn{
-    min-height:36px;
+    min-height:34px;
+    height:34px;
     gap:3px;
-    padding:0 4px;
-    border-radius:12px;
-    font-size:10.5px;
+    padding:0 2px;
+    border-radius:10px;
+    font-size:9.5px;
     line-height:1;
+  }
+
+  .modern-order-done-btn{
+    font-size:15px;
   }
 
   .modern-client-order-open-icon svg,
@@ -4700,13 +4718,6 @@ button:hover {
     display:none;
   }
 
-  .order-done-label-full{
-    display:none;
-  }
-
-  .order-done-label-short{
-    display:inline;
-  }
 }
 
 /* COMMANDES FOURNISSEURS - CARTES PROTOTYPE */
@@ -8591,28 +8602,28 @@ body.sketchpad-drawing{
   }
 
   .modern-client-order-card{
-    gap:9px;
-    padding:12px;
-    border-radius:16px;
+    gap:6px;
+    padding:8px 8px 5px;
+    border-radius:14px;
   }
 
   .modern-client-order-head{
-    grid-template-columns:40px minmax(0, 1fr) auto;
-    gap:9px;
+    grid-template-columns:34px minmax(0, 1fr) auto;
+    gap:7px;
   }
 
   .modern-client-order-icon{
-    width:40px;
-    height:40px;
-    border-radius:12px;
+    width:34px;
+    height:34px;
+    border-radius:10px;
   }
 
   .modern-client-order-title h2{
-    font-size:16px;
+    font-size:14px;
   }
 
   .modern-client-order-title p{
-    font-size:12px;
+    font-size:11px;
   }
 
   .modern-client-order-row{
@@ -8622,13 +8633,13 @@ body.sketchpad-drawing{
   .modern-client-order-actions{
     display:grid;
     grid-template-columns:auto auto minmax(0, 1fr);
-    gap:8px;
+    gap:5px;
   }
 
   .modern-client-order-open,
   .modern-order-done-btn{
-    min-height:36px;
-    padding:0 5px;
+    min-height:34px;
+    padding:0 3px;
   }
 
   .modern-client-order-open{
@@ -8870,7 +8881,7 @@ body.sketchpad-drawing{
     display:grid !important;
     grid-template-columns:repeat(4, minmax(0, 1fr)) !important;
     gap:4px !important;
-    margin-top:0 !important;
+    margin:0 !important;
   }
 
   .modern-client-order-actions-bottom .modern-client-order-open,
