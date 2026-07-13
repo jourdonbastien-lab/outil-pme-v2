@@ -3397,6 +3397,63 @@ button:hover {
   font-weight:800;
 }
 
+.prototype-purchases-list{
+  display:grid;
+  gap:8px;
+}
+
+.prototype-purchase-card{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  gap:10px;
+  align-items:start;
+  padding:10px;
+  border:1px solid #eef0f4;
+  border-radius:14px;
+  background:#f9fafb;
+  color:#111827;
+  text-decoration:none;
+}
+
+.prototype-purchase-card:hover,
+.prototype-purchase-card:focus,
+.prototype-purchase-card:visited{
+  color:#111827;
+  text-decoration:none;
+}
+
+.prototype-purchase-card strong{
+  display:block;
+  color:#111827;
+  font-size:13px;
+  line-height:1.2;
+  overflow-wrap:anywhere;
+}
+
+.prototype-purchase-card span{
+  display:block;
+  margin-top:3px;
+  color:#64748b;
+  font-size:11px;
+  font-weight:850;
+  line-height:1.2;
+}
+
+.prototype-purchase-card small{
+  display:block;
+  margin-top:3px;
+  color:#c75f00;
+  font-size:11px;
+  font-weight:900;
+  line-height:1.25;
+}
+
+.prototype-purchase-card .order-purchase-status{
+  min-height:24px;
+  padding:3px 7px;
+  font-size:11px;
+}
+
 .prototype-weather-card{
   display:grid;
   gap:14px;
@@ -3680,6 +3737,15 @@ button:hover {
 
   .prototype-side-stack{
     gap:12px;
+  }
+
+  .prototype-purchase-card{
+    grid-template-columns:1fr;
+    gap:6px;
+  }
+
+  .prototype-purchase-card .order-purchase-status{
+    justify-self:start;
   }
 
   .prototype-kpi-grid{
@@ -4184,7 +4250,8 @@ button:hover {
   display:grid;
   gap:7px;
   min-width:0;
-  padding:10px 10px 7px;
+  padding:10px 10px 7px !important;
+  padding-bottom:7px !important;
   border:1px solid #e7edf5;
   border-radius:16px;
   background:#fff;
@@ -6246,6 +6313,21 @@ button:hover {
   margin:0;
 }
 
+.modern-task-done-form{
+  display:flex;
+  justify-content:flex-end;
+  width:auto;
+}
+
+.modern-task-done-btn{
+  width:auto;
+  min-width:0;
+  min-height:36px;
+  padding:0 12px;
+  font-size:14px;
+  line-height:1;
+}
+
 .modern-secondary-btn,
 .modern-danger-btn,
 .modern-invoice-badge{
@@ -6264,6 +6346,15 @@ button:hover {
 .modern-secondary-btn{
   background:#ff7a00;
   color:#111827;
+}
+
+.modern-task-actions .modern-task-done-btn{
+  width:auto;
+  min-width:0;
+  min-height:36px;
+  padding:0 12px;
+  font-size:14px;
+  line-height:1;
 }
 
 .modern-danger-btn{
@@ -6521,6 +6612,132 @@ a.mobile-bottom-item:visited,
   place-items:center;
 }
 
+.order-purchases-panel{
+  display:grid;
+  gap:14px;
+}
+
+.order-purchase-form{
+  display:grid;
+  gap:12px;
+  min-width:0;
+}
+
+.order-purchase-form-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+  min-width:0;
+}
+
+.order-purchase-wide{
+  grid-column:1 / -1;
+}
+
+.order-purchase-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+}
+
+.order-purchase-list{
+  display:grid;
+  gap:8px;
+}
+
+.order-purchase-card{
+  display:grid;
+  gap:8px;
+  min-width:0;
+  padding:10px;
+  border:1px solid #e5e7eb;
+  border-radius:14px;
+  background:#fff;
+}
+
+.order-purchase-main{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  gap:10px;
+  align-items:start;
+}
+
+.order-purchase-main h3{
+  margin:0;
+  color:#111827;
+  font-size:15px;
+  line-height:1.2;
+  overflow-wrap:anywhere;
+}
+
+.order-purchase-main p{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin:4px 0 0;
+  color:#64748b;
+  font-size:12px;
+  font-weight:800;
+}
+
+.order-purchase-main small{
+  display:block;
+  margin-top:4px;
+  color:#64748b;
+  font-size:12px;
+  line-height:1.35;
+}
+
+.order-purchase-status{
+  display:inline-flex;
+  align-items:center;
+  min-height:26px;
+  padding:4px 8px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:900;
+  white-space:nowrap;
+}
+
+.order-purchase-status.todo{ background:#fff7ed; color:#9a3412; }
+.order-purchase-status.ordered{ background:#dbeafe; color:#1d4ed8; }
+.order-purchase-status.received{ background:#dcfce7; color:#166534; }
+
+.order-purchase-edit summary{
+  display:inline-flex;
+  align-items:center;
+  min-height:30px;
+  padding:0 10px;
+  border:1px solid #e5e7eb;
+  border-radius:999px;
+  background:#f8fafc;
+  color:#111827;
+  font-size:12px;
+  font-weight:900;
+  cursor:pointer;
+  list-style:none;
+}
+
+.order-purchase-edit summary::-webkit-details-marker{
+  display:none;
+}
+
+.order-purchase-edit[open]{
+  display:grid;
+  gap:10px;
+}
+
+.order-purchase-delete{
+  margin:0;
+  justify-self:end;
+}
+
+.order-purchase-delete .modern-danger-btn{
+  min-height:32px;
+  padding:0 10px;
+  font-size:12px;
+}
+
 @media (max-width:768px){
   .modern-form-grid,
   .modern-task-grid{
@@ -6538,11 +6755,64 @@ a.mobile-bottom-item:visited,
   }
 
   .modern-task-actions{
-    flex-direction:column;
+    flex-direction:row;
+    justify-content:flex-end;
+    gap:6px;
   }
 
   .modern-task-actions button,
   .modern-task-actions form{
+    width:100%;
+  }
+
+  .modern-task-actions .modern-task-done-form{
+    width:auto;
+    margin-left:auto;
+  }
+
+  .modern-task-actions .modern-task-done-btn{
+    width:auto;
+    min-height:36px;
+    padding:0 12px;
+    font-size:14px;
+  }
+
+  .order-purchase-form-grid{
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+
+  .order-purchase-form .clients-input-shell{
+    min-height:42px;
+  }
+
+  .order-purchase-form input,
+  .order-purchase-form select{
+    min-height:38px;
+    font-size:16px;
+  }
+
+  .order-purchase-card{
+    padding:9px;
+    border-radius:13px;
+  }
+
+  .order-purchase-main{
+    grid-template-columns:1fr;
+    gap:6px;
+  }
+
+  .order-purchase-status{
+    justify-self:start;
+  }
+
+  .order-purchase-actions,
+  .order-purchase-delete{
+    justify-self:stretch;
+  }
+
+  .order-purchase-actions .clients-submit-btn,
+  .order-purchase-delete .modern-danger-btn{
     width:100%;
   }
 }
@@ -8603,7 +8873,8 @@ body.sketchpad-drawing{
 
   .modern-client-order-card{
     gap:6px;
-    padding:8px 8px 5px;
+    padding:8px 8px 5px !important;
+    padding-bottom:5px !important;
     border-radius:14px;
   }
 

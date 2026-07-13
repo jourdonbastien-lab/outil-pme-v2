@@ -431,6 +431,30 @@ function findClientOrderByFolder(clientFolder, orderFolder) {
     .find((row) => safeName(row.name) === safeClientFolder && clientOrderFolderName(row) === safeOrderFolder);
 }
 
+function normalizePurchaseStatus(value) {
+  const status = String(value || '').trim();
+  return ['À commander', 'Commandé', 'Reçu'].includes(status) ? status : 'À commander';
+}
+
+function purchaseStatusOptions(selected) {
+  const current = normalizePurchaseStatus(selected);
+  return ['À commander', 'Commandé', 'Reçu']
+    .map((status) => `<option value="${escHtml(status)}"${status === current ? ' selected' : ''}>${escHtml(status)}</option>`)
+    .join('');
+}
+
+function purchaseStatusClass(status) {
+  const current = normalizePurchaseStatus(status);
+  if (current === 'Reçu') return 'received';
+  if (current === 'Commandé') return 'ordered';
+  return 'todo';
+}
+
+function getPurchaseOrderRedirect(order) {
+  const orderFolderName = clientOrderFolderName(order);
+  return `/pc-folders/${encodeURIComponent(safeName(order.name))}/${encodeURIComponent(orderFolderName)}/Commandes`;
+}
+
 function normalizeSearchText(value) {
   return String(value || '')
     .toLowerCase()
@@ -1047,6 +1071,22 @@ function createSqliteTables(database) {
   `).run();
 
   database.prepare(`
+    CREATE TABLE IF NOT EXISTS client_order_purchases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_order_id INTEGER NOT NULL,
+      designation TEXT NOT NULL,
+      qty REAL DEFAULT 1,
+      unit TEXT,
+      reference TEXT,
+      supplier TEXT,
+      note TEXT,
+      status TEXT DEFAULT 'À commander',
+      created_at TEXT,
+      updated_at TEXT
+    )
+  `).run();
+
+  database.prepare(`
     CREATE TABLE IF NOT EXISTS chantiers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -1141,6 +1181,16 @@ function runSqliteMigrations(ensureColumn) {
   ensureColumn('client_orders', 'vat_rate', 'REAL NULL');
   ensureColumn('supplier_orders', 'status', 'TEXT');
   ensureColumn('chantier_hours', 'client_order_id', 'INTEGER NULL');
+  ensureColumn('client_order_purchases', 'client_order_id', 'INTEGER');
+  ensureColumn('client_order_purchases', 'designation', 'TEXT');
+  ensureColumn('client_order_purchases', 'qty', 'REAL DEFAULT 1');
+  ensureColumn('client_order_purchases', 'unit', 'TEXT');
+  ensureColumn('client_order_purchases', 'reference', 'TEXT');
+  ensureColumn('client_order_purchases', 'supplier', 'TEXT');
+  ensureColumn('client_order_purchases', 'note', 'TEXT');
+  ensureColumn('client_order_purchases', 'status', "TEXT DEFAULT 'À commander'");
+  ensureColumn('client_order_purchases', 'created_at', 'TEXT');
+  ensureColumn('client_order_purchases', 'updated_at', 'TEXT');
   ensureColumn('tasks', 'status', 'TEXT');
   ensureColumn('tasks', 'to_invoice', 'INTEGER DEFAULT 0');
   ensureColumn('quotes', 'title', 'TEXT');
@@ -3069,6 +3119,33 @@ function renderDashboardPrototype(req, res) {
     `)
     .all();
 
+  const pendingPurchases = db
+    .prepare(`
+      SELECT
+        p.id,
+        p.designation,
+        p.qty,
+        p.unit,
+        p.reference,
+        p.supplier,
+        p.status,
+        co.id AS order_id,
+        co.name AS client_name,
+        co.description AS order_description
+      FROM client_order_purchases p
+      JOIN client_orders co ON co.id = p.client_order_id
+      WHERE COALESCE(NULLIF(TRIM(p.status), ''), 'À commander') != 'Reçu'
+      ORDER BY
+        CASE COALESCE(NULLIF(TRIM(p.status), ''), 'À commander')
+          WHEN 'À commander' THEN 0
+          WHEN 'Commandé' THEN 1
+          ELSE 2
+        END,
+        p.id DESC
+      LIMIT 5
+    `)
+    .all();
+
   const formatDateShort = (value) => {
     const raw = String(value || '').slice(0, 10);
     if (!raw) return '—';
@@ -3205,6 +3282,35 @@ function renderDashboardPrototype(req, res) {
         .join('')
     : '<p class="prototype-empty">Aucune commande / chantier actif</p>';
 
+  const pendingPurchasesHtml = pendingPurchases.length
+    ? pendingPurchases
+        .map((item) => {
+          const orderFolderName = safeName(
+            item.order_description && String(item.order_description).trim() !== ''
+              ? item.order_description
+              : `Commande_${item.order_id}`
+          );
+          const url = `/pc-folders/${encodeURIComponent(safeName(item.client_name))}/${encodeURIComponent(orderFolderName)}/Commandes`;
+          const status = normalizePurchaseStatus(item.status);
+          const qty = Number(item.qty || 0);
+          return `
+            <a class="prototype-purchase-card" href="${url}">
+              <div>
+                <strong>${escHtml(item.designation || 'Article')}</strong>
+                <span>${escHtml(item.client_name || 'Client')} · ${escHtml(item.order_description || `Commande #${item.order_id}`)}</span>
+                <small>
+                  ${qty.toLocaleString('fr-FR')} ${escHtml(item.unit || '')}
+                  ${item.reference ? ` · Réf. ${escHtml(item.reference)}` : ''}
+                  ${item.supplier ? ` · ${escHtml(item.supplier)}` : ''}
+                </small>
+              </div>
+              <em class="order-purchase-status ${purchaseStatusClass(status)}">${escHtml(status)}</em>
+            </a>
+          `;
+        })
+        .join('')
+    : '<p class="prototype-empty">Aucun achat à commander.</p>';
+
   res.send(
     dashboardTemplate(
       req,
@@ -3240,6 +3346,16 @@ function renderDashboardPrototype(req, res) {
               </div>
               <div class="prototype-appointments-list">
                 ${upcomingEventsHtml}
+              </div>
+            </article>
+
+            <article class="prototype-panel prototype-purchases-panel">
+              <div class="prototype-panel-head">
+                <h2>Achats à commander</h2>
+                <a href="/orders/suppliers">Commandes fournisseurs ›</a>
+              </div>
+              <div class="prototype-purchases-list">
+                ${pendingPurchasesHtml}
               </div>
             </article>
 
@@ -3416,9 +3532,9 @@ app.get('/tasks', requireLogin, (req, res) => {
             ${
               status !== 'Terminée'
                 ? `
-                <form method="POST" action="/tasks/done">
+                <form method="POST" action="/tasks/done" class="modern-task-done-form">
                   <input type="hidden" name="id" value="${t.id}" />
-                  <button class="modern-secondary-btn" type="submit">Terminer</button>
+                  <button class="modern-secondary-btn modern-task-done-btn" type="submit">✓ Terminer</button>
                 </form>
                 `
                 : `
@@ -6958,6 +7074,7 @@ app.get('/pc-folders/:client/:order/:type', requireLogin, (req, res) => {
 
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
   const files = entries.filter((e) => e.isFile()).map((e) => e.name);
+  const orderDb = findClientOrderByFolder(client, order);
 
 const list = files.length
   ? `
@@ -6983,6 +7100,145 @@ const list = files.length
     </div>
   `
   : `<div class="empty-state">Aucun fichier dans ce dossier.</div>`;
+
+  const purchasesBlock = type === 'Commandes'
+    ? (() => {
+        if (!orderDb) {
+          return `
+            <section class="pc-modern-panel order-purchases-panel">
+              <div class="modern-section-title">
+                ${clientPageIcon('materials', 'clients-title-icon')}
+                <div>
+                  <h2>Quincaillerie et achats à commander</h2>
+                  <p>Commande non retrouvée en base, liste indisponible.</p>
+                </div>
+              </div>
+            </section>
+          `;
+        }
+
+        const purchases = db
+          .prepare('SELECT * FROM client_order_purchases WHERE client_order_id = ? ORDER BY id DESC')
+          .all(orderDb.id);
+        const purchaseCards = purchases.length
+          ? purchases
+              .map((item) => {
+                const status = normalizePurchaseStatus(item.status);
+                return `
+                  <article class="order-purchase-card">
+                    <div class="order-purchase-main">
+                      <div>
+                        <h3>${escHtml(item.designation || 'Article')}</h3>
+                        <p>
+                          <span>${Number(item.qty || 0).toLocaleString('fr-FR')} ${escHtml(item.unit || '')}</span>
+                          ${item.reference ? `<span>Réf. ${escHtml(item.reference)}</span>` : ''}
+                          ${item.supplier ? `<span>${escHtml(item.supplier)}</span>` : ''}
+                        </p>
+                        ${item.note ? `<small>${escHtml(item.note)}</small>` : ''}
+                      </div>
+                      <span class="order-purchase-status ${purchaseStatusClass(status)}">${escHtml(status)}</span>
+                    </div>
+                    <details class="order-purchase-edit">
+                      <summary>Modifier</summary>
+                      <form method="POST" action="/orders/client/${orderDb.id}/purchases/${item.id}/update" class="order-purchase-form">
+                        <div class="order-purchase-form-grid">
+                          <label class="clients-field">
+                            <span>Désignation</span>
+                            <div class="clients-input-shell"><input name="designation" value="${escHtml(item.designation || '')}" required></div>
+                          </label>
+                          <label class="clients-field">
+                            <span>Quantité</span>
+                            <div class="clients-input-shell"><input type="number" min="0" step="0.01" name="qty" value="${escHtml(String(Number(item.qty || 0)))}"></div>
+                          </label>
+                          <label class="clients-field">
+                            <span>Unité</span>
+                            <div class="clients-input-shell"><input name="unit" value="${escHtml(item.unit || '')}" placeholder="pièce, ml, lot"></div>
+                          </label>
+                          <label class="clients-field">
+                            <span>Référence</span>
+                            <div class="clients-input-shell"><input name="reference" value="${escHtml(item.reference || '')}"></div>
+                          </label>
+                          <label class="clients-field">
+                            <span>Fournisseur</span>
+                            <div class="clients-input-shell"><input name="supplier" value="${escHtml(item.supplier || '')}"></div>
+                          </label>
+                          <label class="clients-field">
+                            <span>Statut</span>
+                            <div class="clients-input-shell"><select name="status">${purchaseStatusOptions(status)}</select></div>
+                          </label>
+                          <label class="clients-field order-purchase-wide">
+                            <span>Note</span>
+                            <div class="clients-input-shell"><input name="note" value="${escHtml(item.note || '')}"></div>
+                          </label>
+                        </div>
+                        <div class="order-purchase-actions">
+                          <button class="clients-submit-btn" type="submit">Enregistrer</button>
+                        </div>
+                      </form>
+                    </details>
+                    <form method="POST" action="/orders/client/${orderDb.id}/purchases/${item.id}/delete" class="order-purchase-delete" onsubmit="return confirm('Supprimer cet article ?');">
+                      <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
+                    </form>
+                  </article>
+                `;
+              })
+              .join('')
+          : '<div class="empty-state">Aucun achat à commander pour cette commande.</div>';
+
+        return `
+          <section class="pc-modern-panel order-purchases-panel">
+            <div class="modern-section-title">
+              ${clientPageIcon('materials', 'clients-title-icon')}
+              <div>
+                <h2>Quincaillerie et achats à commander</h2>
+                <p>${purchases.length} article${purchases.length > 1 ? 's' : ''}</p>
+              </div>
+            </div>
+            <form method="POST" action="/orders/client/${orderDb.id}/purchases" class="order-purchase-form order-purchase-add-form">
+              <div class="order-purchase-form-grid">
+                <label class="clients-field order-purchase-wide">
+                  <span>Désignation</span>
+                  <div class="clients-input-shell"><input name="designation" placeholder="Ex : chevilles, visserie, paumelles..." required></div>
+                </label>
+                <label class="clients-field">
+                  <span>Quantité</span>
+                  <div class="clients-input-shell"><input type="number" min="0" step="0.01" name="qty" value="1"></div>
+                </label>
+                <label class="clients-field">
+                  <span>Unité</span>
+                  <div class="clients-input-shell"><input name="unit" placeholder="pièce"></div>
+                </label>
+                <label class="clients-field">
+                  <span>Référence</span>
+                  <div class="clients-input-shell"><input name="reference" placeholder="Référence fournisseur"></div>
+                </label>
+                <label class="clients-field">
+                  <span>Fournisseur</span>
+                  <div class="clients-input-shell"><input name="supplier" placeholder="Fournisseur"></div>
+                </label>
+                <label class="clients-field">
+                  <span>Statut</span>
+                  <div class="clients-input-shell"><select name="status">${purchaseStatusOptions('À commander')}</select></div>
+                </label>
+                <label class="clients-field order-purchase-wide">
+                  <span>Note</span>
+                  <div class="clients-input-shell"><input name="note" placeholder="Détail, dimensions, consigne..."></div>
+                </label>
+              </div>
+              <div class="order-purchase-actions">
+                <button class="clients-submit-btn" type="submit">
+                  <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+                  Ajouter l'article
+                </button>
+              </div>
+            </form>
+            <div class="order-purchase-list">
+              ${purchaseCards}
+            </div>
+          </section>
+        `;
+      })()
+    : '';
     
 
   const content = `
@@ -7024,10 +7280,88 @@ const list = files.length
         </div>
         ${list}
       </section>
+
+      ${purchasesBlock}
     </div>
   `;
 
   res.send(pageTemplate(req, `${type} - ${order}`, content));
+});
+
+app.post('/orders/client/:id/purchases', requireLogin, (req, res) => {
+  const orderId = Number(req.params.id || 0);
+  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
+  if (!order) return res.status(404).send('Commande introuvable');
+
+  const designation = String(req.body.designation || '').trim();
+  if (!designation) return res.status(400).send('Désignation requise');
+
+  const qty = parseDecimalInput(req.body.qty, 1);
+  const unit = String(req.body.unit || '').trim() || null;
+  const reference = String(req.body.reference || '').trim() || null;
+  const supplier = String(req.body.supplier || '').trim() || null;
+  const note = String(req.body.note || '').trim() || null;
+  const status = normalizePurchaseStatus(req.body.status);
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    INSERT INTO client_order_purchases
+      (client_order_id, designation, qty, unit, reference, supplier, note, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(orderId, designation, qty, unit, reference, supplier, note, status, now, now);
+
+  res.redirect(getPurchaseOrderRedirect(order));
+});
+
+app.post('/orders/client/:id/purchases/:purchaseId/update', requireLogin, (req, res) => {
+  const orderId = Number(req.params.id || 0);
+  const purchaseId = Number(req.params.purchaseId || 0);
+  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
+  if (!order) return res.status(404).send('Commande introuvable');
+
+  const existing = db
+    .prepare('SELECT id FROM client_order_purchases WHERE id = ? AND client_order_id = ?')
+    .get(purchaseId, orderId);
+  if (!existing) return res.status(404).send('Article introuvable');
+
+  const designation = String(req.body.designation || '').trim();
+  if (!designation) return res.status(400).send('Désignation requise');
+
+  db.prepare(`
+    UPDATE client_order_purchases
+    SET designation = ?,
+        qty = ?,
+        unit = ?,
+        reference = ?,
+        supplier = ?,
+        note = ?,
+        status = ?,
+        updated_at = ?
+    WHERE id = ? AND client_order_id = ?
+  `).run(
+    designation,
+    parseDecimalInput(req.body.qty, 1),
+    String(req.body.unit || '').trim() || null,
+    String(req.body.reference || '').trim() || null,
+    String(req.body.supplier || '').trim() || null,
+    String(req.body.note || '').trim() || null,
+    normalizePurchaseStatus(req.body.status),
+    new Date().toISOString(),
+    purchaseId,
+    orderId
+  );
+
+  res.redirect(getPurchaseOrderRedirect(order));
+});
+
+app.post('/orders/client/:id/purchases/:purchaseId/delete', requireLogin, (req, res) => {
+  const orderId = Number(req.params.id || 0);
+  const purchaseId = Number(req.params.purchaseId || 0);
+  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
+  if (!order) return res.status(404).send('Commande introuvable');
+
+  db.prepare('DELETE FROM client_order_purchases WHERE id = ? AND client_order_id = ?').run(purchaseId, orderId);
+  res.redirect(getPurchaseOrderRedirect(order));
 });
 
 app.post('/pc-folders/:client/:order/:type/upload', requireLogin, pcUpload.single('file'), (req, res) => {
