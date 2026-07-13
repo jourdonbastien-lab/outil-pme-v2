@@ -11,6 +11,7 @@ const multer = require('multer');
 const nodemailer = require('nodemailer');
 const { readDatabaseConfig } = require('./lib/databaseConfig');
 const { parseEbpQuoteText } = require('./lib/ebpQuoteParser');
+const googleSync = require('./lib/googleCalendarSync');
 const app = express();
 
 function tryRequire(moduleName) {
@@ -1981,112 +1982,24 @@ app.use((req, res, next) => {
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
 const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
 const GOOGLE_REDIRECT_URI = String(process.env.GOOGLE_REDIRECT_URI || '').trim();
-const GOOGLE_CALENDAR_ID = String(process.env.GOOGLE_CALENDAR_ID || 'primary').trim();
+const GOOGLE_CALENDAR_ID = String(process.env.GOOGLE_CALENDAR_ID || '').trim();
 const GOOGLE_CALENDAR_TIME_ZONE = process.env.GOOGLE_CALENDAR_TIME_ZONE || 'Europe/Paris';
 
 const oauth2Client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+let googleSyncLocked = false;
 
 function ensureGoogleCalendarConfig(res) {
-  if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_REDIRECT_URI && GOOGLE_CALENDAR_ID) {
+  if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_REDIRECT_URI && GOOGLE_CALENDAR_ID && GOOGLE_CALENDAR_ID !== 'primary') {
     return true;
   }
 
   res.status(500).send(`
     <h2>Configuration Google Agenda manquante</h2>
     <p>Renseignez GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI et GOOGLE_CALENDAR_ID dans le fichier .env.</p>
+    <p>GOOGLE_CALENDAR_ID doit designer l'agenda secondaire A2 Metal, jamais primary.</p>
     <a href="/agenda">Retour a l'agenda</a>
   `);
   return false;
-}
-
-function addDaysToDateOnly(dateOnly, days) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateOnly || ''))) return '';
-  const date = new Date(`${dateOnly}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function formatDateTimeInZone(date, timeZone = GOOGLE_CALENDAR_TIME_ZONE) {
-  const parts = new Intl.DateTimeFormat('fr-FR', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23'
-  }).formatToParts(date);
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${byType.year}-${byType.month}-${byType.day}T${byType.hour}:${byType.minute}`;
-}
-
-function normalizeAgendaDateTime(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return `${raw}T00:00`;
-  const direct = raw.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/);
-  if (direct && !/[zZ]$/.test(raw)) return direct[1];
-
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return '';
-  return formatDateTimeInZone(date);
-}
-
-function googleEventToLocalAgenda(gEvent) {
-  const title = String(gEvent.summary || 'Sans titre').trim() || 'Sans titre';
-  const startDateOnly = gEvent.start?.date;
-  const endDateOnly = gEvent.end?.date;
-
-  if (startDateOnly) {
-    const inclusiveEndDate = addDaysToDateOnly(endDateOnly || addDaysToDateOnly(startDateOnly, 1), -1) || startDateOnly;
-    return {
-      title,
-      start_date: `${startDateOnly}T00:00`,
-      end_date: `${inclusiveEndDate < startDateOnly ? startDateOnly : inclusiveEndDate}T23:59`,
-      type: 'chantier'
-    };
-  }
-
-  const startDate = normalizeAgendaDateTime(gEvent.start?.dateTime);
-  if (!startDate) return null;
-
-  let endDate = normalizeAgendaDateTime(gEvent.end?.dateTime);
-  if (!endDate || endDate <= startDate) {
-    const fallback = new Date(`${startDate}:00`);
-    fallback.setHours(fallback.getHours() + 1);
-    endDate = formatDateTimeInZone(fallback);
-  }
-
-  return {
-    title,
-    start_date: startDate,
-    end_date: endDate,
-    type: 'chantier'
-  };
-}
-
-function localAgendaEventToGoogleBody(event) {
-  const startDate = normalizeAgendaDateTime(event.start_date);
-  if (!startDate) return null;
-
-  let endDate = normalizeAgendaDateTime(event.end_date);
-  if (!endDate || endDate <= startDate) {
-    const fallback = new Date(`${startDate}:00`);
-    fallback.setHours(fallback.getHours() + 1);
-    endDate = formatDateTimeInZone(fallback);
-  }
-
-  return {
-    summary: String(event.title || 'Sans titre').trim() || 'Sans titre',
-    start: {
-      dateTime: `${startDate}:00`,
-      timeZone: GOOGLE_CALENDAR_TIME_ZONE
-    },
-    end: {
-      dateTime: `${endDate}:00`,
-      timeZone: GOOGLE_CALENDAR_TIME_ZONE
-    }
-  };
 }
 
 async function listGoogleCalendarEvents(calendar, calendarId, timeMin) {
@@ -2104,6 +2017,162 @@ async function listGoogleCalendarEvents(calendar, calendarId, timeMin) {
     pageToken = result.data.nextPageToken;
   } while (pageToken);
   return items;
+}
+
+function googleSyncOptions() {
+  return { timeZone: GOOGLE_CALENDAR_TIME_ZONE };
+}
+
+function getSyncMin() {
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+  return oneWeekAgo.toISOString();
+}
+
+function getLocalSyncEvents(syncMin) {
+  return db.prepare(`
+    SELECT *
+    FROM events
+    WHERE start_date IS NOT NULL
+      AND start_date >= ?
+    ORDER BY start_date ASC, id ASC
+  `).all(syncMin);
+}
+
+async function getGoogleCalendarTarget(calendar) {
+  if (GOOGLE_CALENDAR_ID === 'primary') {
+    throw new Error('GOOGLE_CALENDAR_ID ne doit jamais valoir primary pour A2 Metal.');
+  }
+
+  const result = await calendar.calendarList.get({ calendarId: GOOGLE_CALENDAR_ID });
+  return {
+    id: result.data.id || GOOGLE_CALENDAR_ID,
+    summary: result.data.summary || GOOGLE_CALENDAR_ID,
+    timeZone: result.data.timeZone || GOOGLE_CALENDAR_TIME_ZONE
+  };
+}
+
+function actionEventLabel(item) {
+  const normalized = item?.normalized || item;
+  if (!normalized) return 'Evenement inconnu';
+  return `${normalized.title} - ${normalized.start} -> ${normalized.end}`;
+}
+
+function renderActionList(items, formatter) {
+  if (!items.length) return '<li>Aucun</li>';
+  return items.map((item) => `<li>${formatter(item)}</li>`).join('');
+}
+
+function renderAmbiguousList(items) {
+  if (!items.length) return '<li>Aucune</li>';
+  return items.map((item) => {
+    const main = item.local ? actionEventLabel(item.local) : actionEventLabel(item.google);
+    const candidates = (item.candidates || []).map(actionEventLabel).join(' | ');
+    return `<li>${escHtml(item.side)} / ${escHtml(item.reason)} : ${escHtml(main)}<br><small>${escHtml(candidates)}</small></li>`;
+  }).join('');
+}
+
+function renderDuplicateAudit(duplicates) {
+  if (!duplicates.length) return '<li>Aucun doublon Google exact detecte</li>';
+  return duplicates.map((group) => {
+    const events = group.events
+      .map((item) => `${item.normalized.title} (${item.normalized.start} -> ${item.normalized.end}) id=${item.normalized.id}`)
+      .join(' | ');
+    return `<li>${escHtml(group.key)}<br><small>${escHtml(events)}</small></li>`;
+  }).join('');
+}
+
+function renderErrorList(errors) {
+  if (!errors.length) return '<li>Aucune</li>';
+  return errors.map((error) => `<li>${escHtml(error.message || String(error))}</li>`).join('');
+}
+
+function syncReportCounts(actions) {
+  return {
+    link: actions.link.length,
+    importLocal: actions.importLocal.length,
+    createGoogle: actions.createGoogle.length,
+    updateLocal: actions.updateLocal.length,
+    updateGoogle: actions.updateGoogle.length,
+    ambiguous: actions.ambiguous.length,
+    errors: actions.errors.length,
+    googleDuplicates: actions.googleDuplicates.length
+  };
+}
+
+function renderGoogleSyncReport(req, report, options = {}) {
+  const actions = report.preview.actions;
+  const counts = syncReportCounts(actions);
+  const canApply = !options.applied && !actions.ambiguous.length && !actions.errors.length;
+  const confirmButton = canApply
+    ? `
+      <form method="POST" action="/google/sync/apply" class="nav-actions">
+        <button class="btn btn-primary" type="submit">Appliquer la synchronisation</button>
+        <a class="btn btn-secondary" href="/agenda">Annuler</a>
+      </form>
+    `
+    : '<div class="nav-actions"><a class="btn btn-secondary" href="/agenda">Retour a l\'agenda</a></div>';
+
+  const content = `
+    <div class="page-head app-dark-page-head">
+      <div>
+        <h1>${options.applied ? 'Synchronisation appliquee' : 'Previsualisation Google Agenda'}</h1>
+        <span>Agenda cible : ${escHtml(report.calendar.summary)} (${escHtml(report.calendar.id)})</span>
+      </div>
+    </div>
+
+    <section class="panel-soft">
+      <h2>Compteurs</h2>
+      <p>Liaisons: ${counts.link} | Imports locaux: ${counts.importLocal} | Creations Google: ${counts.createGoogle}</p>
+      <p>Mises a jour locales: ${counts.updateLocal} | Mises a jour Google: ${counts.updateGoogle}</p>
+      <p>Ambiguites: ${counts.ambiguous} | Erreurs: ${counts.errors} | Doublons Google detectes: ${counts.googleDuplicates}</p>
+      ${options.message ? `<p>${escHtml(options.message)}</p>` : ''}
+    </section>
+
+    <section class="panel-soft">
+      <h2>A lier</h2>
+      <ul>${renderActionList(actions.link, (item) => `${escHtml(actionEventLabel(item.local))} -> Google ${escHtml(item.google.normalized.id)} (${escHtml(item.reason)})`)}</ul>
+    </section>
+
+    <section class="panel-soft">
+      <h2>A importer dans Outil PME</h2>
+      <ul>${renderActionList(actions.importLocal, (item) => escHtml(actionEventLabel(item.google)))}</ul>
+    </section>
+
+    <section class="panel-soft">
+      <h2>A creer dans Google</h2>
+      <ul>${renderActionList(actions.createGoogle, (item) => escHtml(actionEventLabel(item.local)))}</ul>
+    </section>
+
+    <section class="panel-soft">
+      <h2>Mises a jour locales</h2>
+      <ul>${renderActionList(actions.updateLocal, (item) => `${escHtml(actionEventLabel(item.local))} depuis ${escHtml(actionEventLabel(item.google))}`)}</ul>
+    </section>
+
+    <section class="panel-soft">
+      <h2>Mises a jour Google</h2>
+      <ul>${renderActionList(actions.updateGoogle, (item) => `${escHtml(actionEventLabel(item.google))} depuis ${escHtml(actionEventLabel(item.local))}`)}</ul>
+    </section>
+
+    <section class="panel-soft">
+      <h2>Ambiguites</h2>
+      <ul>${renderAmbiguousList(actions.ambiguous)}</ul>
+    </section>
+
+    <section class="panel-soft">
+      <h2>Audit doublons Google</h2>
+      <ul>${renderDuplicateAudit(actions.googleDuplicates)}</ul>
+    </section>
+
+    <section class="panel-soft">
+      <h2>Erreurs</h2>
+      <ul>${renderErrorList(actions.errors)}</ul>
+    </section>
+
+    ${confirmButton}
+  `;
+
+  return pageTemplate(req, options.applied ? 'Synchronisation Google' : 'Previsualisation Google', content);
 }
 
 /* ===================== TEMPLATES ===================== */
@@ -3568,7 +3637,7 @@ app.get('/agenda', requireLogin, (req, res) => {
 
   const googleSyncButton = `
     <a class="btn btn-secondary" href="/google/sync">
-      Synchroniser Google Agenda
+      Previsualiser la synchronisation
     </a>
   `;
 
@@ -4232,6 +4301,17 @@ app.get('/google/sync', requireLogin, async (req, res) => {
     return res.redirect('/google/auth');
   }
 
+  if (googleSyncLocked) {
+    return res.status(409).send(pageTemplate(req, 'Synchronisation en cours', `
+      <section class="panel-soft">
+        <h1>Synchronisation deja en cours</h1>
+        <p>Une autre synchronisation Google Agenda est en cours. Reessayez dans quelques instants.</p>
+        <a class="btn btn-secondary" href="/agenda">Retour a l'agenda</a>
+      </section>
+    `));
+  }
+
+  googleSyncLocked = true;
   oauth2Client.setCredentials(req.session.googleTokens);
 
   const calendar = google.calendar({
@@ -4240,40 +4320,65 @@ app.get('/google/sync', requireLogin, async (req, res) => {
   });
 
   try {
-    const now = new Date();
-    const oneWeekAgo = new Date(now);
-    oneWeekAgo.setDate(now.getDate() - 7);
-    const syncMin = oneWeekAgo.toISOString();
-
-    const stats = {
-      imported: 0,
-      linked: 0,
-      updatedLocal: 0,
-      createdGoogle: 0,
-      updatedGoogle: 0,
-      skipped: 0
-    };
-
+    const syncMin = getSyncMin();
+    const target = await getGoogleCalendarTarget(calendar);
     const googleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, syncMin);
+    const localEvents = getLocalSyncEvents(syncMin);
+    const preview = googleSync.buildSyncPreview(localEvents, googleEvents, googleSyncOptions());
+    res.send(renderGoogleSyncReport(req, { calendar: target, preview }));
+  } catch (err) {
+    console.error('Erreur previsualisation Google Agenda :', err.response ? err.response.data : err);
+    res.status(502).send(pageTemplate(req, 'Erreur Google Agenda', `
+      <section class="panel-soft">
+        <h1>Impossible de previsualiser la synchronisation</h1>
+        <p>Google Agenda n'a pas repondu correctement. Les details techniques sont dans les logs serveur.</p>
+        <a class="btn btn-secondary" href="/agenda">Retour a l'agenda</a>
+      </section>
+    `));
+  } finally {
+    googleSyncLocked = false;
+  }
+});
 
-    const findByGoogleId = db.prepare(`
-      SELECT *
-      FROM events
-      WHERE google_event_id = ?
-      LIMIT 1
-    `);
+app.post('/google/sync/apply', requireLogin, async (req, res) => {
+  if (!ensureGoogleCalendarConfig(res)) return;
 
-    const findDuplicateWithoutGoogleId = db.prepare(`
-      SELECT *
-      FROM events
-      WHERE (google_event_id IS NULL OR google_event_id = '')
-        AND title = ?
-        AND start_date = ?
-        AND COALESCE(end_date, '') = ?
-      ORDER BY id ASC
-      LIMIT 1
-    `);
+  if (!req.session.googleTokens) {
+    return res.redirect('/google/auth');
+  }
 
+  if (googleSyncLocked) {
+    return res.status(409).send(pageTemplate(req, 'Synchronisation en cours', `
+      <section class="panel-soft">
+        <h1>Synchronisation deja en cours</h1>
+        <p>Une autre synchronisation Google Agenda est en cours. Reessayez dans quelques instants.</p>
+        <a class="btn btn-secondary" href="/agenda">Retour a l'agenda</a>
+      </section>
+    `));
+  }
+
+  googleSyncLocked = true;
+  oauth2Client.setCredentials(req.session.googleTokens);
+
+  const calendar = google.calendar({
+    version: 'v3',
+    auth: oauth2Client,
+  });
+
+  try {
+    const syncMin = getSyncMin();
+    const target = await getGoogleCalendarTarget(calendar);
+    const googleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, syncMin);
+    const localEvents = getLocalSyncEvents(syncMin);
+    const preview = googleSync.buildSyncPreview(localEvents, googleEvents, googleSyncOptions());
+
+    if (preview.actions.ambiguous.length || preview.actions.errors.length) {
+      return res.status(409).send(renderGoogleSyncReport(req, { calendar: target, preview }, {
+        message: 'Synchronisation annulee : des ambiguites ou erreurs doivent etre corrigees avant application.'
+      }));
+    }
+
+    const setGoogleEventId = db.prepare('UPDATE events SET google_event_id = ? WHERE id = ?');
     const updateLocalFromGoogle = db.prepare(`
       UPDATE events
       SET title = ?,
@@ -4283,7 +4388,6 @@ app.get('/google/sync', requireLogin, async (req, res) => {
           google_event_id = ?
       WHERE id = ?
     `);
-
     const insertLocalFromGoogle = db.prepare(`
       INSERT INTO events (
         title,
@@ -4296,116 +4400,101 @@ app.get('/google/sync', requireLogin, async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?)
     `);
 
-    for (const googleEvent of googleEvents) {
-      if (!googleEvent.id || googleEvent.status === 'cancelled') continue;
-
-      const localEvent = googleEventToLocalAgenda(googleEvent);
-      if (!localEvent) {
-        stats.skipped += 1;
-        continue;
-      }
-
-      const existingLinked = findByGoogleId.get(googleEvent.id);
-      if (existingLinked) {
-        updateLocalFromGoogle.run(
-          localEvent.title,
-          localEvent.start_date,
-          localEvent.end_date,
-          existingLinked.type || localEvent.type,
-          googleEvent.id,
-          existingLinked.id
-        );
-        stats.updatedLocal += 1;
-        continue;
-      }
-
-      const existingDuplicate = findDuplicateWithoutGoogleId.get(
-        localEvent.title,
-        localEvent.start_date,
-        localEvent.end_date || ''
-      );
-      if (existingDuplicate) {
-        updateLocalFromGoogle.run(
-          localEvent.title,
-          localEvent.start_date,
-          localEvent.end_date,
-          existingDuplicate.type || localEvent.type,
-          googleEvent.id,
-          existingDuplicate.id
-        );
-        stats.linked += 1;
-        continue;
-      }
-
-      insertLocalFromGoogle.run(
-        localEvent.title,
-        localEvent.start_date,
-        localEvent.end_date,
-        googleEvent.id,
-        localEvent.type,
-        new Date().toISOString()
-      );
-      stats.imported += 1;
+    for (const item of preview.actions.link) {
+      setGoogleEventId.run(item.google.normalized.id, item.local.normalized.rawId);
     }
 
-    const localEvents = db.prepare(`
-      SELECT *
-      FROM events
-      WHERE start_date IS NOT NULL
-        AND start_date >= ?
-      ORDER BY start_date ASC, id ASC
-    `).all(syncMin);
+    for (const item of preview.actions.updateLocal) {
+      const g = item.google.normalized;
+      updateLocalFromGoogle.run(
+        g.title,
+        g.start_date,
+        g.end_date,
+        item.local.row.type || 'chantier',
+        g.id,
+        item.local.normalized.rawId
+      );
+    }
 
-    const setGoogleEventId = db.prepare(`
-      UPDATE events
-      SET google_event_id = ?
-      WHERE id = ?
-    `);
+    for (const item of preview.actions.importLocal) {
+      const g = item.google.normalized;
+      insertLocalFromGoogle.run(g.title, g.start_date, g.end_date, g.id, 'chantier', new Date().toISOString());
+    }
 
-    for (const event of localEvents) {
-      const googleEventId = String(event.google_event_id || '').trim();
+    const recoverOrCreateGoogle = async (localItem) => {
+      const body = googleSync.googleRequestBodyFromLocal(localItem.row, googleSyncOptions());
+      if (!body) return null;
 
-      const requestBody = localAgendaEventToGoogleBody(event);
-      if (!requestBody) {
-        stats.skipped += 1;
-        continue;
-      }
-
-      if (googleEventId) {
-        await calendar.events.update({
-          calendarId: GOOGLE_CALENDAR_ID,
-          eventId: googleEventId,
-          requestBody
-        });
-        stats.updatedGoogle += 1;
-        continue;
+      const refreshedGoogleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, syncMin);
+      const refreshedPreview = googleSync.buildSyncPreview([localItem.row], refreshedGoogleEvents, googleSyncOptions());
+      const relink = refreshedPreview.actions.link[0] || refreshedPreview.actions.updateGoogle[0];
+      if (relink?.google?.normalized?.id) {
+        setGoogleEventId.run(relink.google.normalized.id, localItem.normalized.rawId);
+        return relink.google.normalized.id;
       }
 
       const created = await calendar.events.insert({
         calendarId: GOOGLE_CALENDAR_ID,
-        requestBody
+        requestBody: body
       });
+      if (created.data.id) setGoogleEventId.run(created.data.id, localItem.normalized.rawId);
+      return created.data.id || null;
+    };
 
-      if (created.data.id) {
-        setGoogleEventId.run(created.data.id, event.id);
+    const applyErrors = [];
+
+    for (const item of preview.actions.updateGoogle) {
+      const body = googleSync.googleRequestBodyFromLocal(item.local.row, googleSyncOptions());
+      if (!body) continue;
+
+      try {
+        await calendar.events.update({
+          calendarId: GOOGLE_CALENDAR_ID,
+          eventId: item.google.normalized.id,
+          requestBody: body
+        });
+      } catch (err) {
+        if (googleSync.isNotFoundGoogleError(err)) {
+          try {
+            await recoverOrCreateGoogle(item.local);
+          } catch (recoverErr) {
+            console.error('Erreur recuperation lien Google Agenda :', recoverErr.response ? recoverErr.response.data : recoverErr);
+            applyErrors.push(`Recuperation impossible pour ${item.local.normalized.title}`);
+          }
+        } else {
+          console.error('Erreur mise a jour Google Agenda :', err.response ? err.response.data : err);
+          applyErrors.push(`Mise a jour Google impossible pour ${item.local.normalized.title}`);
+        }
       }
-      stats.createdGoogle += 1;
     }
 
-    res.send(`
-      <h2>Synchronisation Google Agenda terminee</h2>
-      <p>Importes: ${stats.imported} | Lies: ${stats.linked} | Local mis a jour: ${stats.updatedLocal}</p>
-      <p>Crees Google: ${stats.createdGoogle} | Google mis a jour: ${stats.updatedGoogle}</p>
-      <p>Ignores: ${stats.skipped}</p>
-      <a href="/agenda">Retour a l'agenda</a>
-    `);
+    for (const item of preview.actions.createGoogle) {
+      try {
+        await recoverOrCreateGoogle(item.local);
+      } catch (err) {
+        console.error('Erreur creation Google Agenda :', err.response ? err.response.data : err);
+        applyErrors.push(`Creation Google impossible pour ${item.local.normalized.title}`);
+      }
+    }
+
+    preview.actions.errors.push(...applyErrors.map((message) => ({ message })));
+    res.send(renderGoogleSyncReport(req, { calendar: target, preview }, {
+      applied: true,
+      message: applyErrors.length
+        ? 'Synchronisation appliquee partiellement : certains evenements sont en erreur.'
+        : 'Synchronisation appliquee sans suppression automatique.'
+    }));
   } catch (err) {
-    console.error('Erreur Google :', err.response ? err.response.data : err);
-    res.send(`
-      <h2>Erreur lors de la synchro Google</h2>
-      <pre>${err.response ? JSON.stringify(err.response.data, null, 2) : err}</pre>
-      <a href="/agenda">Retour a l'agenda</a>
-    `);
+    console.error('Erreur application Google Agenda :', err.response ? err.response.data : err);
+    res.status(502).send(pageTemplate(req, 'Erreur Google Agenda', `
+      <section class="panel-soft">
+        <h1>Impossible d'appliquer la synchronisation</h1>
+        <p>Google Agenda n'a pas repondu correctement. Aucune suppression automatique n'a ete executee.</p>
+        <a class="btn btn-secondary" href="/agenda">Retour a l'agenda</a>
+      </section>
+    `));
+  } finally {
+    googleSyncLocked = false;
   }
 });
 
@@ -10137,35 +10226,8 @@ app.post('/agenda/add', requireLogin, (req, res) => {
 
   res.json({ success: true });
 });
-app.post('/agenda/update', requireLogin, async (req, res) => {
+app.post('/agenda/update', requireLogin, (req, res) => {
   const { id, title, type, start_date, end_date } = req.body;
-  const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(id);
-
-  if (existing?.google_event_id && req.session.googleTokens) {
-    const requestBody = localAgendaEventToGoogleBody({
-      title,
-      start_date,
-      end_date
-    });
-
-    if (requestBody) {
-      try {
-        oauth2Client.setCredentials(req.session.googleTokens);
-        const calendar = google.calendar({
-          version: 'v3',
-          auth: oauth2Client
-        });
-        await calendar.events.update({
-          calendarId: GOOGLE_CALENDAR_ID,
-          eventId: existing.google_event_id,
-          requestBody
-        });
-      } catch (err) {
-        console.error('Erreur mise a jour Google Agenda :', err.response ? err.response.data : err);
-        return res.status(502).json({ success: false, error: 'Erreur mise a jour Google Agenda' });
-      }
-    }
-  }
 
   db.prepare(`
     UPDATE events
