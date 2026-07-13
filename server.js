@@ -2131,36 +2131,6 @@ async function getGoogleCalendarTarget(calendar) {
   };
 }
 
-function actionEventLabel(item) {
-  const normalized = item?.normalized || item;
-  if (!normalized) return 'Evenement inconnu';
-  return `${normalized.title} - ${normalized.start} -> ${normalized.end}`;
-}
-
-function renderActionList(items, formatter) {
-  if (!items.length) return '<li>Aucun</li>';
-  return items.map((item) => `<li>${formatter(item)}</li>`).join('');
-}
-
-function renderAmbiguousList(items) {
-  if (!items.length) return '<li>Aucune</li>';
-  return items.map((item) => {
-    const main = item.local ? actionEventLabel(item.local) : actionEventLabel(item.google);
-    const candidates = (item.candidates || []).map(actionEventLabel).join(' | ');
-    return `<li>${escHtml(item.side)} / ${escHtml(item.reason)} : ${escHtml(main)}<br><small>${escHtml(candidates)}</small></li>`;
-  }).join('');
-}
-
-function renderDuplicateAudit(duplicates) {
-  if (!duplicates.length) return '<li>Aucun doublon Google exact detecte</li>';
-  return duplicates.map((group) => {
-    const events = group.events
-      .map((item) => `${item.normalized.title} (${item.normalized.start} -> ${item.normalized.end}) id=${item.normalized.id}`)
-      .join(' | ');
-    return `<li>${escHtml(group.key)}<br><small>${escHtml(events)}</small></li>`;
-  }).join('');
-}
-
 function renderErrorList(errors) {
   if (!errors.length) return '<li>Aucune</li>';
   return errors.map((error) => `<li>${escHtml(error.message || String(error))}</li>`).join('');
@@ -2179,79 +2149,44 @@ function syncReportCounts(actions) {
   };
 }
 
-function renderGoogleSyncReport(req, report, options = {}) {
+function renderGoogleSyncSummary(req, report, options = {}) {
   const actions = report.preview.actions;
   const counts = syncReportCounts(actions);
-  const canApply = !options.applied && !actions.ambiguous.length && !actions.errors.length;
-  const confirmButton = canApply
-    ? `
-      <form method="POST" action="/google/sync/apply" class="nav-actions">
-        <button class="btn btn-primary" type="submit">Appliquer la synchronisation</button>
-        <a class="btn btn-secondary" href="/agenda">Annuler</a>
-      </form>
-    `
-    : '<div class="nav-actions"><a class="btn btn-secondary" href="/agenda">Retour a l\'agenda</a></div>';
+  const added = counts.importLocal + counts.createGoogle;
+  const updated = counts.link + counts.updateLocal + counts.updateGoogle;
+  const ignored = counts.ambiguous + counts.googleDuplicates;
+  const errors = counts.errors;
 
   const content = `
     <div class="page-head app-dark-page-head">
       <div>
-        <h1>${options.applied ? 'Synchronisation appliquee' : 'Previsualisation Google Agenda'}</h1>
+        <h1>Synchronisation Google Calendar</h1>
         <span>Agenda cible : ${escHtml(report.calendar.summary)} (${escHtml(report.calendar.id)})</span>
       </div>
     </div>
 
     <section class="panel-soft">
-      <h2>Compteurs</h2>
-      <p>Liaisons: ${counts.link} | Imports locaux: ${counts.importLocal} | Creations Google: ${counts.createGoogle}</p>
-      <p>Mises a jour locales: ${counts.updateLocal} | Mises a jour Google: ${counts.updateGoogle}</p>
-      <p>Ambiguites: ${counts.ambiguous} | Erreurs: ${counts.errors} | Doublons Google detectes: ${counts.googleDuplicates}</p>
+      <h2>Résumé</h2>
       ${options.message ? `<p>${escHtml(options.message)}</p>` : ''}
+      <div class="dashboard-grid">
+        <div class="stat-card"><strong>${added}</strong><span>Événements ajoutés</span></div>
+        <div class="stat-card"><strong>${updated}</strong><span>Événements mis à jour</span></div>
+        <div class="stat-card"><strong>${ignored}</strong><span>Événements ignorés</span></div>
+        <div class="stat-card"><strong>${errors}</strong><span>Erreurs</span></div>
+      </div>
     </section>
 
-    <section class="panel-soft">
-      <h2>A lier</h2>
-      <ul>${renderActionList(actions.link, (item) => `${escHtml(actionEventLabel(item.local))} -> Google ${escHtml(item.google.normalized.id)} (${escHtml(item.reason)})`)}</ul>
-    </section>
+    ${actions.errors.length ? `
+      <section class="panel-soft">
+        <h2>Erreurs</h2>
+        <ul>${renderErrorList(actions.errors)}</ul>
+      </section>
+    ` : ''}
 
-    <section class="panel-soft">
-      <h2>A importer dans Outil PME</h2>
-      <ul>${renderActionList(actions.importLocal, (item) => escHtml(actionEventLabel(item.google)))}</ul>
-    </section>
-
-    <section class="panel-soft">
-      <h2>A creer dans Google</h2>
-      <ul>${renderActionList(actions.createGoogle, (item) => escHtml(actionEventLabel(item.local)))}</ul>
-    </section>
-
-    <section class="panel-soft">
-      <h2>Mises a jour locales</h2>
-      <ul>${renderActionList(actions.updateLocal, (item) => `${escHtml(actionEventLabel(item.local))} depuis ${escHtml(actionEventLabel(item.google))}`)}</ul>
-    </section>
-
-    <section class="panel-soft">
-      <h2>Mises a jour Google</h2>
-      <ul>${renderActionList(actions.updateGoogle, (item) => `${escHtml(actionEventLabel(item.google))} depuis ${escHtml(actionEventLabel(item.local))}`)}</ul>
-    </section>
-
-    <section class="panel-soft">
-      <h2>Ambiguites</h2>
-      <ul>${renderAmbiguousList(actions.ambiguous)}</ul>
-    </section>
-
-    <section class="panel-soft">
-      <h2>Audit doublons Google</h2>
-      <ul>${renderDuplicateAudit(actions.googleDuplicates)}</ul>
-    </section>
-
-    <section class="panel-soft">
-      <h2>Erreurs</h2>
-      <ul>${renderErrorList(actions.errors)}</ul>
-    </section>
-
-    ${confirmButton}
+    <div class="nav-actions"><a class="btn btn-secondary" href="/agenda">Retour à l'agenda</a></div>
   `;
 
-  return pageTemplate(req, options.applied ? 'Synchronisation Google' : 'Previsualisation Google', content);
+  return pageTemplate(req, 'Synchronisation Google', content);
 }
 
 /* ===================== TEMPLATES ===================== */
@@ -3718,9 +3653,11 @@ app.get('/agenda', requireLogin, (req, res) => {
   `;
 
   const googleSyncButton = `
-    <a class="btn btn-secondary" href="/google/sync">
-      Previsualiser la synchronisation
-    </a>
+    <form method="POST" action="/google/sync" class="agenda-sync-form" onsubmit="const b=this.querySelector('button'); if(b.disabled) return false; b.disabled=true; b.textContent='Synchronisation...';">
+      <button class="btn btn-secondary" type="submit">
+        Synchroniser maintenant
+      </button>
+    </form>
   `;
 
   const newEventButton = `
@@ -4375,56 +4312,12 @@ app.get('/google/callback', requireLogin, async (req, res) => {
   }
 });
 
-// Synchronisation bidirectionnelle avec Google Agenda.
-app.get('/google/sync', requireLogin, async (req, res) => {
-  if (!ensureGoogleCalendarConfig(res)) return;
-
-  if (!req.session.googleTokens) {
-    return res.redirect('/google/auth');
-  }
-
-  if (googleSyncLocked) {
-    return res.status(409).send(pageTemplate(req, 'Synchronisation en cours', `
-      <section class="panel-soft">
-        <h1>Synchronisation deja en cours</h1>
-        <p>Une autre synchronisation Google Agenda est en cours. Reessayez dans quelques instants.</p>
-        <a class="btn btn-secondary" href="/agenda">Retour a l'agenda</a>
-      </section>
-    `));
-  }
-
-  googleSyncLocked = true;
-  oauth2Client.setCredentials(req.session.googleTokens);
-
-  const calendar = google.calendar({
-    version: 'v3',
-    auth: oauth2Client,
-  });
-
-  try {
-    purgeExpiredLocalAgendaEventsSafely();
-    const localSyncMin = getLocalSyncMin();
-    const googleSyncTimeMin = getGoogleSyncTimeMin();
-    const target = await getGoogleCalendarTarget(calendar);
-    const googleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, googleSyncTimeMin);
-    const localEvents = getLocalSyncEvents(localSyncMin);
-    const preview = googleSync.buildSyncPreview(localEvents, googleEvents, googleSyncOptions());
-    res.send(renderGoogleSyncReport(req, { calendar: target, preview }));
-  } catch (err) {
-    console.error('Erreur previsualisation Google Agenda :', err.response ? err.response.data : err);
-    res.status(502).send(pageTemplate(req, 'Erreur Google Agenda', `
-      <section class="panel-soft">
-        <h1>Impossible de previsualiser la synchronisation</h1>
-        <p>Google Agenda n'a pas repondu correctement. Les details techniques sont dans les logs serveur.</p>
-        <a class="btn btn-secondary" href="/agenda">Retour a l'agenda</a>
-      </section>
-    `));
-  } finally {
-    googleSyncLocked = false;
-  }
+// Synchronisation bidirectionnelle directe avec Google Agenda.
+app.get('/google/sync', requireLogin, (req, res) => {
+  res.redirect('/agenda');
 });
 
-app.post('/google/sync/apply', requireLogin, async (req, res) => {
+app.post('/google/sync', requireLogin, async (req, res) => {
   if (!ensureGoogleCalendarConfig(res)) return;
 
   if (!req.session.googleTokens) {
@@ -4459,8 +4352,8 @@ app.post('/google/sync/apply', requireLogin, async (req, res) => {
     const preview = googleSync.buildSyncPreview(localEvents, googleEvents, googleSyncOptions());
 
     if (preview.actions.ambiguous.length || preview.actions.errors.length) {
-      return res.status(409).send(renderGoogleSyncReport(req, { calendar: target, preview }, {
-        message: 'Synchronisation annulee : des ambiguites ou erreurs doivent etre corrigees avant application.'
+      return res.status(409).send(renderGoogleSyncSummary(req, { calendar: target, preview }, {
+        message: 'Synchronisation annulée : des ambiguïtés ou erreurs doivent être corrigées.'
       }));
     }
 
@@ -4564,11 +4457,10 @@ app.post('/google/sync/apply', requireLogin, async (req, res) => {
     }
 
     preview.actions.errors.push(...applyErrors.map((message) => ({ message })));
-    res.send(renderGoogleSyncReport(req, { calendar: target, preview }, {
-      applied: true,
+    res.send(renderGoogleSyncSummary(req, { calendar: target, preview }, {
       message: applyErrors.length
-        ? 'Synchronisation appliquee partiellement : certains evenements sont en erreur.'
-        : 'Synchronisation appliquee sans suppression automatique.'
+        ? 'Synchronisation appliquée partiellement : certains événements sont en erreur.'
+        : 'Synchronisation appliquée. Aucun événement Google n’a été supprimé.'
     }));
   } catch (err) {
     console.error('Erreur application Google Agenda :', err.response ? err.response.data : err);
