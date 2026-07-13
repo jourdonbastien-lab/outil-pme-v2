@@ -167,6 +167,83 @@ function isoDate(d = new Date()) {
   return d.toISOString().slice(0, 10);
 }
 
+const APP_TIME_ZONE = 'Europe/Paris';
+
+function dateKeyInTimeZone(date = new Date(), timeZone = APP_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function timeZoneOffsetForGoogleTimeMin(date = new Date(), timeZone = APP_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'shortOffset'
+  }).formatToParts(date);
+  const offsetName = parts.find((part) => part.type === 'timeZoneName')?.value || 'GMT+1';
+  const match = offsetName.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!match) return '+01:00';
+  const sign = match[1];
+  const hours = String(match[2]).padStart(2, '0');
+  const minutes = String(match[3] || '00').padStart(2, '0');
+  return `${sign}${hours}:${minutes}`;
+}
+
+function parisTodayStartLocal() {
+  return `${dateKeyInTimeZone(new Date(), APP_TIME_ZONE)}T00:00`;
+}
+
+function parisTodayStartGoogleTimeMin() {
+  const today = dateKeyInTimeZone(new Date(), APP_TIME_ZONE);
+  const offset = timeZoneOffsetForGoogleTimeMin(new Date(`${today}T12:00:00Z`), APP_TIME_ZONE);
+  return `${today}T00:00:00${offset}`;
+}
+
+function localAgendaDateKey(value) {
+  const normalized = googleSync.normalizeAgendaDateTime(value, APP_TIME_ZONE);
+  return normalized ? normalized.slice(0, 10) : '';
+}
+
+function eventLastVisibleDateKey(event) {
+  return localAgendaDateKey(event?.end_date) || localAgendaDateKey(event?.start_date);
+}
+
+function purgeExpiredLocalAgendaEvents() {
+  const today = dateKeyInTimeZone(new Date(), APP_TIME_ZONE);
+  const expiredIds = db
+    .prepare('SELECT id, start_date, end_date FROM events')
+    .all()
+    .filter((event) => {
+      const lastVisibleDate = eventLastVisibleDateKey(event);
+      return lastVisibleDate && lastVisibleDate < today;
+    })
+    .map((event) => event.id);
+
+  if (!expiredIds.length) return 0;
+
+  const deleteEvent = db.prepare('DELETE FROM events WHERE id = ?');
+  const deleteExpiredEvents = db.transaction((ids) => {
+    for (const id of ids) deleteEvent.run(id);
+  });
+  deleteExpiredEvents(expiredIds);
+  console.log(`Agenda: ${expiredIds.length} événement(s) passé(s) supprimé(s) localement.`);
+  return expiredIds.length;
+}
+
+function purgeExpiredLocalAgendaEventsSafely() {
+  try {
+    return purgeExpiredLocalAgendaEvents();
+  } catch (err) {
+    console.error('Erreur purge automatique agenda local :', err);
+    return 0;
+  }
+}
+
 function toMinutes(hhmm) {
   if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return null;
   const [h, m] = hhmm.split(':').map(Number);
@@ -2023,10 +2100,12 @@ function googleSyncOptions() {
   return { timeZone: GOOGLE_CALENDAR_TIME_ZONE };
 }
 
-function getSyncMin() {
-  const oneWeekAgo = new Date();
-  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-  return oneWeekAgo.toISOString();
+function getLocalSyncMin() {
+  return parisTodayStartLocal();
+}
+
+function getGoogleSyncTimeMin() {
+  return parisTodayStartGoogleTimeMin();
 }
 
 function getLocalSyncEvents(syncMin) {
@@ -2034,7 +2113,7 @@ function getLocalSyncEvents(syncMin) {
     SELECT *
     FROM events
     WHERE start_date IS NOT NULL
-      AND start_date >= ?
+      AND COALESCE(NULLIF(end_date, ''), start_date) >= ?
     ORDER BY start_date ASC, id ASC
   `).all(syncMin);
 }
@@ -2941,8 +3020,10 @@ app.get('/dashboard/prototype', requireLogin, (req, res) => {
 });
 
 function renderDashboardPrototype(req, res) {
-  const todayIso = isoDate();
+  purgeExpiredLocalAgendaEventsSafely();
+  const todayIso = dateKeyInTimeZone(new Date(), APP_TIME_ZONE);
   const todayLabel = new Date().toLocaleDateString('fr-FR', {
+    timeZone: APP_TIME_ZONE,
     weekday: 'long',
     day: '2-digit',
     month: 'long',
@@ -3485,6 +3566,7 @@ app.post('/tasks/to-invoice', requireLogin, (req, res) => {
 });
 /* ===================== AGENDA ===================== */
 app.get('/agenda', requireLogin, (req, res) => {
+  purgeExpiredLocalAgendaEventsSafely();
   const requestedView = String(req.query.view || 'week').trim().toLowerCase();
   const agendaView = ['day', 'week', 'month'].includes(requestedView) ? requestedView : 'week';
 
@@ -3495,8 +3577,8 @@ app.get('/agenda', requireLogin, (req, res) => {
   `).all();
 
   const now = new Date();
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
+  const todayParts = dateKeyInTimeZone(now, APP_TIME_ZONE).split('-').map(Number);
+  const todayStart = new Date(todayParts[0], todayParts[1] - 1, todayParts[2]);
 
   const tomorrow = new Date(todayStart);
   tomorrow.setDate(todayStart.getDate() + 1);
@@ -4320,10 +4402,12 @@ app.get('/google/sync', requireLogin, async (req, res) => {
   });
 
   try {
-    const syncMin = getSyncMin();
+    purgeExpiredLocalAgendaEventsSafely();
+    const localSyncMin = getLocalSyncMin();
+    const googleSyncTimeMin = getGoogleSyncTimeMin();
     const target = await getGoogleCalendarTarget(calendar);
-    const googleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, syncMin);
-    const localEvents = getLocalSyncEvents(syncMin);
+    const googleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, googleSyncTimeMin);
+    const localEvents = getLocalSyncEvents(localSyncMin);
     const preview = googleSync.buildSyncPreview(localEvents, googleEvents, googleSyncOptions());
     res.send(renderGoogleSyncReport(req, { calendar: target, preview }));
   } catch (err) {
@@ -4366,10 +4450,12 @@ app.post('/google/sync/apply', requireLogin, async (req, res) => {
   });
 
   try {
-    const syncMin = getSyncMin();
+    purgeExpiredLocalAgendaEventsSafely();
+    const localSyncMin = getLocalSyncMin();
+    const googleSyncTimeMin = getGoogleSyncTimeMin();
     const target = await getGoogleCalendarTarget(calendar);
-    const googleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, syncMin);
-    const localEvents = getLocalSyncEvents(syncMin);
+    const googleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, googleSyncTimeMin);
+    const localEvents = getLocalSyncEvents(localSyncMin);
     const preview = googleSync.buildSyncPreview(localEvents, googleEvents, googleSyncOptions());
 
     if (preview.actions.ambiguous.length || preview.actions.errors.length) {
@@ -4425,7 +4511,7 @@ app.post('/google/sync/apply', requireLogin, async (req, res) => {
       const body = googleSync.googleRequestBodyFromLocal(localItem.row, googleSyncOptions());
       if (!body) return null;
 
-      const refreshedGoogleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, syncMin);
+      const refreshedGoogleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, googleSyncTimeMin);
       const refreshedPreview = googleSync.buildSyncPreview([localItem.row], refreshedGoogleEvents, googleSyncOptions());
       const relink = refreshedPreview.actions.link[0] || refreshedPreview.actions.updateGoogle[0];
       if (relink?.google?.normalized?.id) {
@@ -10265,6 +10351,10 @@ app.post('/agenda/delete', requireLogin, async (req, res) => {
 });
 
 /* ===================== START ===================== */
+
+purgeExpiredLocalAgendaEventsSafely();
+const agendaPurgeTimer = setInterval(purgeExpiredLocalAgendaEventsSafely, 60 * 60 * 1000);
+if (typeof agendaPurgeTimer.unref === 'function') agendaPurgeTimer.unref();
 
 app.listen(PORT, HOST, () => {
   console.log(`Serveur démarré sur ${HOST}:${PORT}`);
