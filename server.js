@@ -1075,10 +1075,12 @@ function createSqliteTables(database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       client_order_id INTEGER NOT NULL,
       designation TEXT NOT NULL,
+      category TEXT,
       qty REAL DEFAULT 1,
       unit TEXT,
       reference TEXT,
       supplier TEXT,
+      needed_date TEXT,
       note TEXT,
       status TEXT DEFAULT 'À commander',
       created_at TEXT,
@@ -1183,10 +1185,12 @@ function runSqliteMigrations(ensureColumn) {
   ensureColumn('chantier_hours', 'client_order_id', 'INTEGER NULL');
   ensureColumn('client_order_purchases', 'client_order_id', 'INTEGER');
   ensureColumn('client_order_purchases', 'designation', 'TEXT');
+  ensureColumn('client_order_purchases', 'category', 'TEXT');
   ensureColumn('client_order_purchases', 'qty', 'REAL DEFAULT 1');
   ensureColumn('client_order_purchases', 'unit', 'TEXT');
   ensureColumn('client_order_purchases', 'reference', 'TEXT');
   ensureColumn('client_order_purchases', 'supplier', 'TEXT');
+  ensureColumn('client_order_purchases', 'needed_date', 'TEXT');
   ensureColumn('client_order_purchases', 'note', 'TEXT');
   ensureColumn('client_order_purchases', 'status', "TEXT DEFAULT 'À commander'");
   ensureColumn('client_order_purchases', 'created_at', 'TEXT');
@@ -3115,7 +3119,17 @@ function renderDashboardPrototype(req, res) {
           ELSE co.date
         END ASC,
         co.id DESC
-      LIMIT 3
+      LIMIT 12
+    `)
+    .all();
+
+  const activeSupplierOrders = db
+    .prepare(`
+      SELECT id, name, description, date, status
+      FROM supplier_orders
+      WHERE status IS NULL OR TRIM(status) = '' OR status != 'Terminée'
+      ORDER BY date DESC, id DESC
+      LIMIT 12
     `)
     .all();
 
@@ -3256,7 +3270,7 @@ function renderDashboardPrototype(req, res) {
           const endDate = String(order.chantier_end_date || '').slice(0, 10);
           const isLate = endDate && endDate < todayIso;
           return `
-        <article class="prototype-order-card">
+        <article class="prototype-order-card prototype-carousel-slide">
           <header>
             <span class="prototype-order-icon">${orderIconFor(order)}</span>
             <div>
@@ -3281,6 +3295,50 @@ function renderDashboardPrototype(req, res) {
         })
         .join('')
     : '<p class="prototype-empty">Aucune commande / chantier actif</p>';
+
+  const supplierOrdersHtml = activeSupplierOrders.length
+    ? activeSupplierOrders
+        .map((order) => {
+          const status = String(order.status || 'En cours').trim() || 'En cours';
+          return `
+            <article class="prototype-supplier-order-card prototype-carousel-slide">
+              <header>
+                <span class="prototype-order-icon">${kpiIcon('suppliers')}</span>
+                <div>
+                  <strong>${escHtml(order.name || 'Commande fournisseur')}</strong>
+                  <small>${escHtml(order.description || 'Aucune désignation')}</small>
+                </div>
+                <span class="prototype-status">${escHtml(status)}</span>
+              </header>
+              <div class="prototype-supplier-order-meta">
+                <span>Date</span>
+                <strong>${escHtml(formatDateShort(order.date))}</strong>
+              </div>
+              <a class="prototype-open-button" href="/orders/suppliers#supplier-order-${order.id}">Ouvrir</a>
+            </article>
+          `;
+        })
+        .join('')
+    : '<p class="prototype-empty">Aucune commande fournisseur active.</p>';
+
+  const renderDashboardCarousel = ({ title, href, linkLabel, itemsHtml, count, kind }) => `
+    <div class="prototype-carousel" data-dashboard-carousel data-carousel-count="${count}">
+      <div class="prototype-carousel-head">
+        <div class="prototype-panel-head">
+          <h2>${escHtml(title)}</h2>
+          <a href="${href}">${escHtml(linkLabel)}</a>
+        </div>
+        <div class="prototype-carousel-controls" aria-label="Navigation ${escHtml(title)}">
+          <button type="button" data-carousel-prev aria-label="Précédent">‹</button>
+          <span data-carousel-counter>0 / ${count}</span>
+          <button type="button" data-carousel-next aria-label="Suivant">›</button>
+        </div>
+      </div>
+      <div class="prototype-carousel-track prototype-carousel-${kind}" data-carousel-track>
+        ${itemsHtml}
+      </div>
+    </div>
+  `;
 
   const pendingPurchasesHtml = pendingPurchases.length
     ? pendingPurchases
@@ -3328,15 +3386,29 @@ function renderDashboardPrototype(req, res) {
         </section>
 
         <section class="prototype-main-layout">
-          <article class="prototype-panel prototype-orders-panel">
-            <div class="prototype-panel-head">
-              <h2>Commandes / chantiers actifs</h2>
-              <a href="/orders/clients">Voir tout ›</a>
-            </div>
-            <div class="prototype-orders-grid">
-              ${orderChantiersHtml}
-            </div>
-          </article>
+          <div class="prototype-carousel-stack">
+            <article class="prototype-panel prototype-orders-panel">
+              ${renderDashboardCarousel({
+                title: 'Commandes clients',
+                href: '/orders/clients',
+                linkLabel: 'Voir toutes les commandes',
+                itemsHtml: orderChantiersHtml,
+                count: orderChantiers.length,
+                kind: 'clients',
+              })}
+            </article>
+
+            <article class="prototype-panel prototype-supplier-orders-panel">
+              ${renderDashboardCarousel({
+                title: 'Commandes fournisseurs',
+                href: '/orders/suppliers',
+                linkLabel: 'Voir toutes les commandes',
+                itemsHtml: supplierOrdersHtml,
+                count: activeSupplierOrders.length,
+                kind: 'suppliers',
+              })}
+            </article>
+          </div>
 
           <aside class="prototype-side-stack">
             <article class="prototype-panel prototype-appointments-panel">
@@ -3392,6 +3464,57 @@ function renderDashboardPrototype(req, res) {
         </section>
       </div>
       <script>
+        (function(){
+          document.querySelectorAll('[data-dashboard-carousel]').forEach(function(carousel){
+            var track = carousel.querySelector('[data-carousel-track]');
+            var prev = carousel.querySelector('[data-carousel-prev]');
+            var next = carousel.querySelector('[data-carousel-next]');
+            var counter = carousel.querySelector('[data-carousel-counter]');
+            if (!track) return;
+            var slides = Array.prototype.slice.call(track.querySelectorAll('.prototype-carousel-slide'));
+            var total = slides.length;
+            if (!total) {
+              if (prev) prev.hidden = true;
+              if (next) next.hidden = true;
+              if (counter) counter.textContent = '0 / 0';
+              return;
+            }
+            if (total <= 1) carousel.classList.add('is-single');
+
+            function currentIndex(){
+              var left = track.scrollLeft;
+              var best = 0;
+              var bestDistance = Infinity;
+              slides.forEach(function(slide, index){
+                var distance = Math.abs(slide.offsetLeft - left);
+                if (distance < bestDistance) {
+                  bestDistance = distance;
+                  best = index;
+                }
+              });
+              return best;
+            }
+
+            function update(){
+              var index = currentIndex();
+              if (counter) counter.textContent = (index + 1) + ' / ' + total;
+              if (prev) prev.disabled = index <= 0;
+              if (next) next.disabled = index >= total - 1;
+            }
+
+            function scrollToIndex(index){
+              var target = slides[Math.max(0, Math.min(total - 1, index))];
+              if (target) track.scrollTo({ left: target.offsetLeft, behavior: 'smooth' });
+            }
+
+            if (prev) prev.addEventListener('click', function(){ scrollToIndex(currentIndex() - 1); });
+            if (next) next.addEventListener('click', function(){ scrollToIndex(currentIndex() + 1); });
+            track.addEventListener('scroll', function(){ window.requestAnimationFrame(update); }, { passive: true });
+            window.addEventListener('resize', update);
+            update();
+          });
+        })();
+
         (function(){
           const card = document.querySelector('[data-weather-card]');
           if (!card) return;
@@ -6689,7 +6812,7 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
         const statusClass = status === 'Terminée' ? 'done' : 'progress';
         const dateLabel = String(o.date || '').slice(0, 10) || 'Date non renseignée';
         return `
-          <article class="supplier-modern-card">
+          <article class="supplier-modern-card" id="supplier-order-${o.id}">
             <header>
               <span class="supplier-modern-icon">${clientPageIcon('supplierOrders', 'modern-client-order-svg')}</span>
               <div>
@@ -6713,6 +6836,137 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
         `;
       }).join('')
     : '<div class="empty-state">Aucune commande fournisseur</div>';
+
+  const purchaseStatusFilter = ['À commander', 'Commandé', 'Reçu'].includes(String(req.query.purchase_status || '').trim())
+    ? String(req.query.purchase_status).trim()
+    : 'all';
+  const purchaseSupplierFilter = String(req.query.purchase_supplier || 'all').trim() || 'all';
+  const purchaseWhere = [];
+  const purchaseParams = [];
+  if (purchaseStatusFilter !== 'all') {
+    purchaseWhere.push("COALESCE(NULLIF(TRIM(p.status), ''), 'À commander') = ?");
+    purchaseParams.push(purchaseStatusFilter);
+  }
+  if (purchaseSupplierFilter === '__missing') {
+    purchaseWhere.push("(p.supplier IS NULL OR TRIM(p.supplier) = '')");
+  } else if (purchaseSupplierFilter !== 'all') {
+    purchaseWhere.push('p.supplier = ?');
+    purchaseParams.push(purchaseSupplierFilter);
+  }
+
+  const supplierChoices = db
+    .prepare(`
+      SELECT DISTINCT TRIM(COALESCE(supplier, '')) AS supplier
+      FROM client_order_purchases
+      ORDER BY supplier COLLATE NOCASE ASC
+    `)
+    .all();
+  const chantierPurchases = db
+    .prepare(`
+      SELECT
+        p.id,
+        p.designation,
+        p.category,
+        p.qty,
+        p.unit,
+        p.reference,
+        p.supplier,
+        p.needed_date,
+        p.status,
+        co.id AS order_id,
+        co.name AS client_name,
+        co.description AS order_description
+      FROM client_order_purchases p
+      JOIN client_orders co ON co.id = p.client_order_id
+      ${purchaseWhere.length ? `WHERE ${purchaseWhere.join(' AND ')}` : ''}
+      ORDER BY
+        CASE COALESCE(NULLIF(TRIM(p.status), ''), 'À commander')
+          WHEN 'À commander' THEN 0
+          WHEN 'Commandé' THEN 1
+          ELSE 2
+        END,
+        COALESCE(NULLIF(TRIM(p.needed_date), ''), '9999-12-31') ASC,
+        p.id DESC
+    `)
+    .all(...purchaseParams);
+
+  const purchaseFilterUrl = (status, supplier) => {
+    const params = new URLSearchParams();
+    if (status && status !== 'all') params.set('purchase_status', status);
+    if (supplier && supplier !== 'all') params.set('purchase_supplier', supplier);
+    const query = params.toString();
+    return `/orders/suppliers${query ? `?${query}` : ''}#supplier-purchases`;
+  };
+
+  const supplierFilterOptions = [
+    '<option value="all">Tous fournisseurs</option>',
+    ...supplierChoices.map((row) => {
+      const supplier = String(row.supplier || '').trim();
+      const value = supplier ? supplier : '__missing';
+      const label = supplier || 'Fournisseur non renseigné';
+      return `<option value="${escHtml(value)}"${value === purchaseSupplierFilter ? ' selected' : ''}>${escHtml(label)}</option>`;
+    }),
+  ].join('');
+
+  const purchaseStatusFilterOptions = ['all', 'À commander', 'Commandé', 'Reçu']
+    .map((status) => {
+      const label = status === 'all' ? 'Tous statuts' : status;
+      return `<option value="${escHtml(status)}"${status === purchaseStatusFilter ? ' selected' : ''}>${escHtml(label)}</option>`;
+    })
+    .join('');
+
+  const chantierPurchaseCards = chantierPurchases.length
+    ? chantierPurchases
+        .map((item) => {
+          const status = normalizePurchaseStatus(item.status);
+          const qty = Number(item.qty || 0);
+          const orderFolderName = clientOrderFolderName({
+            id: item.order_id,
+            description: item.order_description,
+          });
+          const orderUrl = `/pc-folders/${encodeURIComponent(safeName(item.client_name))}/${encodeURIComponent(orderFolderName)}/Commandes`;
+          const redirect = purchaseFilterUrl(purchaseStatusFilter, purchaseSupplierFilter);
+          return `
+            <article class="supplier-purchase-card">
+              <div class="supplier-purchase-context">
+                <span>${escHtml(item.client_name || 'Client')}</span>
+                <strong>${escHtml(item.order_description || `Commande #${item.order_id}`)}</strong>
+              </div>
+              <div class="supplier-purchase-main">
+                <div>
+                  <h3>${escHtml(item.designation || 'Article')}</h3>
+                  <p>
+                    <span>${escHtml(item.category || 'Catégorie non renseignée')}</span>
+                    <span>${qty.toLocaleString('fr-FR')} ${escHtml(item.unit || '')}</span>
+                    <span>${item.reference ? `Réf. ${escHtml(item.reference)}` : 'Référence non renseignée'}</span>
+                    <span>${escHtml(item.supplier || 'Fournisseur non renseigné')}</span>
+                    <span>Besoin ${escHtml(item.needed_date ? formatDateLabel(item.needed_date) : 'non renseigné')}</span>
+                  </p>
+                </div>
+                <span class="order-purchase-status ${purchaseStatusClass(status)}">${escHtml(status)}</span>
+              </div>
+              <div class="supplier-purchase-actions">
+                <a class="supplier-purchase-link" href="${orderUrl}">Ouvrir chantier</a>
+                ${status !== 'Commandé' ? `
+                  <form method="POST" action="/orders/suppliers/purchases/${item.id}/status">
+                    <input type="hidden" name="status" value="Commandé">
+                    <input type="hidden" name="redirect" value="${escHtml(redirect)}">
+                    <button type="submit">Marquer commandé</button>
+                  </form>
+                ` : ''}
+                ${status !== 'Reçu' ? `
+                  <form method="POST" action="/orders/suppliers/purchases/${item.id}/status">
+                    <input type="hidden" name="status" value="Reçu">
+                    <input type="hidden" name="redirect" value="${escHtml(redirect)}">
+                    <button type="submit">Marquer reçu</button>
+                  </form>
+                ` : ''}
+              </div>
+            </article>
+          `;
+        })
+        .join('')
+    : '<div class="empty-state">Aucun achat chantier ne correspond aux filtres.</div>';
 
   res.send(
     pageTemplate(req, 'Commandes fournisseurs', `
@@ -6777,6 +7031,30 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
         <section class="supplier-modern-grid">
           ${cards}
         </section>
+
+        <section class="supplier-purchases-section" id="supplier-purchases">
+          <div class="modern-section-title">
+            ${clientPageIcon('materials', 'clients-title-icon')}
+            <div>
+              <h2>Achats chantiers à commander</h2>
+              <p>${chantierPurchases.length} article${chantierPurchases.length > 1 ? 's' : ''} affiché${chantierPurchases.length > 1 ? 's' : ''}</p>
+            </div>
+          </div>
+          <form method="GET" action="/orders/suppliers" class="supplier-purchase-filters">
+            <label>
+              <span>Statut</span>
+              <select name="purchase_status" onchange="this.form.submit()">${purchaseStatusFilterOptions}</select>
+            </label>
+            <label>
+              <span>Fournisseur</span>
+              <select name="purchase_supplier" onchange="this.form.submit()">${supplierFilterOptions}</select>
+            </label>
+            <a href="/orders/suppliers#supplier-purchases">Réinitialiser</a>
+          </form>
+          <div class="supplier-purchase-list">
+            ${chantierPurchaseCards}
+          </div>
+        </section>
       </div>
       <script>
         (function(){
@@ -6827,6 +7105,26 @@ app.post('/orders/supplier', requireLogin, (req, res) => {
 app.post('/orders/supplier/delete', requireLogin, (req, res) => {
   db.prepare('DELETE FROM supplier_orders WHERE id = ?').run(req.body.id);
   res.redirect('/orders/suppliers');
+});
+
+app.post('/orders/suppliers/purchases/:purchaseId/status', requireLogin, (req, res) => {
+  const purchaseId = Number(req.params.purchaseId || 0);
+  const status = normalizePurchaseStatus(req.body.status);
+  const redirect = String(req.body.redirect || '/orders/suppliers#supplier-purchases');
+  const safeRedirect = redirect.startsWith('/orders/suppliers')
+    ? redirect
+    : '/orders/suppliers#supplier-purchases';
+
+  const existing = db.prepare('SELECT id FROM client_order_purchases WHERE id = ?').get(purchaseId);
+  if (!existing) return res.status(404).send('Article introuvable');
+
+  db.prepare(`
+    UPDATE client_order_purchases
+    SET status = ?, updated_at = ?
+    WHERE id = ?
+  `).run(status, new Date().toISOString(), purchaseId);
+
+  res.redirect(safeRedirect);
 });
 
 /* ===================== PC FOLDERS (NAVIGATION) ===================== */
@@ -7130,9 +7428,11 @@ const list = files.length
                       <div>
                         <h3>${escHtml(item.designation || 'Article')}</h3>
                         <p>
+                          ${item.category ? `<span>${escHtml(item.category)}</span>` : ''}
                           <span>${Number(item.qty || 0).toLocaleString('fr-FR')} ${escHtml(item.unit || '')}</span>
                           ${item.reference ? `<span>Réf. ${escHtml(item.reference)}</span>` : ''}
                           ${item.supplier ? `<span>${escHtml(item.supplier)}</span>` : ''}
+                          ${item.needed_date ? `<span>Besoin ${escHtml(formatDateLabel(item.needed_date))}</span>` : ''}
                         </p>
                         ${item.note ? `<small>${escHtml(item.note)}</small>` : ''}
                       </div>
@@ -7145,6 +7445,10 @@ const list = files.length
                           <label class="clients-field">
                             <span>Désignation</span>
                             <div class="clients-input-shell"><input name="designation" value="${escHtml(item.designation || '')}" required></div>
+                          </label>
+                          <label class="clients-field">
+                            <span>Catégorie</span>
+                            <div class="clients-input-shell"><input name="category" value="${escHtml(item.category || '')}" placeholder="Quincaillerie, acier..."></div>
                           </label>
                           <label class="clients-field">
                             <span>Quantité</span>
@@ -7161,6 +7465,10 @@ const list = files.length
                           <label class="clients-field">
                             <span>Fournisseur</span>
                             <div class="clients-input-shell"><input name="supplier" value="${escHtml(item.supplier || '')}"></div>
+                          </label>
+                          <label class="clients-field">
+                            <span>Date de besoin</span>
+                            <div class="clients-input-shell"><input type="date" name="needed_date" value="${escHtml(String(item.needed_date || '').slice(0, 10))}"></div>
                           </label>
                           <label class="clients-field">
                             <span>Statut</span>
@@ -7201,6 +7509,10 @@ const list = files.length
                   <div class="clients-input-shell"><input name="designation" placeholder="Ex : chevilles, visserie, paumelles..." required></div>
                 </label>
                 <label class="clients-field">
+                  <span>Catégorie</span>
+                  <div class="clients-input-shell"><input name="category" placeholder="Quincaillerie, acier..."></div>
+                </label>
+                <label class="clients-field">
                   <span>Quantité</span>
                   <div class="clients-input-shell"><input type="number" min="0" step="0.01" name="qty" value="1"></div>
                 </label>
@@ -7215,6 +7527,10 @@ const list = files.length
                 <label class="clients-field">
                   <span>Fournisseur</span>
                   <div class="clients-input-shell"><input name="supplier" placeholder="Fournisseur"></div>
+                </label>
+                <label class="clients-field">
+                  <span>Date de besoin</span>
+                  <div class="clients-input-shell"><input type="date" name="needed_date"></div>
                 </label>
                 <label class="clients-field">
                   <span>Statut</span>
@@ -7296,19 +7612,21 @@ app.post('/orders/client/:id/purchases', requireLogin, (req, res) => {
   const designation = String(req.body.designation || '').trim();
   if (!designation) return res.status(400).send('Désignation requise');
 
+  const category = String(req.body.category || '').trim() || null;
   const qty = parseDecimalInput(req.body.qty, 1);
   const unit = String(req.body.unit || '').trim() || null;
   const reference = String(req.body.reference || '').trim() || null;
   const supplier = String(req.body.supplier || '').trim() || null;
+  const neededDate = String(req.body.needed_date || '').trim() || null;
   const note = String(req.body.note || '').trim() || null;
   const status = normalizePurchaseStatus(req.body.status);
   const now = new Date().toISOString();
 
   db.prepare(`
     INSERT INTO client_order_purchases
-      (client_order_id, designation, qty, unit, reference, supplier, note, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(orderId, designation, qty, unit, reference, supplier, note, status, now, now);
+      (client_order_id, designation, category, qty, unit, reference, supplier, needed_date, note, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(orderId, designation, category, qty, unit, reference, supplier, neededDate, note, status, now, now);
 
   res.redirect(getPurchaseOrderRedirect(order));
 });
@@ -7330,20 +7648,24 @@ app.post('/orders/client/:id/purchases/:purchaseId/update', requireLogin, (req, 
   db.prepare(`
     UPDATE client_order_purchases
     SET designation = ?,
+        category = ?,
         qty = ?,
         unit = ?,
         reference = ?,
         supplier = ?,
+        needed_date = ?,
         note = ?,
         status = ?,
         updated_at = ?
     WHERE id = ? AND client_order_id = ?
   `).run(
     designation,
+    String(req.body.category || '').trim() || null,
     parseDecimalInput(req.body.qty, 1),
     String(req.body.unit || '').trim() || null,
     String(req.body.reference || '').trim() || null,
     String(req.body.supplier || '').trim() || null,
+    String(req.body.needed_date || '').trim() || null,
     String(req.body.note || '').trim() || null,
     normalizePurchaseStatus(req.body.status),
     new Date().toISOString(),
