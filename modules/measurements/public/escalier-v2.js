@@ -3968,7 +3968,9 @@
     sketchToolbarToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     sketchToolbarToggle.setAttribute('aria-label', collapsed ? "Afficher la barre d'outils" : "Masquer la barre d'outils");
     sketchToolbarToggle.setAttribute('title', collapsed ? "Afficher la barre d'outils" : "Masquer la barre d'outils");
-    sketchToolbarToggle.textContent = collapsed ? '›' : '‹';
+    sketchToolbarToggle.innerHTML = collapsed
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>';
     window.setTimeout(() => {
       if (sketchModal && !sketchModal.hidden) resizeSketchCanvas();
     }, 180);

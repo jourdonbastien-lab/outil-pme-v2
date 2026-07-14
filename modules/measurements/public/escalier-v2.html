@@ -214,51 +214,99 @@
 
   <div id="sketchModal" class="sketch-modal" hidden aria-hidden="true">
     <div class="sketch-modal-content">
-      <div class="sketch-toolbar-top">
-        <button type="button" id="undoSketchBtn" class="sketch-action-btn" aria-label="Annuler" title="Annuler">↶</button>
-        <button type="button" id="redoSketchBtn" class="sketch-action-btn" aria-label="Refaire" title="Refaire">↷</button>
-        <button type="button" id="sketchSaveBtn" class="sketch-save-btn" aria-label="Enregistrer" title="Enregistrer">✓</button>
-        <button type="button" id="sketchCloseBtn" class="sketch-close-btn" aria-label="Fermer" title="Fermer">×</button>
+      <div class="sketch-editor-head">
+        <button type="button" id="sketchToolbarToggle" class="sketch-toolbar-toggle" aria-label="Masquer la barre d'outils" title="Masquer la barre d'outils" aria-expanded="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg>
+        </button>
+        <div class="sketch-editor-title">
+          <span>PRISE DE COTES</span>
+          <strong>Croquis technique</strong>
+        </div>
+        <div class="sketch-toolbar-top">
+          <button type="button" id="undoSketchBtn" class="sketch-action-btn" aria-label="Annuler" title="Annuler">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7H4v5" /><path d="M4 12c2.2-3.8 5.4-5.4 9.1-4.5 3 .7 5.2 3 5.9 5.8" /><path d="M19 17c-1.8 2.1-4.4 3-7.2 2.3" /></svg>
+          </button>
+          <button type="button" id="redoSketchBtn" class="sketch-action-btn" aria-label="Refaire" title="Refaire">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7h5v5" /><path d="M20 12c-2.2-3.8-5.4-5.4-9.1-4.5-3 .7-5.2 3-5.9 5.8" /><path d="M5 17c1.8 2.1 4.4 3 7.2 2.3" /></svg>
+          </button>
+          <button type="button" id="sketchSaveBtn" class="sketch-save-btn" aria-label="Enregistrer" title="Enregistrer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l4 4L19 6" /></svg>
+          </button>
+          <button type="button" id="sketchCloseBtn" class="sketch-close-btn" aria-label="Fermer" title="Fermer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12" /><path d="M18 6L6 18" /></svg>
+          </button>
+        </div>
       </div>
-      <button type="button" id="sketchToolbarToggle" class="sketch-toolbar-toggle" aria-label="Masquer la barre d'outils" title="Masquer la barre d'outils" aria-expanded="true">‹</button>
+      <div class="sketch-command-bar">
+        <span id="sketchStatus" class="sketch-status">Prêt</span>
+        <span id="sketchBgLabel" class="sketch-bg-label">Fond: aucun</span>
+        <div class="sketch-viewport-controls" id="sketchViewportControls">
+          <button type="button" id="sketchZoomOutBtn" aria-label="Dézoomer" title="Dézoomer">−</button>
+          <span id="sketchZoomLabel">100 %</span>
+          <button type="button" id="sketchZoomInBtn" aria-label="Zoomer" title="Zoomer">+</button>
+          <button type="button" id="sketchFitBtn">Adapter</button>
+        </div>
+      </div>
       <div class="sketch-toolbar-left" id="sketchToolbarLeft">
-        <button type="button" id="toolPenBtn" class="is-active sketch-icon-btn sketch-tool-wide" aria-label="Main libre" title="Main libre" aria-pressed="true">Main libre</button>
-        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="pan" aria-label="Déplacer" title="Déplacer" aria-pressed="false">Déplacer</button>
-        <button type="button" id="toolEraserBtn" class="sketch-icon-btn" aria-label="Gomme" title="Gomme" aria-pressed="false">⌫</button>
-        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="auto_trace" aria-label="Tracé automatique" title="Tracé automatique" aria-pressed="false">Tracé auto</button>
-        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="inclined_trace" aria-label="Trait incliné" title="Trait incliné" aria-pressed="false">Trait incliné</button>
-        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="auto_dimension" aria-label="Cotation" title="Cotation" aria-pressed="false">Cotation</button>
-        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="angle_dimension" aria-label="Cotation d’angle" title="Cotation d’angle" aria-pressed="false">Cotation d’angle</button>
-        <button type="button" id="useSketchPhotoBtn" class="sketch-icon-btn" aria-label="Choisir une photo de fond" title="Choisir une photo de fond">▧</button>
-        <button type="button" id="removeSketchPhotoBtn" class="sketch-icon-btn" aria-label="Retirer la photo de fond" title="Retirer la photo de fond">▨</button>
+        <button type="button" id="toolPenBtn" class="is-active sketch-icon-btn sketch-tool-wide" aria-label="Main libre" title="Main libre" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20z" /><path d="M14 7l3 3" /></svg>
+          <span>Main libre</span>
+        </button>
+        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="pan" aria-label="Déplacer" title="Déplacer" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18" /><path d="M3 12h18" /><path d="M8 7l4-4 4 4" /><path d="M8 17l4 4 4-4" /><path d="M7 8l-4 4 4 4" /><path d="M17 8l4 4-4 4" /></svg>
+          <span>Déplacer</span>
+        </button>
+        <button type="button" id="toolEraserBtn" class="sketch-icon-btn sketch-tool-wide" aria-label="Gomme" title="Gomme" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16l8-8 6 6-5 5H7l-3-3z" /><path d="M10 19h10" /></svg>
+          <span>Effacer</span>
+        </button>
+        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="auto_trace" aria-label="Tracé automatique" title="Tracé automatique" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18V7" /><path d="M5 7h10" /><path d="M15 7v10" /><path d="M15 17h4" /></svg>
+          <span>Tracé auto</span>
+        </button>
+        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="inclined_trace" aria-label="Trait incliné" title="Trait incliné" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18L19 6" /><path d="M6 6h12v12" /></svg>
+          <span>Trait incliné</span>
+        </button>
+        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="auto_dimension" aria-label="Cotation" title="Cotation" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14" /><path d="M7 14l-2 3 2 3" /><path d="M17 14l2 3-2 3" /><path d="M8 7h8" /></svg>
+          <span>Cotation</span>
+        </button>
+        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="angle_dimension" aria-label="Cotation d’angle" title="Cotation d’angle" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18V6" /><path d="M6 18h12" /><path d="M10 18a4 4 0 0 0-4-4" /></svg>
+          <span>Cotation angle</span>
+        </button>
+        <button type="button" id="useSketchPhotoBtn" class="sketch-icon-btn sketch-tool-wide" aria-label="Choisir une photo de fond" title="Choisir une photo de fond">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14v10H5z" /><path d="M8 14l2.5-3 2 2 1.5-2 2 3" /><path d="M8 9h.1" /></svg>
+          <span>Photo</span>
+        </button>
+        <button type="button" id="removeSketchPhotoBtn" class="sketch-icon-btn sketch-tool-wide" aria-label="Retirer la photo de fond" title="Retirer la photo de fond">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14v10H5z" /><path d="M8 14l2.5-3 2 2 1.5-2 2 3" /><path d="M4 4l16 16" /></svg>
+          <span>Retirer</span>
+        </button>
         <div class="sketch-toolbar-card">
           <span class="sketch-toolbar-label">Couleur</span>
           <div class="sketch-toolbar-palette" id="sketchColorPalette">
-            <button type="button" data-sketch-color="#111827" style="--swatch:#111827" class="is-active" aria-label="Noir" title="Noir" aria-pressed="true"></button>
-            <button type="button" data-sketch-color="#dc2626" style="--swatch:#dc2626" aria-label="Rouge" title="Rouge" aria-pressed="false"></button>
-            <button type="button" data-sketch-color="#2563eb" style="--swatch:#2563eb" aria-label="Bleu" title="Bleu" aria-pressed="false"></button>
-            <button type="button" data-sketch-color="#059669" style="--swatch:#059669" aria-label="Vert" title="Vert" aria-pressed="false"></button>
-            <button type="button" data-sketch-color="#7c3aed" style="--swatch:#7c3aed" aria-label="Violet" title="Violet" aria-pressed="false"></button>
+            <button type="button" data-sketch-color="#111827" class="is-active" aria-label="Noir" title="Noir" aria-pressed="true"></button>
+            <button type="button" data-sketch-color="#dc2626" aria-label="Rouge" title="Rouge" aria-pressed="false"></button>
+            <button type="button" data-sketch-color="#2563eb" aria-label="Bleu" title="Bleu" aria-pressed="false"></button>
+            <button type="button" data-sketch-color="#059669" aria-label="Vert" title="Vert" aria-pressed="false"></button>
+            <button type="button" data-sketch-color="#7c3aed" aria-label="Violet" title="Violet" aria-pressed="false"></button>
           </div>
         </div>
         <div class="sketch-toolbar-card">
           <span class="sketch-toolbar-label">Trait</span>
           <div class="sketch-toolbar-sizes" id="sketchSizePalette">
-            <button type="button" data-sketch-size="2" class="is-active" aria-label="Epaisseur fine" title="Epaisseur fine" aria-pressed="true"><span style="--line-size:2px"></span></button>
-            <button type="button" data-sketch-size="4" aria-label="Epaisseur moyenne" title="Epaisseur moyenne" aria-pressed="false"><span style="--line-size:4px"></span></button>
-            <button type="button" data-sketch-size="7" aria-label="Epaisseur epaisse" title="Epaisseur epaisse" aria-pressed="false"><span style="--line-size:7px"></span></button>
-            <button type="button" data-sketch-size="11" aria-label="Epaisseur XL" title="Epaisseur XL" aria-pressed="false"><span style="--line-size:11px"></span></button>
+            <button type="button" data-sketch-size="2" class="is-active" aria-label="Epaisseur fine" title="Epaisseur fine" aria-pressed="true"><span></span></button>
+            <button type="button" data-sketch-size="4" aria-label="Epaisseur moyenne" title="Epaisseur moyenne" aria-pressed="false"><span></span></button>
+            <button type="button" data-sketch-size="7" aria-label="Epaisseur epaisse" title="Epaisseur epaisse" aria-pressed="false"><span></span></button>
+            <button type="button" data-sketch-size="11" aria-label="Epaisseur XL" title="Epaisseur XL" aria-pressed="false"><span></span></button>
           </div>
         </div>
-        <button type="button" id="clearSketchBtn" class="sketch-clear-btn sketch-icon-btn" aria-label="Effacer le croquis" title="Effacer le croquis">⌧</button>
-      </div>
-      <span id="sketchStatus" class="sketch-status">Prêt</span>
-      <span id="sketchBgLabel" class="sketch-bg-label">Fond: aucun</span>
-      <div class="sketch-viewport-controls" id="sketchViewportControls">
-        <button type="button" id="sketchZoomOutBtn" aria-label="Dézoomer" title="Dézoomer">−</button>
-        <span id="sketchZoomLabel">100 %</span>
-        <button type="button" id="sketchZoomInBtn" aria-label="Zoomer" title="Zoomer">+</button>
-        <button type="button" id="sketchFitBtn">Adapter</button>
+        <button type="button" id="clearSketchBtn" class="sketch-clear-btn sketch-icon-btn sketch-tool-wide" aria-label="Effacer le croquis" title="Effacer le croquis">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M6 7l1 14h10l1-14" /><path d="M9 7V4h6v3" /></svg>
+          <span>Tout effacer</span>
+        </button>
       </div>
       <div id="sketchAutoTraceControls" class="sketch-auto-trace-controls" hidden aria-hidden="true">
         <label class="sketch-auto-scale-field">
