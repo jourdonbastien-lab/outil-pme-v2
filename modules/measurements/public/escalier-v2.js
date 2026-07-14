@@ -22,6 +22,8 @@
   const backToListBtn = document.getElementById('backToListBtn');
   const cards = document.getElementById('cards');
   const saveIndicator = document.getElementById('saveIndicator');
+  const photosToggleBtn = document.getElementById('photosToggleBtn');
+  const photosPanel = document.getElementById('photosPanel');
   const photoSlotsRoot = document.getElementById('photoSlots');
   const photoTotalCount = document.getElementById('photoTotalCount');
   const photoViewer = document.getElementById('photoViewer');
@@ -47,6 +49,10 @@
   const useSketchPhotoBtn = document.getElementById('useSketchPhotoBtn');
   const removeSketchPhotoBtn = document.getElementById('removeSketchPhotoBtn');
   const sketchBgLabel = document.getElementById('sketchBgLabel');
+  const sketchZoomOutBtn = document.getElementById('sketchZoomOutBtn');
+  const sketchZoomInBtn = document.getElementById('sketchZoomInBtn');
+  const sketchZoomLabel = document.getElementById('sketchZoomLabel');
+  const sketchFitBtn = document.getElementById('sketchFitBtn');
   const sketchPhotoPicker = document.getElementById('sketchPhotoPicker');
   const sketchPhotoPickerBackdrop = document.getElementById('sketchPhotoPickerBackdrop');
   const sketchPhotoPickerList = document.getElementById('sketchPhotoPickerList');
@@ -98,7 +104,7 @@
   const measurementsV2Checks = document.getElementById('measurementsV2Checks');
 
   const ANNOTATION_TOOLS = new Set(['line', 'arrow', 'rect', 'ellipse', 'text', 'marker', 'dimension', 'symbol', 'auto_trace']);
-  const SKETCH_TOOLS = new Set([...ANNOTATION_TOOLS, 'auto_dimension', 'inclined_trace', 'angle_dimension']);
+  const SKETCH_TOOLS = new Set([...ANNOTATION_TOOLS, 'auto_dimension', 'inclined_trace', 'angle_dimension', 'pan']);
   const AUTO_TRACE_SCALE_OPTIONS = [10, 20, 25, 50, 100];
   const CSS_PIXELS_PER_MILLIMETER = 96 / 25.4;
   const SYMBOL_LIBRARY = [
@@ -251,8 +257,12 @@
   let sketchInclinedRequest = null;
   let sketchAngleRequest = null;
   let sketchAngleFirstSegment = null;
+  let sketchViewport = { scale: 1, offsetX: 0, offsetY: 0 };
+  let sketchPointers = new Map();
+  let sketchGesture = null;
   let measurementsV2State = null;
   let activeMeasurementKey = '';
+  let photosPanelOpen = false;
 
   function normalizeId(value) {
     const num = Number(value || 0);
@@ -884,10 +894,27 @@
     }));
   }
 
+  function setPhotosPanelOpen(open) {
+    photosPanelOpen = Boolean(open);
+    if (photosPanel) photosPanel.hidden = !photosPanelOpen;
+    if (photosToggleBtn) {
+      photosToggleBtn.setAttribute('aria-expanded', photosPanelOpen ? 'true' : 'false');
+    }
+    const photoSection = photosToggleBtn ? photosToggleBtn.closest('.photo-section') : null;
+    if (photoSection) photoSection.classList.toggle('is-open', photosPanelOpen);
+  }
+
+  function openPhotosPanelForError() {
+    setPhotosPanelOpen(true);
+    if (photosToggleBtn && typeof photosToggleBtn.focus === 'function') {
+      window.setTimeout(() => photosToggleBtn.focus({ preventScroll: true }), 0);
+    }
+  }
+
   function updatePhotoTotal() {
     if (!photoTotalCount) return;
     const total = normalizePhotoSlots(photoSlots).reduce((sum, slot) => sum + slot.photos.length, 0);
-    photoTotalCount.textContent = `${total} photo${total > 1 ? 's' : ''}`;
+    photoTotalCount.textContent = `Photos (${total})`;
   }
 
   function openViewer(url, caption) {
@@ -923,6 +950,114 @@
       cssWidth: Math.max(1, sketchCanvas ? sketchCanvas.width / ratio : 1),
       cssHeight: Math.max(1, sketchCanvas ? sketchCanvas.height / ratio : 1),
     };
+  }
+
+  function clampSketchViewport() {
+    const size = sketchCssSize();
+    const minOffsetX = size.cssWidth - size.cssWidth * sketchViewport.scale;
+    const minOffsetY = size.cssHeight - size.cssHeight * sketchViewport.scale;
+    const padX = size.cssWidth * 0.8;
+    const padY = size.cssHeight * 0.8;
+    sketchViewport.offsetX = Math.max(minOffsetX - padX, Math.min(padX, sketchViewport.offsetX));
+    sketchViewport.offsetY = Math.max(minOffsetY - padY, Math.min(padY, sketchViewport.offsetY));
+  }
+
+  function updateSketchZoomLabel() {
+    if (sketchZoomLabel) sketchZoomLabel.textContent = `${Math.round(sketchViewport.scale * 100)} %`;
+  }
+
+  function setSketchViewport(nextViewport) {
+    sketchViewport = {
+      scale: Math.max(0.5, Math.min(5, Number(nextViewport.scale || 1))),
+      offsetX: Number(nextViewport.offsetX || 0),
+      offsetY: Number(nextViewport.offsetY || 0),
+    };
+    clampSketchViewport();
+    updateSketchZoomLabel();
+    sketchRenderComposite();
+  }
+
+  function sketchScreenToDrawingPoint(point) {
+    return {
+      x: (point.x - sketchViewport.offsetX) / sketchViewport.scale,
+      y: (point.y - sketchViewport.offsetY) / sketchViewport.scale,
+    };
+  }
+
+  function sketchDrawingToScreenPoint(point) {
+    return {
+      x: point.x * sketchViewport.scale + sketchViewport.offsetX,
+      y: point.y * sketchViewport.scale + sketchViewport.offsetY,
+    };
+  }
+
+  function zoomSketchAt(screenPoint, nextScale) {
+    const drawingPoint = sketchScreenToDrawingPoint(screenPoint);
+    setSketchViewport({
+      scale: nextScale,
+      offsetX: screenPoint.x - drawingPoint.x * nextScale,
+      offsetY: screenPoint.y - drawingPoint.y * nextScale,
+    });
+  }
+
+  function zoomSketchBy(factor) {
+    const size = sketchCssSize();
+    zoomSketchAt({ x: size.cssWidth / 2, y: size.cssHeight / 2 }, sketchViewport.scale * factor);
+  }
+
+  function expandBounds(bounds, point) {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return bounds;
+    return {
+      minX: Math.min(bounds.minX, point.x),
+      minY: Math.min(bounds.minY, point.y),
+      maxX: Math.max(bounds.maxX, point.x),
+      maxY: Math.max(bounds.maxY, point.y),
+    };
+  }
+
+  function collectSketchDrawingBounds() {
+    let bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    const addPoint = (point) => {
+      bounds = expandBounds(bounds, point);
+    };
+    sketchAnnotations.forEach((annotation) => {
+      const item = normalizeSketchAnnotation(annotation);
+      if (!item) return;
+      if (item.type === 'auto_trace') {
+        autoTraceCanvasPointsForItem(item).forEach(addPoint);
+        return;
+      }
+      if (item.type === 'symbol' || item.type === 'text' || item.type === 'marker') {
+        addPoint(sketchUnitToCanvasPoint(item.x, item.y));
+        return;
+      }
+      if (Number.isFinite(item.x1) && Number.isFinite(item.y1)) addPoint(sketchUnitToCanvasPoint(item.x1, item.y1));
+      if (Number.isFinite(item.x2) && Number.isFinite(item.y2)) addPoint(sketchUnitToCanvasPoint(item.x2, item.y2));
+    });
+    const draft = sketchDraftAnnotation ? normalizeSketchAnnotation(sketchDraftAnnotation) : null;
+    if (draft && draft.type === 'auto_trace') autoTraceCanvasPointsForItem(draft).forEach(addPoint);
+    return Number.isFinite(bounds.minX) ? bounds : null;
+  }
+
+  function fitSketchViewport() {
+    const size = sketchCssSize();
+    const bounds = collectSketchDrawingBounds();
+    if (!bounds) {
+      setSketchViewport({ scale: 1, offsetX: 0, offsetY: 0 });
+      return;
+    }
+    const margin = 48;
+    const width = Math.max(1, bounds.maxX - bounds.minX);
+    const height = Math.max(1, bounds.maxY - bounds.minY);
+    const scale = Math.max(0.5, Math.min(5, Math.min(
+      (size.cssWidth - margin * 2) / width,
+      (size.cssHeight - margin * 2) / height
+    )));
+    setSketchViewport({
+      scale,
+      offsetX: (size.cssWidth - width * scale) / 2 - bounds.minX * scale,
+      offsetY: (size.cssHeight - height * scale) / 2 - bounds.minY * scale,
+    });
   }
 
   function cloneSketchAnnotations(value) {
@@ -1472,6 +1607,7 @@
   }
 
   function findAutoTraceAngleAtPoint(canvasPoint) {
+    const tolerance = 22 / Math.max(0.5, sketchViewport.scale);
     const inspect = (source, item, annotationIndex) => {
       const canvasPoints = autoTraceCanvasPointsForItem(item);
       for (const dimension of (item.angleDimensions || [])) {
@@ -1480,7 +1616,7 @@
         if (!hit) continue;
         const radialDistance = Math.abs(Math.hypot(canvasPoint.x - hit.vertex.x, canvasPoint.y - hit.vertex.y) - hit.radius);
         const labelDistance = Math.hypot(canvasPoint.x - hit.label.x, canvasPoint.y - hit.label.y);
-        if (radialDistance <= 18 || labelDistance <= 26) {
+        if (radialDistance <= tolerance || labelDistance <= tolerance + 8) {
           return {
             source,
             annotationIndex,
@@ -1860,6 +1996,10 @@
     sketchCtx.fillStyle = '#ffffff';
     sketchCtx.fillRect(0, 0, size.cssWidth, size.cssHeight);
 
+    sketchCtx.save();
+    sketchCtx.translate(sketchViewport.offsetX, sketchViewport.offsetY);
+    sketchCtx.scale(sketchViewport.scale, sketchViewport.scale);
+
     if (sketchBackgroundImage) {
       sketchCtx.drawImage(sketchBackgroundImage, 0, 0, size.cssWidth, size.cssHeight);
     }
@@ -1870,6 +2010,7 @@
       if (sketchDraftAnnotation) drawSketchAnnotation(sketchCtx, sketchDraftAnnotation);
       drawAutoTraceAnchorHalo(sketchCtx);
     }
+    sketchCtx.restore();
   }
 
   function sketchClearInk() {
@@ -2183,12 +2324,78 @@
     setSketchStatus('Refaire');
   }
 
-  function sketchCanvasPoint(event) {
+  function sketchScreenPoint(event) {
     const rect = sketchCanvas.getBoundingClientRect();
     return {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
     };
+  }
+
+  function sketchCanvasPoint(event) {
+    return sketchScreenToDrawingPoint(sketchScreenPoint(event));
+  }
+
+  function activeTouchPointers() {
+    return [...sketchPointers.values()].filter((pointer) => pointer.pointerType === 'touch');
+  }
+
+  function startSketchPinchGesture() {
+    const touches = activeTouchPointers();
+    if (touches.length < 2) return;
+    const a = touches[0];
+    const b = touches[1];
+    const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    sketchGesture = {
+      type: 'pinch',
+      startDistance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+      startCenter: center,
+      startScale: sketchViewport.scale,
+      startOffsetX: sketchViewport.offsetX,
+      startOffsetY: sketchViewport.offsetY,
+      drawingCenter: sketchScreenToDrawingPoint(center),
+    };
+    sketchDrawing = false;
+    sketchMoveState = null;
+    sketchDraftAnnotation = null;
+    sketchAutoTracePreviewPoint = null;
+  }
+
+  function updateSketchPinchGesture() {
+    if (!sketchGesture || sketchGesture.type !== 'pinch') return false;
+    const touches = activeTouchPointers();
+    if (touches.length < 2) return false;
+    const a = touches[0];
+    const b = touches[1];
+    const center = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+    const nextScale = Math.max(0.5, Math.min(5, sketchGesture.startScale * (distance / sketchGesture.startDistance)));
+    setSketchViewport({
+      scale: nextScale,
+      offsetX: center.x - sketchGesture.drawingCenter.x * nextScale,
+      offsetY: center.y - sketchGesture.drawingCenter.y * nextScale,
+    });
+    return true;
+  }
+
+  function startSketchPanGesture(screenPoint) {
+    sketchGesture = {
+      type: 'pan',
+      startX: screenPoint.x,
+      startY: screenPoint.y,
+      startOffsetX: sketchViewport.offsetX,
+      startOffsetY: sketchViewport.offsetY,
+    };
+  }
+
+  function updateSketchPanGesture(screenPoint) {
+    if (!sketchGesture || sketchGesture.type !== 'pan') return false;
+    setSketchViewport({
+      scale: sketchViewport.scale,
+      offsetX: sketchGesture.startOffsetX + screenPoint.x - sketchGesture.startX,
+      offsetY: sketchGesture.startOffsetY + screenPoint.y - sketchGesture.startY,
+    });
+    return true;
   }
 
   function makeSketchAnnotationFromDrag(type, start, end, text) {
@@ -2713,7 +2920,7 @@
   }
 
   function findAutoTraceVertexAtPoint(canvasPoint) {
-    const tolerance = 22;
+    const tolerance = 22 / Math.max(0.5, sketchViewport.scale);
     let best = null;
     sketchAnnotations.forEach((annotation, annotationIndex) => {
       const item = normalizeSketchAnnotation(annotation);
@@ -2770,7 +2977,7 @@
   }
 
   function findAutoTraceSegmentAtPoint(canvasPoint) {
-    const tolerance = 18;
+    const tolerance = 18 / Math.max(0.5, sketchViewport.scale);
     let best = null;
     const inspect = (source, item, annotationIndex) => {
       const dimensions = item.dimensions || [];
@@ -3332,16 +3539,17 @@
   }
 
   function findSketchSymbolAtPoint(point) {
+    const tolerance = 10 / Math.max(0.5, sketchViewport.scale);
     for (let i = sketchAnnotations.length - 1; i >= 0; i -= 1) {
       const bounds = symbolBounds(sketchAnnotations[i]);
       if (!bounds) continue;
       if (
-        point.x >= bounds.left - 10 &&
-        point.x <= bounds.right + 10 &&
-        point.y >= bounds.top - 10 &&
-        point.y <= bounds.bottom + 10
+        point.x >= bounds.left - tolerance &&
+        point.x <= bounds.right + tolerance &&
+        point.y >= bounds.top - tolerance &&
+        point.y <= bounds.bottom + tolerance
       ) {
-        const onResize = point.x >= bounds.right - 8 && point.y >= bounds.bottom - 8;
+        const onResize = point.x >= bounds.right - tolerance && point.y >= bounds.bottom - tolerance;
         return { index: i, bounds, mode: onResize ? 'resize' : 'move' };
       }
     }
@@ -3394,6 +3602,28 @@
   function sketchStartDrawing(event) {
     if (!sketchInkCtx || !sketchCanvas) return;
     event.preventDefault();
+    const screenPoint = sketchScreenPoint(event);
+    if (sketchDrawing && event.pointerType === 'touch') return;
+    sketchPointers.set(event.pointerId, {
+      x: screenPoint.x,
+      y: screenPoint.y,
+      pointerType: event.pointerType || 'mouse',
+    });
+    try {
+      sketchCanvas.setPointerCapture(event.pointerId);
+    } catch {}
+    if (event.pointerType === 'touch' && activeTouchPointers().length >= 2) {
+      startSketchPinchGesture();
+      return;
+    }
+    if (sketchTool === 'pan' || (event.pointerType === 'touch' && sketchTool !== 'pen')) {
+      startSketchPanGesture(screenPoint);
+      return;
+    }
+    if (event.pointerType === 'touch' && sketchTool === 'pen') {
+      startSketchPanGesture(screenPoint);
+      return;
+    }
     const canvasPoint = sketchCanvasPoint(event);
     const point = sketchCanvasPointToUnit(canvasPoint);
 
@@ -3485,12 +3715,26 @@
       sketchInkCtx.beginPath();
       sketchInkCtx.moveTo(drawPoint.x, drawPoint.y);
     }
-    try {
-      sketchCanvas.setPointerCapture(event.pointerId);
-    } catch {}
   }
 
   function sketchDraw(event) {
+    const screenPoint = sketchScreenPoint(event);
+    if (sketchPointers.has(event.pointerId)) {
+      const pointer = sketchPointers.get(event.pointerId);
+      pointer.x = screenPoint.x;
+      pointer.y = screenPoint.y;
+      pointer.pointerType = event.pointerType || pointer.pointerType;
+    }
+    if (activeTouchPointers().length >= 2) {
+      event.preventDefault();
+      updateSketchPinchGesture();
+      return;
+    }
+    if (sketchGesture && sketchGesture.type === 'pan') {
+      event.preventDefault();
+      updateSketchPanGesture(screenPoint);
+      return;
+    }
     if (sketchTool === 'auto_trace' && sketchAutoTracePoints.length) {
       event.preventDefault();
       updateAutoTracePreview(sketchCanvasPointToUnit(sketchCanvasPoint(event)));
@@ -3538,6 +3782,15 @@
   }
 
   function sketchStopDrawing(event) {
+    sketchPointers.delete(event.pointerId);
+    if (sketchGesture && (sketchGesture.type === 'pinch' || sketchGesture.type === 'pan')) {
+      if (activeTouchPointers().length < 2 && sketchGesture.type === 'pinch') sketchGesture = null;
+      if (sketchGesture && sketchGesture.type === 'pan') sketchGesture = null;
+      try {
+        sketchCanvas.releasePointerCapture(event.pointerId);
+      } catch {}
+      return;
+    }
     if (!sketchDrawing || !sketchCanvas) return;
     sketchDrawing = false;
     if (sketchMoveState) {
@@ -3594,6 +3847,8 @@
     sketchInkCanvas.height = height;
     sketchCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
     sketchInkCtx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    clampSketchViewport();
+    updateSketchZoomLabel();
     await sketchLoadDataUrl(snapshot);
   }
 
@@ -3608,6 +3863,12 @@
     sketchCanvas.addEventListener('pointermove', sketchDraw);
     sketchCanvas.addEventListener('pointerup', sketchStopDrawing);
     sketchCanvas.addEventListener('pointercancel', sketchStopDrawing);
+    sketchCanvas.addEventListener('pointerleave', sketchStopDrawing);
+    sketchCanvas.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      const factor = event.deltaY < 0 ? 1.12 : 0.89;
+      zoomSketchAt(sketchScreenPoint(event), sketchViewport.scale * factor);
+    }, { passive: false });
   }
 
   async function loadSketchFromServer() {
@@ -3639,6 +3900,9 @@
     sketchModal.hidden = false;
     sketchModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('sketch-open');
+    sketchPointers.clear();
+    sketchGesture = null;
+    setSketchViewport({ scale: 1, offsetX: 0, offsetY: 0 });
     closeSketchPhotoPicker();
     await refreshPhotoSlots();
     await resizeSketchCanvas();
@@ -3650,6 +3914,8 @@
     if (!sketchModal) return;
     sketchModal.hidden = true;
     sketchModal.setAttribute('aria-hidden', 'true');
+    sketchPointers.clear();
+    sketchGesture = null;
     closeSketchPhotoPicker();
     closeSketchSymbolPicker();
     closeSketchTextDialog();
@@ -3793,13 +4059,17 @@
     }
 
     setSketchStatus('Enregistrement...');
+    const previousViewport = { ...sketchViewport };
     try {
+      sketchViewport = { scale: 1, offsetX: 0, offsetY: 0 };
       sketchRenderComposite(false);
       const response = await fetch(`/api/measurements/${recordId}/sketch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: sketchCanvas.toDataURL('image/png') }),
       });
+      sketchViewport = previousViewport;
+      updateSketchZoomLabel();
       if (!response.ok) throw new Error('save-sketch-failed');
 
       sketchUpdatedAt = new Date().toISOString();
@@ -3808,6 +4078,8 @@
       sketchRenderComposite();
       setSketchStatus('Enregistre');
     } catch {
+      sketchViewport = previousViewport;
+      updateSketchZoomLabel();
       sketchRenderComposite();
       setSketchStatus('Erreur enregistrement', true);
     }
@@ -3850,6 +4122,7 @@
       const data = await response.json();
       applySlotsFromApi(data.slots || []);
     } catch {
+      openPhotosPanelForError();
       setIndicator('error', 'Erreur chargement photos');
     }
   }
@@ -3863,6 +4136,7 @@
   async function uploadPhotos(category, files) {
     const recordId = await ensureCurrentRecordId();
     if (!recordId) {
+      openPhotosPanelForError();
       setIndicator('error', 'Enregistrez la fiche avant upload');
       return;
     }
@@ -3885,6 +4159,7 @@
       applySlotsFromApi(data.slots || []);
       setIndicator('saved', 'Photos enregistrees');
     } catch {
+      openPhotosPanelForError();
       setIndicator('error', 'Erreur upload photos');
     }
   }
@@ -3903,6 +4178,7 @@
       applySlotsFromApi(data.slots || []);
       setIndicator('saved', 'Photo supprimee');
     } catch {
+      openPhotosPanelForError();
       setIndicator('error', 'Erreur suppression photo');
     }
   }
@@ -3922,6 +4198,7 @@
       applySlotsFromApi(data.slots || []);
       setIndicator('saved', 'Legende enregistree');
     } catch {
+      openPhotosPanelForError();
       setIndicator('error', 'Erreur legende');
     }
   }
@@ -4406,6 +4683,13 @@
     });
   }
 
+  if (photosToggleBtn) {
+    photosToggleBtn.addEventListener('click', () => {
+      setPhotosPanelOpen(!photosPanelOpen);
+    });
+  }
+  setPhotosPanelOpen(false);
+
   if (photoViewerClose) {
     photoViewerClose.addEventListener('click', closeViewer);
   }
@@ -4436,6 +4720,18 @@
 
   if (sketchSaveBtn) {
     sketchSaveBtn.addEventListener('click', saveSketchToServer);
+  }
+
+  if (sketchZoomOutBtn) {
+    sketchZoomOutBtn.addEventListener('click', () => zoomSketchBy(0.85));
+  }
+
+  if (sketchZoomInBtn) {
+    sketchZoomInBtn.addEventListener('click', () => zoomSketchBy(1.18));
+  }
+
+  if (sketchFitBtn) {
+    sketchFitBtn.addEventListener('click', fitSketchViewport);
   }
 
   if (toolPenBtn) {

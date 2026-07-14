@@ -193,11 +193,67 @@ select {
 
 .photo-section {
   display: grid;
-  gap: 8px;
+  gap: 0;
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 10px;
+  padding: 0;
   background: #f9fafb;
+  overflow: hidden;
+}
+
+.photo-section-toggle {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 0;
+  background: #ffffff;
+  color: var(--text);
+  padding: 14px 12px;
+  text-align: left;
+  min-height: 62px;
+}
+
+.photo-section-toggle:focus-visible {
+  outline: 3px solid rgba(234, 88, 12, 0.28);
+  outline-offset: -3px;
+}
+
+.photo-section-title {
+  min-width: 0;
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.photo-section-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: var(--accent);
+  font-size: 1.05rem;
+  font-weight: 900;
+  transition: transform 0.16s ease;
+}
+
+.photo-section.is-open .photo-section-chevron {
+  transform: rotate(180deg);
+}
+
+.photo-section-panel {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.photo-section-panel[hidden] {
+  display: none !important;
 }
 
 .photo-section-head {
@@ -1275,6 +1331,39 @@ select {
   min-width: 44px;
   min-height: 44px;
   padding: 0 10px;
+}
+
+.sketch-viewport-controls {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 58px);
+  right: calc(env(safe-area-inset-right) + 10px);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(12px);
+}
+
+.sketch-viewport-controls button {
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 999px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.sketch-viewport-controls span {
+  min-width: 54px;
+  color: #111827;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-align: center;
 }
 
 .sketch-auto-trace-controls {

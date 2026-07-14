@@ -129,12 +129,18 @@
           </section>
 
           <section class="photo-section" aria-label="Photos chantier">
-            <div class="photo-section-head">
-              <h3>Photos chantier</h3>
+            <button type="button" id="photosToggleBtn" class="photo-section-toggle" aria-expanded="false" aria-controls="photosPanel">
+              <span class="photo-section-title">Photos</span>
               <span id="photoTotalCount" class="photo-total-count">0 photo</span>
+              <span class="photo-section-chevron" aria-hidden="true">⌄</span>
+            </button>
+            <div id="photosPanel" class="photo-section-panel" hidden>
+              <div class="photo-section-head">
+                <h3>Photos chantier</h3>
+              </div>
+              <p class="photo-help">Capture camera iPhone et import galerie, avec enregistrement serveur.</p>
+              <div id="photoSlots" class="photo-slots"></div>
             </div>
-            <p class="photo-help">Capture camera iPhone et import galerie, avec enregistrement serveur.</p>
-            <div id="photoSlots" class="photo-slots"></div>
           </section>
 
           <section class="sketch-section" aria-label="Croquis Escalier V2">
@@ -172,6 +178,7 @@
       <button type="button" id="sketchToolbarToggle" class="sketch-toolbar-toggle" aria-label="Masquer la barre d'outils" title="Masquer la barre d'outils" aria-expanded="true">‹</button>
       <div class="sketch-toolbar-left" id="sketchToolbarLeft">
         <button type="button" id="toolPenBtn" class="is-active sketch-icon-btn sketch-tool-wide" aria-label="Main libre" title="Main libre" aria-pressed="true">Main libre</button>
+        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="pan" aria-label="Déplacer" title="Déplacer" aria-pressed="false">Déplacer</button>
         <button type="button" id="toolEraserBtn" class="sketch-icon-btn" aria-label="Gomme" title="Gomme" aria-pressed="false">⌫</button>
         <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="auto_trace" aria-label="Tracé automatique" title="Tracé automatique" aria-pressed="false">Tracé auto</button>
         <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="inclined_trace" aria-label="Trait incliné" title="Trait incliné" aria-pressed="false">Trait incliné</button>
@@ -202,6 +209,12 @@
       </div>
       <span id="sketchStatus" class="sketch-status">Prêt</span>
       <span id="sketchBgLabel" class="sketch-bg-label">Fond: aucun</span>
+      <div class="sketch-viewport-controls" id="sketchViewportControls">
+        <button type="button" id="sketchZoomOutBtn" aria-label="Dézoomer" title="Dézoomer">−</button>
+        <span id="sketchZoomLabel">100 %</span>
+        <button type="button" id="sketchZoomInBtn" aria-label="Zoomer" title="Zoomer">+</button>
+        <button type="button" id="sketchFitBtn">Adapter</button>
+      </div>
       <div id="sketchAutoTraceControls" class="sketch-auto-trace-controls" hidden aria-hidden="true">
         <label class="sketch-auto-scale-field">
           <span>Échelle visuelle</span>
