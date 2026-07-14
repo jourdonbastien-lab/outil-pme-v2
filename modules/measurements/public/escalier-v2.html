@@ -9,8 +9,22 @@
 <body>
   <div class="v2-shell">
     <header class="v2-header">
+      <div class="v2-header-main">
+        <span class="v2-header-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="M4 18h4v-4h4v-4h4V6h4" />
+            <path d="M4 20h16" />
+            <path d="M8 14h4" />
+            <path d="M12 10h4" />
+          </svg>
+        </span>
+        <div class="v2-title">
+          <span>PRISE DE COTES</span>
+          <h1>Prise de cotes Escalier V2</h1>
+          <p>Mesures guidées, photos chantier et croquis annotable.</p>
+        </div>
+      </div>
       <a class="v2-back" href="/outils/prises-cotes">Retour</a>
-      <h1>Prise de cotes Escalier V2</h1>
       <div id="saveIndicator" class="save-indicator" data-state="idle">Prêt</div>
     </header>
 
@@ -31,78 +45,109 @@
 
       <section id="formView" class="v2-section" hidden>
         <form id="form" class="v2-form" autocomplete="on">
-          <div class="field wide">
-            <label for="record_name">Nom de fiche</label>
-            <input id="record_name" name="record_name" type="text" placeholder="Ex : Dupont - Escalier V2" />
-          </div>
+          <section class="v2-form-card v2-identity-card" aria-labelledby="generalInfoTitle">
+            <div class="v2-card-head">
+              <span class="v2-card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 6h16" />
+                  <path d="M4 12h16" />
+                  <path d="M4 18h10" />
+                </svg>
+              </span>
+              <div>
+                <h3 id="generalInfoTitle">Informations générales</h3>
+                <p>Client, chantier et référence de la fiche.</p>
+              </div>
+            </div>
+            <div class="v2-form-grid">
+              <div class="field wide">
+                <label for="record_name">Nom de fiche</label>
+                <input id="record_name" name="record_name" type="text" placeholder="Ex : Dupont - Escalier V2" />
+              </div>
 
-          <h3>Informations generales</h3>
+              <div class="field">
+                <label for="client">Client</label>
+                <input id="client" name="client" type="text" required />
+              </div>
 
-          <div class="field">
-            <label for="client">Client</label>
-            <input id="client" name="client" type="text" required />
-          </div>
+              <div class="field">
+                <label for="commande">Commande</label>
+                <input id="commande" name="commande" type="text" />
+              </div>
 
-          <div class="field">
-            <label for="commande">Commande</label>
-            <input id="commande" name="commande" type="text" />
-          </div>
+              <div class="field wide">
+                <label for="chantier">Adresse chantier</label>
+                <input id="chantier" name="chantier" type="text" />
+              </div>
 
-          <div class="field">
-            <label for="chantier">Adresse chantier</label>
-            <input id="chantier" name="chantier" type="text" />
-          </div>
+              <div class="field">
+                <label for="date">Date de prise de cotes</label>
+                <input id="date" name="date" type="date" />
+              </div>
 
-          <div class="field">
-            <label for="date">Date de prise de cotes</label>
-            <input id="date" name="date" type="date" />
-          </div>
+              <div class="field">
+                <label for="metreur">Metreur</label>
+                <input id="metreur" name="metreur" type="text" />
+              </div>
 
-          <div class="field">
-            <label for="metreur">Metreur</label>
-            <input id="metreur" name="metreur" type="text" />
-          </div>
+              <div class="field wide">
+                <label for="reference_interne">Reference interne</label>
+                <input id="reference_interne" name="reference_interne" type="text" />
+              </div>
+            </div>
+          </section>
 
-          <div class="field">
-            <label for="reference_interne">Reference interne</label>
-            <input id="reference_interne" name="reference_interne" type="text" />
-          </div>
+          <section class="v2-form-card v2-type-card" aria-labelledby="stairTypeTitle">
+            <div class="v2-card-head">
+              <span class="v2-card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 18h4v-4h4v-4h4V6h4" />
+                  <path d="M4 20h16" />
+                </svg>
+              </span>
+              <div>
+                <h3 id="stairTypeTitle">Type d’escalier et liaisons</h3>
+                <p>Choix du modèle, statut et rattachement devis ou commande.</p>
+              </div>
+            </div>
+            <div class="v2-form-grid">
+              <div class="field">
+                <label for="type_escalier">Type d escalier</label>
+                <select id="type_escalier" name="type_escalier">
+                  <option value="Droit">Droit</option>
+                  <option value="1/4 tournant bas">1/4 tournant bas</option>
+                  <option value="1/4 tournant haut">1/4 tournant haut</option>
+                  <option value="Double 1/4 tournant">Double 1/4 tournant</option>
+                  <option value="2 volees avec palier">2 volees avec palier</option>
+                  <option value="Helicoidal">Helicoidal</option>
+                  <option value="Autre">Autre</option>
+                </select>
+              </div>
 
-          <div class="field">
-            <label for="type_escalier">Type d escalier</label>
-            <select id="type_escalier" name="type_escalier">
-              <option value="Droit">Droit</option>
-              <option value="1/4 tournant bas">1/4 tournant bas</option>
-              <option value="1/4 tournant haut">1/4 tournant haut</option>
-              <option value="Double 1/4 tournant">Double 1/4 tournant</option>
-              <option value="2 volees avec palier">2 volees avec palier</option>
-              <option value="Helicoidal">Helicoidal</option>
-              <option value="Autre">Autre</option>
-            </select>
-          </div>
+              <div class="field">
+                <label for="statut">Statut</label>
+                <select id="statut" name="statut">
+                  <option value="Brouillon">Brouillon</option>
+                  <option value="A valider">A valider</option>
+                  <option value="Valide">Valide</option>
+                </select>
+              </div>
 
-          <div class="field">
-            <label for="statut">Statut</label>
-            <select id="statut" name="statut">
-              <option value="Brouillon">Brouillon</option>
-              <option value="A valider">A valider</option>
-              <option value="Valide">Valide</option>
-            </select>
-          </div>
+              <div class="field">
+                <label for="quote_id">Devis lie</label>
+                <select id="quote_id" name="quote_id">
+                  <option value="">Aucun devis</option>
+                </select>
+              </div>
 
-          <div class="field">
-            <label for="quote_id">Devis lie</label>
-            <select id="quote_id" name="quote_id">
-              <option value="">Aucun devis</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label for="client_order_id">Commande client liee</label>
-            <select id="client_order_id" name="client_order_id">
-              <option value="">Aucune commande</option>
-            </select>
-          </div>
+              <div class="field">
+                <label for="client_order_id">Commande client liee</label>
+                <select id="client_order_id" name="client_order_id">
+                  <option value="">Aucune commande</option>
+                </select>
+              </div>
+            </div>
+          </section>
 
           <section class="measurements-v2-section" aria-label="Mesures Escalier V2">
             <div class="measurements-v2-head">

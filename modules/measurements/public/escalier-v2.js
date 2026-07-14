@@ -260,6 +260,7 @@
   let sketchViewport = { scale: 1, offsetX: 0, offsetY: 0 };
   let sketchPointers = new Map();
   let sketchGesture = null;
+  let sketchActivePointerId = null;
   let measurementsV2State = null;
   let activeMeasurementKey = '';
   let photosPanelOpen = false;
@@ -2356,6 +2357,7 @@
       drawingCenter: sketchScreenToDrawingPoint(center),
     };
     sketchDrawing = false;
+    sketchActivePointerId = null;
     sketchMoveState = null;
     sketchDraftAnnotation = null;
     sketchAutoTracePreviewPoint = null;
@@ -2378,9 +2380,10 @@
     return true;
   }
 
-  function startSketchPanGesture(screenPoint) {
+  function startSketchPanGesture(screenPoint, pointerId) {
     sketchGesture = {
       type: 'pan',
+      pointerId,
       startX: screenPoint.x,
       startY: screenPoint.y,
       startOffsetX: sketchViewport.offsetX,
@@ -3603,7 +3606,6 @@
     if (!sketchInkCtx || !sketchCanvas) return;
     event.preventDefault();
     const screenPoint = sketchScreenPoint(event);
-    if (sketchDrawing && event.pointerType === 'touch') return;
     sketchPointers.set(event.pointerId, {
       x: screenPoint.x,
       y: screenPoint.y,
@@ -3616,12 +3618,12 @@
       startSketchPinchGesture();
       return;
     }
-    if (sketchTool === 'pan' || (event.pointerType === 'touch' && sketchTool !== 'pen')) {
-      startSketchPanGesture(screenPoint);
-      return;
-    }
-    if (event.pointerType === 'touch' && sketchTool === 'pen') {
-      startSketchPanGesture(screenPoint);
+
+    if (sketchDrawing && event.pointerType === 'touch') return;
+
+    if (sketchTool === 'pan') {
+      sketchActivePointerId = event.pointerId;
+      startSketchPanGesture(screenPoint, event.pointerId);
       return;
     }
     const canvasPoint = sketchCanvasPoint(event);
@@ -3676,6 +3678,7 @@
         original: cloneSketchAnnotations([annotation])[0],
       };
       sketchDrawing = true;
+      sketchActivePointerId = event.pointerId;
       try {
         sketchCanvas.setPointerCapture(event.pointerId);
       } catch {}
@@ -3707,6 +3710,7 @@
     }
 
     sketchDrawing = true;
+    sketchActivePointerId = event.pointerId;
     if (ANNOTATION_TOOLS.has(sketchTool)) {
       sketchDraftAnnotation = makeSketchAnnotationFromDrag(sketchTool, point, point);
     } else {
@@ -3731,10 +3735,12 @@
       return;
     }
     if (sketchGesture && sketchGesture.type === 'pan') {
+      if (sketchGesture.pointerId !== event.pointerId) return;
       event.preventDefault();
       updateSketchPanGesture(screenPoint);
       return;
     }
+    if (sketchActivePointerId !== null && sketchActivePointerId !== event.pointerId) return;
     if (sketchTool === 'auto_trace' && sketchAutoTracePoints.length) {
       event.preventDefault();
       updateAutoTracePreview(sketchCanvasPointToUnit(sketchCanvasPoint(event)));
@@ -3783,9 +3789,24 @@
 
   function sketchStopDrawing(event) {
     sketchPointers.delete(event.pointerId);
-    if (sketchGesture && (sketchGesture.type === 'pinch' || sketchGesture.type === 'pan')) {
-      if (activeTouchPointers().length < 2 && sketchGesture.type === 'pinch') sketchGesture = null;
-      if (sketchGesture && sketchGesture.type === 'pan') sketchGesture = null;
+    if (sketchGesture && sketchGesture.type === 'pinch') {
+      if (activeTouchPointers().length < 2) sketchGesture = null;
+      try {
+        sketchCanvas.releasePointerCapture(event.pointerId);
+      } catch {}
+      return;
+    }
+    if (sketchGesture && sketchGesture.type === 'pan') {
+      if (sketchGesture.pointerId === event.pointerId) {
+        sketchGesture = null;
+        sketchActivePointerId = null;
+      }
+      try {
+        sketchCanvas.releasePointerCapture(event.pointerId);
+      } catch {}
+      return;
+    }
+    if (sketchActivePointerId !== null && sketchActivePointerId !== event.pointerId) {
       try {
         sketchCanvas.releasePointerCapture(event.pointerId);
       } catch {}
@@ -3793,6 +3814,7 @@
     }
     if (!sketchDrawing || !sketchCanvas) return;
     sketchDrawing = false;
+    sketchActivePointerId = null;
     if (sketchMoveState) {
       sketchMoveState = null;
       try {
@@ -3902,6 +3924,7 @@
     document.body.classList.add('sketch-open');
     sketchPointers.clear();
     sketchGesture = null;
+    sketchActivePointerId = null;
     setSketchViewport({ scale: 1, offsetX: 0, offsetY: 0 });
     closeSketchPhotoPicker();
     await refreshPhotoSlots();
@@ -3916,6 +3939,7 @@
     sketchModal.setAttribute('aria-hidden', 'true');
     sketchPointers.clear();
     sketchGesture = null;
+    sketchActivePointerId = null;
     closeSketchPhotoPicker();
     closeSketchSymbolPicker();
     closeSketchTextDialog();
