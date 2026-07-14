@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fiche de prises de cotes - Autres</title>
+  <link rel="stylesheet" href="measurements.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Prises de cotes</p>
+        <h1>Fiche Autres</h1>
+        <p class="hero-text">Prise de cotes libre pour un ouvrage spécifique.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="back-link" href="/outils/prises-cotes">← Retour modules</a>
+        <button id="saveBtn" type="button" class="primary">Enregistrer</button>
+        <button id="closeBtn" type="button">Fermer</button>
+        <button id="loadBtn" type="button">Réouvrir</button>
+        <button id="resetBtn" type="button">Nouvelle fiche</button>
+        <button id="printBtn" type="button">Imprimer</button>
+      </div>
+    </header>
+
+    <main class="sheet-wrap">
+      <form id="measurementForm" class="sheet" autocomplete="on" data-storage-key="outil-pme.autres.measurements" data-module-label="Autres">
+        <section class="sheet-header">
+          <div>
+            <p class="sheet-kicker">Module chantier</p>
+            <h2>Autres</h2>
+            <p class="sheet-intro">Fiche flexible pour ouvrage non standard.</p>
+          </div>
+          <div class="save-panel">
+            <label for="recordName">Nom de fiche</label>
+            <input id="recordName" name="recordName" type="text" placeholder="Ex : Ouvrage spécial - Client" />
+            <p id="saveStatus" class="save-status">Aucune sauvegarde chargée</p>
+            <p id="sheetProgressText" class="sheet-progress">0 champ obligatoire renseigné</p>
+            <div class="sheet-actions">
+              <button id="deleteSheetBtn" type="button" class="danger" disabled>Supprimer la fiche</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-title"><h3>Informations générales</h3><p>Décrivez l’ouvrage et son contexte.</p></div>
+          <div class="grid grid-4">
+            <label class="field"><span>Client</span><input name="client" type="text" data-required-field /></label>
+            <label class="field"><span>Chantier</span><input name="chantier" type="text" data-required-field /></label>
+            <label class="field"><span>Date</span><input name="date" type="date" data-required-field /></label>
+            <label class="field"><span>Technicien</span><input name="technicien" type="text" /></label>
+            <label class="field"><span>Nom de l’ouvrage</span><input name="nomOuvrage" type="text" data-required-field /></label>
+            <label class="field"><span>Catégorie libre</span><input name="categorieLibre" type="text" /></label>
+            <label class="field"><span>Adresse</span><input name="adresse" type="text" /></label>
+            <label class="field"><span>Quantité</span><input name="quantite" type="number" min="0" step="1" /></label>
+          </div>
+          <label class="field"><span>Description</span><textarea name="description" rows="5" placeholder="Décrivez l’ouvrage à fabriquer ou poser."></textarea></label>
+        </section>
+
+        <section class="block">
+          <div class="block-title"><h3>Dimensions principales</h3><p>Largeur, hauteur, longueur, profondeur.</p></div>
+          <div class="grid grid-5">
+            <label class="field"><span>Largeur (mm)</span><input name="largeur" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Hauteur (mm)</span><input name="hauteur" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Longueur (mm)</span><input name="longueur" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Profondeur (mm)</span><input name="profondeur" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Dimensions libres</span><input name="dimensionsLibres" type="text" /></label>
+          </div>
+        </section>
+
+        <section class="block split-block">
+          <div>
+            <div class="block-title"><h3>Matériaux et finitions</h3><p>Matière, finition, support et fixation.</p></div>
+            <div class="grid grid-2">
+              <label class="field"><span>Matériau</span><input name="materiau" type="text" /></label>
+              <label class="field"><span>Finition</span><input name="finition" type="text" /></label>
+              <label class="field"><span>Support</span><input name="support" type="text" /></label>
+              <label class="field"><span>Fixation</span><input name="fixation" type="text" /></label>
+            </div>
+          </div>
+          <div>
+            <div class="block-title"><h3>Points à vérifier</h3><p>Lignes libres cochables.</p></div>
+            <div class="choice-list">
+              <label class="choice-row"><input name="pointsVerification" type="checkbox" value="Support" /><span class="choice-box"></span><span class="choice-text">Support</span></label>
+              <label class="choice-row"><input name="pointsVerification" type="checkbox" value="Accès" /><span class="choice-box"></span><span class="choice-text">Accès</span></label>
+              <label class="choice-row"><input name="pointsVerification" type="checkbox" value="Réseaux" /><span class="choice-box"></span><span class="choice-text">Réseaux</span></label>
+              <label class="choice-row"><input name="pointsVerification" type="checkbox" value="Validation client" /><span class="choice-box"></span><span class="choice-text">Validation client</span></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-title"><h3>Mesures personnalisées</h3><p>Ajoutez des mesures libres sous forme de lignes.</p></div>
+          <div class="grid grid-4">
+            <label class="field"><span>Mesure 1</span><input name="mesure1Nom" type="text" placeholder="Nom" /></label>
+            <label class="field"><span>Valeur 1</span><input name="mesure1Valeur" type="text" /></label>
+            <label class="field"><span>Unité 1</span><select name="mesure1Unite"><option>mm</option><option>cm</option><option>m</option><option>degré</option><option>quantité</option><option>texte</option></select></label>
+            <label class="field"><span>Commentaire 1</span><input name="mesure1Commentaire" type="text" /></label>
+            <label class="field"><span>Mesure 2</span><input name="mesure2Nom" type="text" placeholder="Nom" /></label>
+            <label class="field"><span>Valeur 2</span><input name="mesure2Valeur" type="text" /></label>
+            <label class="field"><span>Unité 2</span><select name="mesure2Unite"><option>mm</option><option>cm</option><option>m</option><option>degré</option><option>quantité</option><option>texte</option></select></label>
+            <label class="field"><span>Commentaire 2</span><input name="mesure2Commentaire" type="text" /></label>
+            <label class="field"><span>Mesure 3</span><input name="mesure3Nom" type="text" placeholder="Nom" /></label>
+            <label class="field"><span>Valeur 3</span><input name="mesure3Valeur" type="text" /></label>
+            <label class="field"><span>Unité 3</span><select name="mesure3Unite"><option>mm</option><option>cm</option><option>m</option><option>degré</option><option>quantité</option><option>texte</option></select></label>
+            <label class="field"><span>Commentaire 3</span><input name="mesure3Commentaire" type="text" /></label>
+          </div>
+        </section>
+
+        <section class="block media-block">
+          <div>
+            <div class="block-title"><h3>Photos</h3><p>Ajoutez plusieurs vues chantier.</p></div>
+            <label class="upload-box"><span>Prendre ou ajouter des photos</span><input id="photoInput" name="photos" type="file" accept="image/*" capture="environment" multiple /></label>
+            <div id="photoGallery" class="photo-grid"></div>
+          </div>
+          <div>
+            <div class="block-title"><h3>Notes et contraintes</h3><p>Informations libres.</p></div>
+            <textarea name="observations" rows="12" placeholder="Contraintes, accès, pose, remarques client..."></textarea>
+          </div>
+        </section>
+      </form>
+    </main>
+  </div>
+  <template id="photoItemTemplate"><figure class="photo-card"><img alt="Photo chantier" /><input class="photo-caption" type="text" placeholder="Légende" /><button type="button" class="photo-remove">Supprimer</button></figure></template>
+  <script src="/sketchpad.js"></script>
+  <script type="module" src="module-sheet.js"></script>
+</body>
+</html>

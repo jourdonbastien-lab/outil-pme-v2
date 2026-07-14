@@ -1,0 +1,384 @@
+(function () {
+  const MODULE_NAME = 'Escalier V2';
+  const form = document.getElementById('form');
+  const listView = document.getElementById('listView');
+  const formView = document.getElementById('formView');
+  const tabList = document.getElementById('tabList');
+  const newBtn = document.getElementById('newBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const saveBtnBottom = document.getElementById('saveBtnBottom');
+  const backToListBtn = document.getElementById('backToListBtn');
+  const cards = document.getElementById('cards');
+  const saveIndicator = document.getElementById('saveIndicator');
+  const photoSlotsRoot = document.getElementById('photoSlots');
+  const addPhotoSlotBtn = document.getElementById('addPhotoSlotBtn');
+
+  const DEFAULT_PHOTO_SLOTS = [
+    'Vue generale',
+    'Depart',
+    'Arrivee',
+    'Tremie',
+    'Dessous',
+    'Mur gauche',
+    'Mur droit',
+    'Details',
+    'Autres',
+  ];
+
+  const params = new URLSearchParams(window.location.search);
+  const initialOrderId = normalizeId(params.get('client_order_id'));
+  const initialDraftId = normalizeId(params.get('id'));
+
+  let currentId = null;
+  let dirty = false;
+  let linkOptionsLoaded = false;
+  let orderLock = initialOrderId;
+  let photoSlots = [];
+
+  function normalizeId(value) {
+    const num = Number(value || 0);
+    return Number.isInteger(num) && num > 0 ? num : null;
+  }
+
+  function setIndicator(state, text) {
+    saveIndicator.dataset.state = state;
+    saveIndicator.textContent = text;
+  }
+
+  function setTodayIfEmpty() {
+    const dateField = form.elements.date;
+    if (dateField && !dateField.value) dateField.value = new Date().toISOString().slice(0, 10);
+  }
+
+  function getValue(name) {
+    return String(form.elements[name] ? form.elements[name].value : '').trim();
+  }
+
+  function applyFieldValues(fields) {
+    Object.keys(fields || {}).forEach((key) => {
+      if (!form.elements[key]) return;
+      form.elements[key].value = fields[key] == null ? '' : String(fields[key]);
+    });
+  }
+
+  function makeDefaultRecordName() {
+    const client = getValue('client');
+    const date = getValue('date') || new Date().toISOString().slice(0, 10);
+    return client ? `${client} - Escalier V2 - ${date}` : `Fiche Escalier V2 ${date}`;
+  }
+
+  function cloneSlots(slots) {
+    return (slots || []).map((slot) => ({
+      label: String(slot.label || '').trim(),
+      done: Boolean(slot.done),
+    })).filter((slot) => slot.label);
+  }
+
+  function defaultSlotsState() {
+    return DEFAULT_PHOTO_SLOTS.map((label) => ({ label, done: false }));
+  }
+
+  function renderPhotoSlots() {
+    if (!photoSlotsRoot) return;
+    if (!photoSlots.length) photoSlots = defaultSlotsState();
+
+    photoSlotsRoot.innerHTML = photoSlots
+      .map((slot, index) => {
+        const stateText = slot.done ? 'Fait' : 'A faire';
+        return `
+          <div class="photo-slot${slot.done ? ' is-done' : ''}">
+            <span class="dot" aria-hidden="true"></span>
+            <span class="label">${escapeHtml(slot.label)}</span>
+            <button type="button" data-photo-index="${index}">${stateText}</button>
+          </div>
+        `;
+      })
+      .join('');
+
+    photoSlotsRoot.querySelectorAll('[data-photo-index]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const index = Number(button.getAttribute('data-photo-index'));
+        if (!Number.isInteger(index) || !photoSlots[index]) return;
+        photoSlots[index].done = !photoSlots[index].done;
+        dirty = true;
+        renderPhotoSlots();
+      });
+    });
+  }
+
+  async function loadLinkOptions() {
+    if (linkOptionsLoaded) return;
+    const quoteSelect = form.elements.quote_id;
+    const orderSelect = form.elements.client_order_id;
+
+    try {
+      const response = await fetch('/api/measurements/link-options');
+      if (!response.ok) return;
+      const data = await response.json();
+      (data.quotes || []).forEach((q) => {
+        const option = document.createElement('option');
+        option.value = String(q.id);
+        option.textContent = q.label;
+        quoteSelect.appendChild(option);
+      });
+      (data.clientOrders || []).forEach((o) => {
+        const option = document.createElement('option');
+        option.value = String(o.id);
+        option.textContent = o.label;
+        orderSelect.appendChild(option);
+      });
+      linkOptionsLoaded = true;
+    } catch {
+      setIndicator('error', 'Erreur chargement liens');
+    }
+  }
+
+  function renderCards(items) {
+    if (!items.length) {
+      cards.innerHTML = '<div class="empty">Aucune fiche Escalier V2.</div>';
+      return;
+    }
+
+    cards.innerHTML = items
+      .map((item) => {
+        const date = item.date || 'Non renseignee';
+        const statut = item.statut || 'Brouillon';
+        const updated = item.updatedAt ? new Date(item.updatedAt).toLocaleString('fr-FR') : 'Non renseigne';
+        return `
+          <article class="card">
+            <h4>${escapeHtml(item.recordName || `Fiche #${item.id}`)}</h4>
+            <div class="meta">
+              <span>Client: ${escapeHtml(item.client || '—')}</span>
+              <span>Commande: ${escapeHtml(item.commande || '—')}</span>
+              <span>Date: ${escapeHtml(date)}</span>
+              <span>Type: ${escapeHtml(item.typeEscalier || 'Autre')}</span>
+              <span>Statut: ${escapeHtml(statut)}</span>
+              <span>Maj: ${escapeHtml(updated)}</span>
+            </div>
+            <div class="open-row">
+              <button type="button" data-open-id="${item.id}">Ouvrir</button>
+            </div>
+          </article>
+        `;
+      })
+      .join('');
+
+    cards.querySelectorAll('[data-open-id]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = normalizeId(button.getAttribute('data-open-id'));
+        if (id) openRecord(id);
+      });
+    });
+  }
+
+  async function refreshList() {
+    const query = orderLock ? `?client_order_id=${encodeURIComponent(String(orderLock))}` : '';
+    const response = await fetch(`/api/measurements/escalier-v2/list${query}`);
+    if (!response.ok) {
+      cards.innerHTML = '<div class="empty">Erreur de chargement des fiches.</div>';
+      return;
+    }
+    const data = await response.json();
+    renderCards(data.items || []);
+  }
+
+  async function openRecord(id) {
+    await loadLinkOptions();
+    const response = await fetch(`/api/measurements/escalier-v2/${id}`);
+    if (!response.ok) {
+      setIndicator('error', 'Fiche introuvable');
+      return;
+    }
+
+    const data = await response.json();
+    const item = data.item || {};
+    currentId = normalizeId(item.id);
+    applyFieldValues(item.fields || {});
+    photoSlots = cloneSlots(item.fields?.photo_slots);
+    if (!photoSlots.length) photoSlots = defaultSlotsState();
+    renderPhotoSlots();
+
+    if (form.elements.quote_id) form.elements.quote_id.value = item.quote_id ? String(item.quote_id) : '';
+    if (form.elements.client_order_id) form.elements.client_order_id.value = item.client_order_id ? String(item.client_order_id) : '';
+
+    if (orderLock && !form.elements.client_order_id.value) {
+      form.elements.client_order_id.value = String(orderLock);
+    }
+
+    if (form.elements.record_name) {
+      form.elements.record_name.value = item.recordName || makeDefaultRecordName();
+    }
+
+    if (!getValue('statut')) form.elements.statut.value = 'Brouillon';
+    dirty = false;
+    showForm();
+    setIndicator('saved', 'Brouillon charge');
+  }
+
+  function newRecord(prefill) {
+    form.reset();
+    currentId = null;
+    setTodayIfEmpty();
+    form.elements.statut.value = 'Brouillon';
+    form.elements.type_escalier.value = 'Droit';
+
+    if (prefill) {
+      if (prefill.client) form.elements.client.value = prefill.client;
+      if (prefill.commande) form.elements.commande.value = prefill.commande;
+      if (prefill.client_order_id) form.elements.client_order_id.value = String(prefill.client_order_id);
+    }
+
+    form.elements.record_name.value = makeDefaultRecordName();
+    photoSlots = defaultSlotsState();
+    renderPhotoSlots();
+    dirty = true;
+    showForm();
+  }
+
+  function payloadForSave() {
+    const fields = {
+      client: getValue('client'),
+      commande: getValue('commande'),
+      chantier: getValue('chantier'),
+      date: getValue('date'),
+      metreur: getValue('metreur'),
+      reference_interne: getValue('reference_interne'),
+      type_escalier: getValue('type_escalier'),
+      statut: getValue('statut') || 'Brouillon',
+      quote_id: getValue('quote_id'),
+      client_order_id: getValue('client_order_id'),
+      photo_slots: cloneSlots(photoSlots),
+    };
+
+    const recordName = getValue('record_name') || makeDefaultRecordName();
+
+    return {
+      server_id: currentId,
+      module: MODULE_NAME,
+      recordName,
+      quote_id: fields.quote_id,
+      client_order_id: fields.client_order_id,
+      fields,
+    };
+  }
+
+  async function saveRecord() {
+    setIndicator('saving', 'Enregistrement en cours');
+    const payload = payloadForSave();
+
+    try {
+      const response = await fetch('/api/measurements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error('save-failed');
+      const result = await response.json();
+      currentId = normalizeId(result.id) || currentId;
+      dirty = false;
+      setIndicator('saved', 'Enregistre');
+      await refreshList();
+      return currentId;
+    } catch {
+      setIndicator('error', 'Erreur enregistrement');
+      return null;
+    }
+  }
+
+  async function switchToListWithAutosave() {
+    if (formView.hidden) return;
+    if (dirty) await saveRecord();
+    showList();
+  }
+
+  function showList() {
+    listView.hidden = false;
+    formView.hidden = true;
+    tabList.classList.add('is-active');
+  }
+
+  function showForm() {
+    listView.hidden = true;
+    formView.hidden = false;
+    tabList.classList.remove('is-active');
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  async function initBootstrap() {
+    await loadLinkOptions();
+    const query = new URLSearchParams();
+    if (initialOrderId) query.set('client_order_id', String(initialOrderId));
+    if (initialDraftId) query.set('id', String(initialDraftId));
+
+    try {
+      const response = await fetch(`/api/measurements/escalier-v2/bootstrap?${query.toString()}`);
+      if (!response.ok) throw new Error('bootstrap-error');
+      const bootstrap = await response.json();
+
+      if (bootstrap.prefill && bootstrap.prefill.client_order_id) {
+        orderLock = normalizeId(bootstrap.prefill.client_order_id) || orderLock;
+      }
+
+      await refreshList();
+
+      if (bootstrap.currentDraftId) {
+        await openRecord(bootstrap.currentDraftId);
+      } else if (orderLock) {
+        newRecord(bootstrap.prefill || null);
+      }
+    } catch {
+      await refreshList();
+      setIndicator('error', 'Erreur de chargement initial');
+    }
+  }
+
+  form.addEventListener('input', () => {
+    dirty = true;
+  });
+
+  form.elements.quote_id.addEventListener('change', () => {
+    if (form.elements.quote_id.value) form.elements.client_order_id.value = '';
+    dirty = true;
+  });
+
+  form.elements.client_order_id.addEventListener('change', () => {
+    if (form.elements.client_order_id.value) form.elements.quote_id.value = '';
+    dirty = true;
+  });
+
+  if (addPhotoSlotBtn) {
+    addPhotoSlotBtn.addEventListener('click', () => {
+      const label = String(window.prompt('Nom de la vue photo a ajouter :', '') || '').trim();
+      if (!label) return;
+      photoSlots.push({ label, done: false });
+      dirty = true;
+      renderPhotoSlots();
+    });
+  }
+
+  tabList.addEventListener('click', switchToListWithAutosave);
+  newBtn.addEventListener('click', async () => {
+    if (!formView.hidden && dirty) await saveRecord();
+    newRecord(orderLock ? {
+      client_order_id: orderLock,
+      client: getValue('client'),
+      commande: getValue('commande'),
+    } : null);
+  });
+  saveBtn.addEventListener('click', saveRecord);
+  saveBtnBottom.addEventListener('click', saveRecord);
+  backToListBtn.addEventListener('click', switchToListWithAutosave);
+
+  setTodayIfEmpty();
+  photoSlots = defaultSlotsState();
+  renderPhotoSlots();
+  initBootstrap();
+})();

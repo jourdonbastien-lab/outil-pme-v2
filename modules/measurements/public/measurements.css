@@ -1,14 +1,16 @@
 :root {
-  --bg: #f5f5f5;
+  --bg: #f5f7fa;
   --bg-soft: #efefef;
   --surface: rgba(255, 255, 255, 0.94);
   --surface-strong: #ffffff;
   --line: #e3e3e3;
   --line-strong: #d0d0d0;
-  --text: #111111;
-  --muted: #666666;
-  --accent: #ff7a00;
+  --text: #101827;
+  --muted: #667085;
+  --accent: #f97316;
   --accent-soft: #fff1e4;
+  --success: #16a34a;
+  --danger: #dc2626;
   --shadow: 0 16px 36px rgba(0, 0, 0, 0.1);
 }
 
@@ -44,12 +46,10 @@ textarea {
   align-items: end;
   gap: 20px;
   padding: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
   border-radius: 24px;
-  background:
-    radial-gradient(circle at 16% 0%, rgba(255, 122, 0, 0.13), transparent 32%),
-    linear-gradient(150deg, #0b1220 0%, #111827 48%, #172033 100%);
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+  background: #ffffff;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
   margin-bottom: 24px;
 }
 
@@ -75,7 +75,7 @@ textarea {
 }
 
 .hero h1 {
-  color: #fff;
+  color: var(--text);
   font-size: clamp(34px, 4vw, 54px);
   font-weight: 800;
   line-height: 0.98;
@@ -91,7 +91,7 @@ textarea {
 }
 
 .hero-text {
-  color: #9ca7b8;
+  color: var(--muted);
 }
 
 .hero-actions {
@@ -103,10 +103,10 @@ textarea {
 .back-link {
   display: inline-flex;
   align-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  background: #ffffff;
+  color: var(--text);
   padding: 12px 18px;
   font-weight: 700;
   text-decoration: none;
@@ -116,7 +116,7 @@ textarea {
 .back-link:hover {
   transform: translateY(-1px);
   border-color: rgba(249, 115, 22, 0.45);
-  background: rgba(249, 115, 22, 0.14);
+  background: #fff7ed;
   box-shadow: 0 10px 22px rgba(27, 46, 60, 0.08);
 }
 
@@ -139,10 +139,29 @@ button:hover {
 }
 
 button.primary {
-  color: #111111;
+  color: #ffffff;
   background: var(--accent);
   border-color: var(--accent);
   box-shadow: 0 12px 26px rgba(255, 122, 0, 0.28);
+}
+
+button.secondary {
+  background: #ffffff;
+}
+
+button.danger,
+.sheet-danger-btn {
+  color: #ffffff;
+  background: var(--danger);
+  border-color: var(--danger);
+  box-shadow: 0 12px 26px rgba(220, 38, 38, 0.16);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
+  box-shadow: none;
 }
 
 .sheet {
@@ -161,6 +180,27 @@ button.primary {
   align-items: start;
   padding-bottom: 22px;
   border-bottom: 1px solid var(--line);
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.sheet-progress {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #ecfdf3;
+  color: #16703a;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .sheet h2 {
@@ -191,10 +231,58 @@ button.primary {
 
 .block {
   margin-top: 22px;
-  padding: 22px;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 252, 253, 0.9));
+  overflow: hidden;
+}
+
+.block-toggle {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 18px 20px;
+  text-align: left;
+}
+
+.block-toggle:hover,
+.block-toggle:focus {
+  transform: none;
+  box-shadow: none;
+  background: #fff8f2;
+}
+
+.block-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 900;
+  transition: transform 140ms ease;
+}
+
+.block.is-open .block-chevron {
+  transform: rotate(180deg);
+}
+
+.block-panel {
+  padding: 0 20px 20px;
+}
+
+.block-panel[hidden] {
+  display: none !important;
 }
 
 .block-title {
@@ -1165,12 +1253,90 @@ textarea:focus {
   border-radius: 18px;
   border: 1px solid var(--line);
   background: var(--bg-soft);
+  cursor: zoom-in;
+}
+
+.photo-caption {
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 14px;
 }
 
 .photo-remove {
   width: 100%;
   border-radius: 14px;
   padding: 10px 12px;
+}
+
+.measurement-photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.measurement-photo-viewer[hidden] {
+  display: none !important;
+}
+
+.measurement-photo-viewer img {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: contain;
+}
+
+.measurement-photo-viewer p {
+  margin: 0;
+  color: #ffffff;
+  text-align: center;
+}
+
+.measurement-photo-viewer-close {
+  justify-self: end;
+  width: auto;
+  background: #ffffff;
+}
+
+.measurement-card-svg {
+  display: block;
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.type-helper-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.dynamic-lines {
+  display: grid;
+  gap: 10px;
+}
+
+.dynamic-line {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.dynamic-line button {
+  min-height: 46px;
 }
 
 @media (max-width: 1180px) {
@@ -1204,7 +1370,31 @@ textarea:focus {
   }
 
   .block {
-    padding: 16px;
+    padding: 0;
+  }
+
+  .sheet-header {
+    flex-direction: column;
+  }
+
+  .save-panel {
+    width: 100%;
+  }
+
+  .sheet-actions {
+    justify-content: stretch;
+  }
+
+  .sheet-actions button {
+    flex: 1 1 100%;
+  }
+
+  .block-toggle {
+    padding: 15px 14px;
+  }
+
+  .block-panel {
+    padding: 0 14px 14px;
   }
 
   .grid-4,
@@ -1215,7 +1405,11 @@ textarea:focus {
   .media-block,
   .split-block,
   .mini-grid,
-  .dimensions-layout {
+    .dimensions-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .dynamic-line {
     grid-template-columns: 1fr;
   }
 

@@ -17,6 +17,7 @@
       <div class="hero-actions">
         <a class="back-link" href="/outils/prises-cotes">← Retour modules</a>
         <button id="saveBtn" type="button" class="primary">Enregistrer</button>
+        <button id="closeBtn" type="button">Fermer</button>
         <button id="loadBtn" type="button">Réouvrir</button>
         <button id="resetBtn" type="button">Nouvelle fiche</button>
         <button id="printBtn" type="button">Imprimer</button>
@@ -35,6 +36,10 @@
             <label for="recordName">Nom de fiche</label>
             <input id="recordName" name="recordName" type="text" placeholder="Ex : Durand - Portail entrée" />
             <p id="saveStatus" class="save-status">Aucune sauvegarde chargée</p>
+            <p id="sheetProgressText" class="sheet-progress">0 champ obligatoire renseigné</p>
+            <div class="sheet-actions">
+              <button id="deleteSheetBtn" type="button" class="danger" disabled>Supprimer la fiche</button>
+            </div>
           </div>
         </section>
 
@@ -44,9 +49,9 @@
             <p>Les informations de base de l'intervention.</p>
           </div>
           <div class="grid grid-4">
-            <label class="field"><span>Client</span><input name="client" type="text" /></label>
-            <label class="field"><span>Chantier</span><input name="chantier" type="text" /></label>
-            <label class="field"><span>Date</span><input name="date" type="date" /></label>
+            <label class="field"><span>Client</span><input name="client" type="text" data-required-field /></label>
+            <label class="field"><span>Chantier</span><input name="chantier" type="text" data-required-field /></label>
+            <label class="field"><span>Date</span><input name="date" type="date" data-required-field /></label>
             <label class="field"><span>Technicien</span><input name="technicien" type="text" /></label>
           </div>
         </section>
@@ -129,7 +134,7 @@
             </div>
             <label class="upload-box">
               <span>Ajouter plusieurs photos</span>
-              <input id="photoInput" name="photos" type="file" accept="image/*" multiple />
+              <input id="photoInput" name="photos" type="file" accept="image/*" capture="environment" multiple />
             </label>
             <div id="photoGallery" class="photo-grid"></div>
           </div>
@@ -149,6 +154,7 @@
   <template id="photoItemTemplate">
     <figure class="photo-card">
       <img alt="Photo chantier" />
+      <input class="photo-caption" type="text" placeholder="Légende" />
       <button type="button" class="photo-remove">Supprimer</button>
     </figure>
   </template>

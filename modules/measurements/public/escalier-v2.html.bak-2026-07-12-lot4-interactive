@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prise de cotes Escalier V2</title>
+  <link rel="stylesheet" href="/outils/prises-cotes/escalier-v2.css" />
+</head>
+<body>
+  <div class="v2-shell">
+    <header class="v2-header">
+      <a class="v2-back" href="/outils/prises-cotes">Retour</a>
+      <h1>Prise de cotes Escalier V2</h1>
+      <div id="saveIndicator" class="save-indicator" data-state="idle">Prêt</div>
+    </header>
+
+    <nav class="v2-nav" aria-label="Navigation Escalier V2">
+      <button id="tabList" type="button" class="is-active">Liste</button>
+      <button id="newBtn" type="button">Nouvelle fiche</button>
+      <button id="saveBtn" type="button">Enregistrer</button>
+    </nav>
+
+    <main class="v2-main">
+      <section id="listView" class="v2-section">
+        <div class="list-head">
+          <h2>Fiches Escalier V2</h2>
+          <p>Ouvrez un brouillon ou créez une nouvelle fiche.</p>
+        </div>
+        <div id="cards" class="cards"></div>
+      </section>
+
+      <section id="formView" class="v2-section" hidden>
+        <form id="form" class="v2-form" autocomplete="on">
+          <div class="field wide">
+            <label for="record_name">Nom de fiche</label>
+            <input id="record_name" name="record_name" type="text" placeholder="Ex : Dupont - Escalier V2" />
+          </div>
+
+          <h3>Informations generales</h3>
+
+          <div class="field">
+            <label for="client">Client</label>
+            <input id="client" name="client" type="text" required />
+          </div>
+
+          <div class="field">
+            <label for="commande">Commande</label>
+            <input id="commande" name="commande" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="chantier">Adresse chantier</label>
+            <input id="chantier" name="chantier" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="date">Date de prise de cotes</label>
+            <input id="date" name="date" type="date" />
+          </div>
+
+          <div class="field">
+            <label for="metreur">Metreur</label>
+            <input id="metreur" name="metreur" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="reference_interne">Reference interne</label>
+            <input id="reference_interne" name="reference_interne" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="type_escalier">Type d escalier</label>
+            <select id="type_escalier" name="type_escalier">
+              <option value="Droit">Droit</option>
+              <option value="1/4 tournant bas">1/4 tournant bas</option>
+              <option value="1/4 tournant haut">1/4 tournant haut</option>
+              <option value="Double 1/4 tournant">Double 1/4 tournant</option>
+              <option value="2 volees avec palier">2 volees avec palier</option>
+              <option value="Helicoidal">Helicoidal</option>
+              <option value="Autre">Autre</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="statut">Statut</label>
+            <select id="statut" name="statut">
+              <option value="Brouillon">Brouillon</option>
+              <option value="A valider">A valider</option>
+              <option value="Valide">Valide</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="quote_id">Devis lie</label>
+            <select id="quote_id" name="quote_id">
+              <option value="">Aucun devis</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="client_order_id">Commande client liee</label>
+            <select id="client_order_id" name="client_order_id">
+              <option value="">Aucune commande</option>
+            </select>
+          </div>
+
+          <section class="measurements-v2-section" aria-label="Mesures Escalier V2">
+            <div class="measurements-v2-head">
+              <div>
+                <h3>Mesures</h3>
+                <p>Schéma, liste de cotes et contrôles adaptés au type d'escalier.</p>
+              </div>
+              <div id="measurementsV2Progress" class="measurements-v2-progress">0 / 0</div>
+            </div>
+            <div class="measurements-v2-layout">
+              <article class="measurements-v2-card">
+                <h4>Schéma</h4>
+                <div id="measurementsV2Schema" class="measurements-v2-schema"></div>
+              </article>
+              <article class="measurements-v2-card">
+                <h4>Liste</h4>
+                <div id="measurementsV2Fields" class="measurements-v2-fields"></div>
+              </article>
+              <article class="measurements-v2-card">
+                <h4>Contrôles</h4>
+                <div id="measurementsV2Checks" class="measurements-v2-checks"></div>
+              </article>
+            </div>
+          </section>
+
+          <section class="photo-section" aria-label="Photos chantier">
+            <div class="photo-section-head">
+              <h3>Photos chantier</h3>
+              <span id="photoTotalCount" class="photo-total-count">0 photo</span>
+            </div>
+            <p class="photo-help">Capture camera iPhone et import galerie, avec enregistrement serveur.</p>
+            <div id="photoSlots" class="photo-slots"></div>
+          </section>
+
+          <section class="sketch-section" aria-label="Croquis Escalier V2">
+            <div class="sketch-section-head">
+              <h3>Croquis</h3>
+              <span id="sketchStatusInline" class="sketch-status-inline">Prêt</span>
+            </div>
+            <p class="photo-help">Dessinez au doigt ou au stylet en plein écran.</p>
+            <button type="button" id="openSketchBtn">Ouvrir le croquis plein ecran</button>
+          </section>
+
+          <div class="actions">
+            <button type="button" id="backToListBtn">Liste</button>
+            <button type="button" id="saveBtnBottom">Enregistrer</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <div id="photoViewer" class="photo-viewer" hidden aria-hidden="true">
+    <button type="button" id="photoViewerClose" class="photo-viewer-close" aria-label="Fermer">Fermer</button>
+    <img id="photoViewerImg" alt="Photo en plein ecran" />
+    <p id="photoViewerCaption"></p>
+  </div>
+
+  <div id="sketchModal" class="sketch-modal" hidden aria-hidden="true">
+    <div class="sketch-modal-content">
+      <div class="sketch-toolbar-top">
+        <button type="button" id="undoSketchBtn" class="sketch-action-btn" aria-label="Annuler" title="Annuler">↶</button>
+        <button type="button" id="redoSketchBtn" class="sketch-action-btn" aria-label="Refaire" title="Refaire">↷</button>
+        <button type="button" id="sketchSaveBtn" class="sketch-save-btn" aria-label="Enregistrer" title="Enregistrer">✓</button>
+        <button type="button" id="sketchCloseBtn" class="sketch-close-btn" aria-label="Fermer" title="Fermer">×</button>
+      </div>
+      <button type="button" id="sketchToolbarToggle" class="sketch-toolbar-toggle" aria-label="Masquer la barre d'outils" title="Masquer la barre d'outils" aria-expanded="true">‹</button>
+      <div class="sketch-toolbar-left" id="sketchToolbarLeft">
+        <button type="button" id="toolPenBtn" class="is-active sketch-icon-btn" aria-label="Stylo" title="Stylo" aria-pressed="true">✎</button>
+        <button type="button" id="toolEraserBtn" class="sketch-icon-btn" aria-label="Gomme" title="Gomme" aria-pressed="false">⌫</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="line" aria-label="Ligne droite" title="Ligne droite" aria-pressed="false">╱</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="arrow" aria-label="Flèche" title="Flèche" aria-pressed="false">➜</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="rect" aria-label="Rectangle" title="Rectangle" aria-pressed="false">□</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="ellipse" aria-label="Cercle ou ellipse" title="Cercle ou ellipse" aria-pressed="false">○</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="text" aria-label="Texte" title="Texte" aria-pressed="false">T</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="marker" aria-label="Repère numéroté" title="Repère numéroté" aria-pressed="false">1</button>
+        <button type="button" class="sketch-icon-btn" data-sketch-tool="dimension" aria-label="Cotation simple" title="Cotation simple" aria-pressed="false">⇔</button>
+        <button type="button" id="openSketchSymbolBtn" class="sketch-icon-btn" aria-label="Bibliothèque de symboles" title="Bibliothèque de symboles">⌘</button>
+        <button type="button" id="useSketchPhotoBtn" class="sketch-icon-btn" aria-label="Choisir une photo de fond" title="Choisir une photo de fond">▧</button>
+        <button type="button" id="removeSketchPhotoBtn" class="sketch-icon-btn" aria-label="Retirer la photo de fond" title="Retirer la photo de fond">▨</button>
+        <div class="sketch-toolbar-card">
+          <span class="sketch-toolbar-label">Couleur</span>
+          <div class="sketch-toolbar-palette" id="sketchColorPalette">
+            <button type="button" data-sketch-color="#111827" style="--swatch:#111827" class="is-active" aria-label="Noir" title="Noir" aria-pressed="true"></button>
+            <button type="button" data-sketch-color="#dc2626" style="--swatch:#dc2626" aria-label="Rouge" title="Rouge" aria-pressed="false"></button>
+            <button type="button" data-sketch-color="#2563eb" style="--swatch:#2563eb" aria-label="Bleu" title="Bleu" aria-pressed="false"></button>
+            <button type="button" data-sketch-color="#059669" style="--swatch:#059669" aria-label="Vert" title="Vert" aria-pressed="false"></button>
+            <button type="button" data-sketch-color="#7c3aed" style="--swatch:#7c3aed" aria-label="Violet" title="Violet" aria-pressed="false"></button>
+          </div>
+        </div>
+        <div class="sketch-toolbar-card">
+          <span class="sketch-toolbar-label">Trait</span>
+          <div class="sketch-toolbar-sizes" id="sketchSizePalette">
+            <button type="button" data-sketch-size="2" class="is-active" aria-label="Epaisseur fine" title="Epaisseur fine" aria-pressed="true"><span style="--line-size:2px"></span></button>
+            <button type="button" data-sketch-size="4" aria-label="Epaisseur moyenne" title="Epaisseur moyenne" aria-pressed="false"><span style="--line-size:4px"></span></button>
+            <button type="button" data-sketch-size="7" aria-label="Epaisseur epaisse" title="Epaisseur epaisse" aria-pressed="false"><span style="--line-size:7px"></span></button>
+            <button type="button" data-sketch-size="11" aria-label="Epaisseur XL" title="Epaisseur XL" aria-pressed="false"><span style="--line-size:11px"></span></button>
+          </div>
+        </div>
+        <button type="button" id="clearSketchBtn" class="sketch-clear-btn sketch-icon-btn" aria-label="Effacer le croquis" title="Effacer le croquis">⌧</button>
+      </div>
+      <span id="sketchStatus" class="sketch-status">Prêt</span>
+      <span id="sketchBgLabel" class="sketch-bg-label">Fond: aucun</span>
+      <div id="sketchSymbolControls" class="sketch-symbol-controls" hidden aria-hidden="true">
+        <button type="button" id="sketchSymbolSmallerBtn" aria-label="Réduire le symbole" title="Réduire le symbole">−</button>
+        <button type="button" id="sketchSymbolLargerBtn" aria-label="Agrandir le symbole" title="Agrandir le symbole">+</button>
+        <button type="button" id="sketchSymbolDeleteBtn" aria-label="Supprimer le symbole" title="Supprimer le symbole">Suppr.</button>
+      </div>
+      <div id="sketchPhotoPickerBackdrop" class="sketch-photo-picker-backdrop" hidden aria-hidden="true"></div>
+      <div id="sketchPhotoPicker" class="sketch-photo-picker" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sketchPhotoPickerTitle">
+        <div class="sketch-photo-picker-head">
+          <strong id="sketchPhotoPickerTitle">Choisir une photo de fond</strong>
+          <button type="button" id="closeSketchPhotoPickerBtn">Fermer</button>
+        </div>
+        <div id="sketchPhotoPickerList" class="sketch-photo-picker-list"></div>
+      </div>
+      <div id="sketchSymbolPickerBackdrop" class="sketch-symbol-picker-backdrop" hidden aria-hidden="true"></div>
+      <div id="sketchSymbolPicker" class="sketch-symbol-picker" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sketchSymbolPickerTitle">
+        <div class="sketch-symbol-picker-head">
+          <strong id="sketchSymbolPickerTitle">Bibliothèque de symboles</strong>
+          <button type="button" id="closeSketchSymbolPickerBtn">Fermer</button>
+        </div>
+        <div id="sketchSymbolPickerList" class="sketch-symbol-picker-list"></div>
+      </div>
+      <div class="sketch-canvas-wrap">
+        <canvas id="sketchCanvas" aria-label="Zone de croquis Escalier V2"></canvas>
+      </div>
+      <div id="sketchTextDialog" class="sketch-text-dialog" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sketchTextDialogTitle">
+        <div class="sketch-text-dialog-card">
+          <strong id="sketchTextDialogTitle">Annotation</strong>
+          <textarea id="sketchTextInput" rows="3" placeholder="Saisir le texte"></textarea>
+          <div class="sketch-text-dialog-actions">
+            <button type="button" id="sketchTextCancelBtn">Annuler</button>
+            <button type="button" id="sketchTextConfirmBtn">Valider</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/outils/prises-cotes/escalier-v2.js"></script>
+</body>
+</html>

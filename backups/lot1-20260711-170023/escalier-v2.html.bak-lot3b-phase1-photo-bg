@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prise de cotes Escalier V2</title>
+  <link rel="stylesheet" href="/outils/prises-cotes/escalier-v2.css" />
+</head>
+<body>
+  <div class="v2-shell">
+    <header class="v2-header">
+      <a class="v2-back" href="/outils/prises-cotes">Retour</a>
+      <h1>Prise de cotes Escalier V2</h1>
+      <div id="saveIndicator" class="save-indicator" data-state="idle">Prêt</div>
+    </header>
+
+    <nav class="v2-nav" aria-label="Navigation Escalier V2">
+      <button id="tabList" type="button" class="is-active">Liste</button>
+      <button id="newBtn" type="button">Nouvelle fiche</button>
+      <button id="saveBtn" type="button">Enregistrer</button>
+    </nav>
+
+    <main class="v2-main">
+      <section id="listView" class="v2-section">
+        <div class="list-head">
+          <h2>Fiches Escalier V2</h2>
+          <p>Ouvrez un brouillon ou créez une nouvelle fiche.</p>
+        </div>
+        <div id="cards" class="cards"></div>
+      </section>
+
+      <section id="formView" class="v2-section" hidden>
+        <form id="form" class="v2-form" autocomplete="on">
+          <div class="field wide">
+            <label for="record_name">Nom de fiche</label>
+            <input id="record_name" name="record_name" type="text" placeholder="Ex : Dupont - Escalier V2" />
+          </div>
+
+          <h3>Informations generales</h3>
+
+          <div class="field">
+            <label for="client">Client</label>
+            <input id="client" name="client" type="text" required />
+          </div>
+
+          <div class="field">
+            <label for="commande">Commande</label>
+            <input id="commande" name="commande" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="chantier">Adresse chantier</label>
+            <input id="chantier" name="chantier" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="date">Date de prise de cotes</label>
+            <input id="date" name="date" type="date" />
+          </div>
+
+          <div class="field">
+            <label for="metreur">Metreur</label>
+            <input id="metreur" name="metreur" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="reference_interne">Reference interne</label>
+            <input id="reference_interne" name="reference_interne" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="type_escalier">Type d escalier</label>
+            <select id="type_escalier" name="type_escalier">
+              <option value="Droit">Droit</option>
+              <option value="1/4 tournant bas">1/4 tournant bas</option>
+              <option value="1/4 tournant haut">1/4 tournant haut</option>
+              <option value="Double 1/4 tournant">Double 1/4 tournant</option>
+              <option value="2 volees avec palier">2 volees avec palier</option>
+              <option value="Helicoidal">Helicoidal</option>
+              <option value="Autre">Autre</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="statut">Statut</label>
+            <select id="statut" name="statut">
+              <option value="Brouillon">Brouillon</option>
+              <option value="A valider">A valider</option>
+              <option value="Valide">Valide</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="quote_id">Devis lie</label>
+            <select id="quote_id" name="quote_id">
+              <option value="">Aucun devis</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="client_order_id">Commande client liee</label>
+            <select id="client_order_id" name="client_order_id">
+              <option value="">Aucune commande</option>
+            </select>
+          </div>
+
+          <section class="photo-section" aria-label="Photos chantier">
+            <div class="photo-section-head">
+              <h3>Photos chantier</h3>
+              <span id="photoTotalCount" class="photo-total-count">0 photo</span>
+            </div>
+            <p class="photo-help">Capture camera iPhone et import galerie, avec enregistrement serveur.</p>
+            <div id="photoSlots" class="photo-slots"></div>
+          </section>
+
+          <section class="sketch-section" aria-label="Croquis Escalier V2">
+            <div class="sketch-section-head">
+              <h3>Croquis</h3>
+              <span id="sketchStatusInline" class="sketch-status-inline">Prêt</span>
+            </div>
+            <p class="photo-help">Dessinez au doigt ou au stylet en plein écran.</p>
+            <button type="button" id="openSketchBtn">Ouvrir le croquis plein ecran</button>
+          </section>
+
+          <div class="actions">
+            <button type="button" id="backToListBtn">Liste</button>
+            <button type="button" id="saveBtnBottom">Enregistrer</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <div id="photoViewer" class="photo-viewer" hidden aria-hidden="true">
+    <button type="button" id="photoViewerClose" class="photo-viewer-close" aria-label="Fermer">Fermer</button>
+    <img id="photoViewerImg" alt="Photo en plein ecran" />
+    <p id="photoViewerCaption"></p>
+  </div>
+
+  <div id="sketchModal" class="sketch-modal" hidden aria-hidden="true">
+    <div class="sketch-modal-content">
+      <div class="sketch-toolbar-top">
+        <button type="button" id="undoSketchBtn" class="sketch-action-btn">Annuler</button>
+        <button type="button" id="redoSketchBtn" class="sketch-action-btn">Refaire</button>
+        <button type="button" id="sketchSaveBtn" class="sketch-save-btn">Enregistrer</button>
+        <button type="button" id="sketchCloseBtn" class="sketch-close-btn">Fermer</button>
+      </div>
+      <div class="sketch-toolbar-left">
+        <button type="button" id="toolPenBtn" class="is-active">Stylo</button>
+        <button type="button" id="toolEraserBtn">Gomme</button>
+        <div class="sketch-toolbar-card">
+          <span class="sketch-toolbar-label">Couleur</span>
+          <div class="sketch-toolbar-palette" id="sketchColorPalette">
+            <button type="button" data-sketch-color="#111827" style="--swatch:#111827" class="is-active" aria-label="Noir"></button>
+            <button type="button" data-sketch-color="#dc2626" style="--swatch:#dc2626" aria-label="Rouge"></button>
+            <button type="button" data-sketch-color="#2563eb" style="--swatch:#2563eb" aria-label="Bleu"></button>
+            <button type="button" data-sketch-color="#059669" style="--swatch:#059669" aria-label="Vert"></button>
+            <button type="button" data-sketch-color="#7c3aed" style="--swatch:#7c3aed" aria-label="Violet"></button>
+          </div>
+        </div>
+        <div class="sketch-toolbar-card">
+          <span class="sketch-toolbar-label">Trait</span>
+          <div class="sketch-toolbar-sizes" id="sketchSizePalette">
+            <button type="button" data-sketch-size="2" class="is-active">Fin</button>
+            <button type="button" data-sketch-size="4">Moyen</button>
+            <button type="button" data-sketch-size="7">Epais</button>
+            <button type="button" data-sketch-size="11">XL</button>
+          </div>
+        </div>
+        <button type="button" id="clearSketchBtn" class="sketch-clear-btn">Effacer</button>
+      </div>
+      <span id="sketchStatus" class="sketch-status">Prêt</span>
+      <div class="sketch-canvas-wrap">
+        <canvas id="sketchCanvas" aria-label="Zone de croquis Escalier V2"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script src="/outils/prises-cotes/escalier-v2.js"></script>
+</body>
+</html>

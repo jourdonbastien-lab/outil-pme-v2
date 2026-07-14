@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prototype schéma Escalier V2 - 1/4 tournant bas</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --soft: #4b5563;
+      --muted: #778190;
+      --line: #d3dae3;
+      --dash: #8a94a3;
+      --accent: #e95f1a;
+      --paper: #ffffff;
+      --page: #f3f5f8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 24px));
+      margin: 0 auto;
+      padding: 18px 0 32px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .intro,
+    .preview,
+    .selected-measure {
+      border: 1px solid var(--line);
+      background: var(--paper);
+    }
+
+    .intro {
+      display: grid;
+      gap: 6px;
+      padding: 16px 18px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(1.25rem, 2vw, 1.8rem);
+    }
+
+    h2 {
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--soft);
+    }
+
+    .intro p,
+    .selected-measure p {
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .preview-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 390px);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .preview {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+    }
+
+    .sheet {
+      display: grid;
+      gap: 10px;
+    }
+
+    .sheet-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .sheet-head strong {
+      font-size: 0.86rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .sheet-head span {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .views {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.8fr);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .view {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .view-title {
+      font-size: 0.78rem;
+      font-weight: 900;
+      color: var(--soft);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #fff;
+      border: 1px solid #dde3ea;
+    }
+
+    .cad-frame {
+      fill: #fff;
+      stroke: #d8dee6;
+      stroke-width: 1;
+    }
+
+    .outline {
+      fill: none;
+      stroke: var(--ink);
+      stroke-width: 3;
+      stroke-linejoin: miter;
+    }
+
+    .step {
+      stroke: #2f3a48;
+      stroke-width: 1.35;
+      stroke-linecap: square;
+    }
+
+    .opening {
+      fill: none;
+      stroke: var(--dash);
+      stroke-width: 1.35;
+      stroke-dasharray: 8 6;
+    }
+
+    .floor {
+      fill: none;
+      stroke: var(--ink);
+      stroke-width: 1.8;
+    }
+
+    .slab {
+      fill: #f7f9fb;
+      stroke: var(--ink);
+      stroke-width: 1.4;
+    }
+
+    .walkline {
+      fill: none;
+      stroke: #374151;
+      stroke-width: 1.25;
+      stroke-dasharray: 16 5 2 5;
+    }
+
+    .rise-arrow {
+      fill: none;
+      stroke: #374151;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .label {
+      fill: #374151;
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 0.03em;
+    }
+
+    .small {
+      fill: #64748b;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+    }
+
+    .measure {
+      cursor: pointer;
+      outline: none;
+    }
+
+    .measure-hit {
+      stroke: transparent;
+      stroke-width: 42;
+      stroke-linecap: round;
+    }
+
+    .dim-line,
+    .dim-ext,
+    .dim-tick {
+      fill: none;
+      stroke: #2f3a48;
+      stroke-width: 1.05;
+      stroke-linecap: square;
+      stroke-linejoin: miter;
+    }
+
+    .dim-text {
+      fill: #243040;
+      font-size: 14px;
+      font-weight: 850;
+      text-anchor: middle;
+      dominant-baseline: middle;
+    }
+
+    .measure.is-active .dim-line,
+    .measure.is-active .dim-ext,
+    .measure.is-active .dim-tick {
+      stroke: var(--accent);
+      stroke-width: 1.75;
+    }
+
+    .measure.is-active .dim-text {
+      fill: var(--accent);
+      font-weight: 900;
+    }
+
+    .legend {
+      display: grid;
+      gap: 3px;
+      padding-top: 8px;
+      border-top: 1px solid var(--line);
+      color: var(--soft);
+      font-size: 0.78rem;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .legend-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+    }
+
+    .legend button {
+      width: auto;
+      min-height: 24px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .legend button.is-active {
+      color: var(--accent);
+    }
+
+    .selected-measure {
+      display: grid;
+      gap: 4px;
+      padding: 12px 14px;
+    }
+
+    .selected-measure strong {
+      color: var(--accent);
+    }
+
+    .mobile-preview {
+      width: 390px;
+      max-width: 100%;
+      justify-self: center;
+    }
+
+    .mobile-preview .views {
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    .mobile-preview .dim-text {
+      font-size: 18px;
+    }
+
+    .mobile-preview .label {
+      font-size: 20px;
+    }
+
+    .mobile-preview .small {
+      font-size: 16px;
+    }
+
+    @media (max-width: 980px) {
+      .preview-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 620px) {
+      main {
+        width: min(100% - 16px, 430px);
+        padding-top: 10px;
+      }
+
+      .preview {
+        padding: 10px;
+      }
+
+      .views {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="intro">
+      <h1>Prototype isolé — schéma 1/4 tournant bas</h1>
+      <p>Fichier autonome de démonstration. Les valeurs sont fictives, aucune donnée n’est enregistrée.</p>
+    </header>
+
+    <section class="preview-grid" aria-label="Prévisualisations">
+      <article class="preview">
+        <h2>Prévisualisation desktop · 900 px environ</h2>
+        <div class="sheet" data-demo-sheet="desktop"></div>
+      </article>
+
+      <article class="preview mobile-preview">
+        <h2>Prévisualisation mobile · 390 px</h2>
+        <div class="sheet" data-demo-sheet="mobile"></div>
+      </article>
+    </section>
+
+    <section class="selected-measure" aria-live="polite">
+      <strong id="selectedLabel">Aucune mesure sélectionnée</strong>
+      <p id="selectedHelp">Cliquez sur une cote du prototype pour vérifier l’état actif orange.</p>
+    </section>
+  </main>
+
+  <script>
+    const demoValues = {
+      lowerRun: 'Longueur volée basse : 1800 mm',
+      upperRun: 'Longueur volée haute : 1200 mm',
+      stairWidth: 'Largeur escalier : 900 mm',
+      openingLength: 'Longueur trémie : 2400 mm',
+      openingWidth: 'Largeur trémie : 950 mm',
+      totalHeight: 'Hauteur sol à sol : 2800 mm',
+      headroom: 'Échappée : 2000 mm',
+    };
+
+    const selectedLabel = document.getElementById('selectedLabel');
+    const selectedHelp = document.getElementById('selectedHelp');
+
+    function planSvg() {
+      return `
+        <svg viewBox="0 0 760 560" preserveAspectRatio="xMidYMid meet" aria-label="Vue en plan quart tournant bas">
+          <rect class="cad-frame" x="8" y="8" width="744" height="544" />
+          <text class="small" x="28" y="36">COTES EN MM</text>
+          <path class="opening" d="M360 74H598V430H360Z" />
+          <text class="small" x="510" y="104">TRÉMIE</text>
+
+          <path class="outline" d="M92 266H412V86H532V420H92Z" />
+          <line class="step" x1="145" y1="266" x2="145" y2="420" />
+          <line class="step" x1="198" y1="266" x2="198" y2="420" />
+          <line class="step" x1="251" y1="266" x2="251" y2="420" />
+          <line class="step" x1="304" y1="266" x2="304" y2="420" />
+          <line class="step" x1="357" y1="266" x2="357" y2="420" />
+          <line class="step" x1="412" y1="266" x2="532" y2="326" />
+          <line class="step" x1="412" y1="266" x2="532" y2="266" />
+          <line class="step" x1="412" y1="266" x2="472" y2="206" />
+          <line class="step" x1="412" y1="226" x2="532" y2="226" />
+          <line class="step" x1="412" y1="186" x2="532" y2="186" />
+          <line class="step" x1="412" y1="146" x2="532" y2="146" />
+
+          <path class="walkline" d="M116 343H374Q472 343 472 246V104" />
+          <path class="rise-arrow" d="M472 104l-13 24M472 104l13 24" />
+          <text class="label" x="260" y="330">MONTÉE</text>
+          <text class="label" x="92" y="452">DÉPART</text>
+          <text class="label" x="542" y="88">ARRIVÉE</text>
+
+          ${dimension('openingLength', 360, 52, 598, 52, 479, 37, 'h', 'Longueur trémie : 2400 mm')}
+          ${dimension('openingWidth', 626, 74, 626, 430, 666, 252, 'v', 'Largeur trémie : 950 mm')}
+          ${dimension('lowerRun', 92, 462, 412, 462, 252, 490, 'h', 'Longueur volée basse : 1800 mm')}
+          ${dimension('upperRun', 562, 86, 562, 420, 602, 253, 'v', 'Longueur volée haute : 1200 mm')}
+          ${dimension('stairWidth', 64, 266, 64, 420, 34, 343, 'v', 'Largeur escalier : 900 mm')}
+        </svg>
+      `;
+    }
+
+    function sideSvg() {
+      return `
+        <svg viewBox="0 0 460 560" preserveAspectRatio="xMidYMid meet" aria-label="Vue développée de côté">
+          <rect class="cad-frame" x="8" y="8" width="444" height="544" />
+          <text class="small" x="26" y="36">VUE DÉVELOPPÉE · COTES EN MM</text>
+          <path class="floor" d="M62 430H360" />
+          <path class="floor" d="M246 126H386" />
+          <path class="slab" d="M246 126H386V160H274" />
+          <text class="small" x="312" y="184">OUVERTURE TRÉMIE</text>
+          <path class="outline" d="M82 430H120V392H158V354H196V316H234V278H272V240H310V202H348V164H386V126" />
+          <path class="walkline" d="M82 430L386 126" />
+          <text class="label" x="62" y="456">SOL BAS</text>
+          <text class="label" x="282" y="112">SOL HAUT</text>
+
+          ${dimension('totalHeight', 420, 126, 420, 430, 438, 278, 'v', 'Hauteur sol à sol : 2800 mm')}
+          ${dimension('lowerRun', 82, 492, 386, 492, 234, 520, 'h', 'Reculement : 1800 mm')}
+          ${dimension('headroom', 292, 126, 292, 278, 252, 202, 'v', 'Échappée : 2000 mm')}
+        </svg>
+      `;
+    }
+
+    function dimension(key, x1, y1, x2, y2, tx, ty, direction, label) {
+      const tick = direction === 'v'
+        ? `M${x1 - 7} ${y1 - 7}L${x1 + 7} ${y1 + 7}M${x2 - 7} ${y2 - 7}L${x2 + 7} ${y2 + 7}`
+        : `M${x1 - 7} ${y1 + 7}L${x1 + 7} ${y1 - 7}M${x2 - 7} ${y2 + 7}L${x2 + 7} ${y2 - 7}`;
+      const ext1 = direction === 'v'
+        ? `<line class="dim-ext" x1="${x1}" y1="${y1}" x2="${x1 - 22}" y2="${y1}" />`
+        : `<line class="dim-ext" x1="${x1}" y1="${y1}" x2="${x1}" y2="${y1 - 22}" />`;
+      const ext2 = direction === 'v'
+        ? `<line class="dim-ext" x1="${x2}" y1="${y2}" x2="${x2 - 22}" y2="${y2}" />`
+        : `<line class="dim-ext" x1="${x2}" y1="${y2}" x2="${x2}" y2="${y2 - 22}" />`;
+      const text = direction === 'v'
+        ? `<text class="dim-text" x="${tx}" y="${ty}" transform="rotate(-90 ${tx} ${ty})">${label}</text>`
+        : `<text class="dim-text" x="${tx}" y="${ty}">${label}</text>`;
+      return `
+        <g class="measure" data-measure="${key}" tabindex="0" role="button">
+          <line class="measure-hit" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />
+          ${ext1}
+          ${ext2}
+          <line class="dim-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />
+          <path class="dim-tick" d="${tick}" />
+          ${text}
+        </g>
+      `;
+    }
+
+    function renderSheet(target) {
+      target.innerHTML = `
+        <div class="sheet-head">
+          <strong>Prise de cotes escalier · 1/4 tournant bas</strong>
+          <span>Données de démonstration · cotes en mm</span>
+        </div>
+        <div class="views">
+          <div class="view">
+            <div class="view-title">Vue en plan</div>
+            ${planSvg()}
+          </div>
+          <div class="view">
+            <div class="view-title">Vue développée</div>
+            ${sideSvg()}
+          </div>
+        </div>
+        <div class="legend" aria-label="Légende technique interactive">
+          <div class="legend-line">
+            <button type="button" data-measure="lowerRun">VB Volée basse</button>
+            <button type="button" data-measure="upperRun">VH Volée haute</button>
+            <button type="button" data-measure="stairWidth">L Largeur escalier</button>
+          </div>
+          <div class="legend-line">
+            <button type="button" data-measure="openingLength">TL Longueur trémie</button>
+            <button type="button" data-measure="openingWidth">TI Largeur trémie</button>
+            <button type="button" data-measure="totalHeight">H Hauteur</button>
+            <button type="button" data-measure="headroom">E Échappée</button>
+          </div>
+        </div>
+      `;
+    }
+
+    document.querySelectorAll('[data-demo-sheet]').forEach(renderSheet);
+
+    function selectMeasure(key) {
+      document.querySelectorAll('[data-measure]').forEach((node) => {
+        node.classList.toggle('is-active', node.dataset.measure === key);
+      });
+      selectedLabel.textContent = demoValues[key] || 'Mesure inconnue';
+      selectedHelp.textContent = 'Prototype uniquement : aucune donnée n’est enregistrée.';
+    }
+
+    document.addEventListener('click', (event) => {
+      const target = event.target.closest('[data-measure]');
+      if (!target) return;
+      selectMeasure(target.dataset.measure);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const target = event.target.closest('[data-measure]');
+      if (!target) return;
+      event.preventDefault();
+      selectMeasure(target.dataset.measure);
+    });
+  </script>
+</body>
+</html>

@@ -20,6 +20,7 @@
   const saveBtn = document.getElementById('saveBtn');
   const saveBtnBottom = document.getElementById('saveBtnBottom');
   const backToListBtn = document.getElementById('backToListBtn');
+  const deleteRecordBtn = document.getElementById('deleteRecordBtn');
   const cards = document.getElementById('cards');
   const saveIndicator = document.getElementById('saveIndicator');
   const photosToggleBtn = document.getElementById('photosToggleBtn');
@@ -4398,6 +4399,14 @@
     });
   }
 
+  function updateRecordDeleteUi() {
+    if (!deleteRecordBtn) return;
+    deleteRecordBtn.disabled = !currentId;
+    deleteRecordBtn.title = currentId
+      ? 'Supprimer definitivement cette fiche'
+      : 'Enregistrez la fiche avant de pouvoir la supprimer';
+  }
+
   async function refreshList() {
     const query = orderLock ? `?client_order_id=${encodeURIComponent(String(orderLock))}` : '';
     const response = await fetch(`/api/measurements/escalier-v2/list${query}`);
@@ -4461,6 +4470,7 @@
 
     if (!getValue('statut')) form.elements.statut.value = 'Brouillon';
     dirty = false;
+    updateRecordDeleteUi();
     showForm();
     setIndicator('saved', 'Brouillon charge');
   }
@@ -4506,6 +4516,7 @@
     measurementsV2State = createMeasurementsV2State(normalizeStairTypeKey(getValue('type_escalier')));
     renderMeasurementsV2();
     dirty = true;
+    updateRecordDeleteUi();
     showForm();
   }
 
@@ -4556,6 +4567,7 @@
       const result = await response.json();
       currentId = normalizeId(result.id) || currentId;
       dirty = false;
+      updateRecordDeleteUi();
       setIndicator('saved', 'Enregistre');
       await refreshPhotoSlots();
       await refreshList();
@@ -4563,6 +4575,39 @@
     } catch {
       setIndicator('error', 'Erreur enregistrement');
       return null;
+    }
+  }
+
+  async function deleteCurrentRecord() {
+    if (!currentId) {
+      setIndicator('error', 'Aucune fiche a supprimer');
+      updateRecordDeleteUi();
+      return;
+    }
+
+    const confirmed = window.confirm('Supprimer définitivement cette prise de cotes ? Cette action est irréversible.');
+    if (!confirmed) return;
+
+    if (deleteRecordBtn) deleteRecordBtn.disabled = true;
+    setIndicator('saving', 'Suppression de la fiche');
+
+    try {
+      const response = await fetch(`/api/measurements/escalier-v2/${currentId}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || 'delete-failed');
+
+      if (sketchModal && !sketchModal.hidden) closeSketchModal();
+      currentId = null;
+      dirty = false;
+      updateRecordDeleteUi();
+      await refreshList();
+      showList();
+      setIndicator('saved', 'Fiche supprimee');
+    } catch (error) {
+      updateRecordDeleteUi();
+      setIndicator('error', error.message && error.message !== 'delete-failed' ? error.message : 'Erreur suppression fiche');
     }
   }
 
@@ -5000,8 +5045,10 @@
   saveBtn.addEventListener('click', saveRecord);
   saveBtnBottom.addEventListener('click', saveRecord);
   backToListBtn.addEventListener('click', switchToListWithAutosave);
+  if (deleteRecordBtn) deleteRecordBtn.addEventListener('click', deleteCurrentRecord);
 
   setTodayIfEmpty();
+  updateRecordDeleteUi();
   setSketchTool('pen');
   setSketchSize(2);
   setSketchBackgroundUi();

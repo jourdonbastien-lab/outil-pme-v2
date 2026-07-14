@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fiche de prises de cotes - Pergola</title>
+  <link rel="stylesheet" href="measurements.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Prises de cotes</p>
+        <h1>Fiche Pergola</h1>
+        <p class="hero-text">Emprise, hauteurs, poteaux, toiture et fixations.</p>
+      </div>
+      <div class="hero-actions">
+        <a class="back-link" href="/outils/prises-cotes">← Retour modules</a>
+        <button id="saveBtn" type="button" class="primary">Enregistrer</button>
+        <button id="closeBtn" type="button">Fermer</button>
+        <button id="loadBtn" type="button">Réouvrir</button>
+        <button id="resetBtn" type="button">Nouvelle fiche</button>
+        <button id="printBtn" type="button">Imprimer</button>
+      </div>
+    </header>
+
+    <main class="sheet-wrap">
+      <form id="measurementForm" class="sheet" autocomplete="on" data-storage-key="outil-pme.pergola.measurements" data-module-label="Pergola">
+        <section class="sheet-header">
+          <div>
+            <p class="sheet-kicker">Module chantier</p>
+            <h2>Pergola</h2>
+            <p class="sheet-intro">Fiche terrain pour pergola adossée, autoportée ou bioclimatique.</p>
+          </div>
+          <div class="save-panel">
+            <label for="recordName">Nom de fiche</label>
+            <input id="recordName" name="recordName" type="text" placeholder="Ex : Bernard - Pergola terrasse" />
+            <p id="saveStatus" class="save-status">Aucune sauvegarde chargée</p>
+            <p id="sheetProgressText" class="sheet-progress">0 champ obligatoire renseigné</p>
+            <div class="sheet-actions">
+              <button id="deleteSheetBtn" type="button" class="danger" disabled>Supprimer la fiche</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-title"><h3>Informations générales</h3><p>Client, chantier et contexte.</p></div>
+          <div class="grid grid-4">
+            <label class="field"><span>Client</span><input name="client" type="text" data-required-field /></label>
+            <label class="field"><span>Chantier</span><input name="chantier" type="text" data-required-field /></label>
+            <label class="field"><span>Date</span><input name="date" type="date" data-required-field /></label>
+            <label class="field"><span>Technicien</span><input name="technicien" type="text" /></label>
+            <label class="field"><span>Adresse</span><input name="adresse" type="text" /></label>
+            <label class="field"><span>Orientation</span><input name="orientation" type="text" placeholder="Sud, ouest..." /></label>
+            <label class="field"><span>Usage</span><input name="usage" type="text" /></label>
+            <label class="field"><span>Type</span><select name="typePergola"><option></option><option>Adossée</option><option>Autoportée</option><option>Bioclimatique</option><option>Couverture fixe</option></select></label>
+          </div>
+        </section>
+
+        <section class="block">
+          <div class="block-title"><h3>Dimensions et emprise</h3><p>Largeur, avancée, hauteurs et équerrage.</p></div>
+          <div class="grid grid-5">
+            <label class="field"><span>Largeur façade (mm)</span><input name="largeurFacade" type="number" min="0" step="1" data-required-field /></label>
+            <label class="field"><span>Avancée (mm)</span><input name="avancee" type="number" min="0" step="1" data-required-field /></label>
+            <label class="field"><span>Hauteur sous poutre (mm)</span><input name="hauteurSousPoutre" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Hauteur totale (mm)</span><input name="hauteurTotale" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Pente (%)</span><input name="pente" type="number" step="0.1" /></label>
+            <label class="field"><span>Diagonale 1 (mm)</span><input name="diagonale1" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Diagonale 2 (mm)</span><input name="diagonale2" type="number" min="0" step="1" /></label>
+            <label class="field"><span>Équerrage</span><input name="equerrage" type="text" /></label>
+          </div>
+        </section>
+
+        <section class="block split-block">
+          <div>
+            <div class="block-title"><h3>Poteaux</h3><p>Positions, sections et fixations.</p></div>
+            <div class="grid grid-2">
+              <label class="field"><span>Nombre de poteaux</span><input name="nombrePoteaux" type="number" min="0" step="1" /></label>
+              <label class="field"><span>Sections prévues</span><input name="sectionsPoteaux" type="text" /></label>
+              <label class="field"><span>Entraxes</span><input name="entraxes" type="text" /></label>
+              <label class="field"><span>Nature du sol</span><input name="natureSol" type="text" /></label>
+            </div>
+            <div class="choice-list">
+              <label class="choice-row"><input name="fixationsPoteaux" type="checkbox" value="Platines" /><span class="choice-box"></span><span class="choice-text">Platines</span></label>
+              <label class="choice-row"><input name="fixationsPoteaux" type="checkbox" value="Scellements" /><span class="choice-box"></span><span class="choice-text">Scellements</span></label>
+              <label class="choice-row"><input name="fixationsPoteaux" type="checkbox" value="Dalle existante" /><span class="choice-box"></span><span class="choice-text">Dalle existante</span></label>
+            </div>
+          </div>
+          <div>
+            <div class="block-title"><h3>Support mural et toiture</h3><p>Mur, couverture et évacuation.</p></div>
+            <div class="grid grid-2">
+              <label class="field"><span>Type de mur</span><input name="typeMur" type="text" /></label>
+              <label class="field"><span>État du mur</span><input name="etatMur" type="text" /></label>
+              <label class="field"><span>Obstacles</span><input name="obstacles" type="text" /></label>
+              <label class="field"><span>Évacuation d’eau</span><input name="evacuationEau" type="text" /></label>
+            </div>
+            <div class="choice-list">
+              <label class="choice-row"><input name="couverture" type="checkbox" value="Bac acier" /><span class="choice-box"></span><span class="choice-text">Bac acier</span></label>
+              <label class="choice-row"><input name="couverture" type="checkbox" value="Polycarbonate" /><span class="choice-box"></span><span class="choice-text">Polycarbonate</span></label>
+              <label class="choice-row"><input name="couverture" type="checkbox" value="Verre" /><span class="choice-box"></span><span class="choice-text">Verre</span></label>
+              <label class="choice-row"><input name="couverture" type="checkbox" value="Lames orientables" /><span class="choice-box"></span><span class="choice-text">Lames orientables</span></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="block media-block">
+          <div>
+            <div class="block-title"><h3>Photos</h3><p>Ajoutez plusieurs vues chantier.</p></div>
+            <label class="upload-box"><span>Prendre ou ajouter des photos</span><input id="photoInput" name="photos" type="file" accept="image/*" capture="environment" multiple /></label>
+            <div id="photoGallery" class="photo-grid"></div>
+          </div>
+          <div>
+            <div class="block-title"><h3>Notes et contraintes</h3><p>Accès, réseaux, nacelle, électricité, stores...</p></div>
+            <textarea name="observations" rows="12" placeholder="Contraintes de pose, accès, hauteur de travail, alimentation électrique..."></textarea>
+          </div>
+        </section>
+      </form>
+    </main>
+  </div>
+  <template id="photoItemTemplate"><figure class="photo-card"><img alt="Photo chantier" /><input class="photo-caption" type="text" placeholder="Légende" /><button type="button" class="photo-remove">Supprimer</button></figure></template>
+  <script src="/sketchpad.js"></script>
+  <script type="module" src="module-sheet.js"></script>
+</body>
+</html>

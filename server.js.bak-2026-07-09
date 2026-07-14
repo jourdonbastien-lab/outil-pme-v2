@@ -11,7 +11,6 @@ const multer = require('multer');
 const nodemailer = require('nodemailer');
 const { readDatabaseConfig } = require('./lib/databaseConfig');
 const { parseEbpQuoteText } = require('./lib/ebpQuoteParser');
-const googleSync = require('./lib/googleCalendarSync');
 const app = express();
 
 function tryRequire(moduleName) {
@@ -26,7 +25,6 @@ const pdfParse = tryRequire('pdf-parse');
 const tesseractJs = tryRequire('tesseract.js');
 const heicConvert = tryRequire('heic-convert');
 const sharp = tryRequire('sharp');
-const BetterSqlite3SessionStoreFactory = tryRequire('better-sqlite3-session-store');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -57,14 +55,9 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const TRUST_PROXY = envBool('TRUST_PROXY', NODE_ENV === 'production');
-const RAW_SESSION_SECRET = String(process.env.SESSION_SECRET || '').trim();
-const SESSION_SECRET = RAW_SESSION_SECRET || 'outil-pme-secret';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'outil-pme-secret';
 const SESSION_COOKIE_SECURE = envBool('SESSION_COOKIE_SECURE', NODE_ENV === 'production');
 const SESSION_COOKIE_SAMESITE = process.env.SESSION_COOKIE_SAMESITE || 'lax';
-const SESSION_MAX_AGE_DAYS = envNumber('SESSION_MAX_AGE_DAYS', 30);
-const SESSION_MAX_AGE_MS = SESSION_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
-const SESSION_STORE_CLEAR_INTERVAL_MINUTES = envNumber('SESSION_STORE_CLEAR_INTERVAL_MINUTES', 15);
-const SESSION_STORE_CLEAR_INTERVAL_MS = SESSION_STORE_CLEAR_INTERVAL_MINUTES * 60 * 1000;
 const MFA_ALLOWED_EMAILS = new Set(
   String(process.env.MFA_ALLOWED_EMAILS || '')
     .split(',')
@@ -89,10 +82,6 @@ const mfaRequestLimits = new Map();
 
 if (TRUST_PROXY) {
   app.set('trust proxy', 1);
-}
-
-if (NODE_ENV === 'production' && !RAW_SESSION_SECRET) {
-  console.warn('SESSION_SECRET absent: utilisation d\'une valeur de repli. Définissez SESSION_SECRET en production.');
 }
 
 app.get('/test', (req, res) => {
@@ -156,15 +145,6 @@ function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
-function formatEuroFr(value) {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(Number(value || 0));
-}
-
 function parseDecimalInput(value, fallback = 0) {
   const normalized = String(value ?? '').trim().replace(/\s+/g, '').replace(',', '.');
   if (!normalized) return fallback;
@@ -174,83 +154,6 @@ function parseDecimalInput(value, fallback = 0) {
 
 function isoDate(d = new Date()) {
   return d.toISOString().slice(0, 10);
-}
-
-const APP_TIME_ZONE = 'Europe/Paris';
-
-function dateKeyInTimeZone(date = new Date(), timeZone = APP_TIME_ZONE) {
-  const parts = new Intl.DateTimeFormat('fr-FR', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(date);
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${byType.year}-${byType.month}-${byType.day}`;
-}
-
-function timeZoneOffsetForGoogleTimeMin(date = new Date(), timeZone = APP_TIME_ZONE) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    timeZoneName: 'shortOffset'
-  }).formatToParts(date);
-  const offsetName = parts.find((part) => part.type === 'timeZoneName')?.value || 'GMT+1';
-  const match = offsetName.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/);
-  if (!match) return '+01:00';
-  const sign = match[1];
-  const hours = String(match[2]).padStart(2, '0');
-  const minutes = String(match[3] || '00').padStart(2, '0');
-  return `${sign}${hours}:${minutes}`;
-}
-
-function parisTodayStartLocal() {
-  return `${dateKeyInTimeZone(new Date(), APP_TIME_ZONE)}T00:00`;
-}
-
-function parisTodayStartGoogleTimeMin() {
-  const today = dateKeyInTimeZone(new Date(), APP_TIME_ZONE);
-  const offset = timeZoneOffsetForGoogleTimeMin(new Date(`${today}T12:00:00Z`), APP_TIME_ZONE);
-  return `${today}T00:00:00${offset}`;
-}
-
-function localAgendaDateKey(value) {
-  const normalized = googleSync.normalizeAgendaDateTime(value, APP_TIME_ZONE);
-  return normalized ? normalized.slice(0, 10) : '';
-}
-
-function eventLastVisibleDateKey(event) {
-  return localAgendaDateKey(event?.end_date) || localAgendaDateKey(event?.start_date);
-}
-
-function purgeExpiredLocalAgendaEvents() {
-  const today = dateKeyInTimeZone(new Date(), APP_TIME_ZONE);
-  const expiredIds = db
-    .prepare('SELECT id, start_date, end_date FROM events')
-    .all()
-    .filter((event) => {
-      const lastVisibleDate = eventLastVisibleDateKey(event);
-      return lastVisibleDate && lastVisibleDate < today;
-    })
-    .map((event) => event.id);
-
-  if (!expiredIds.length) return 0;
-
-  const deleteEvent = db.prepare('DELETE FROM events WHERE id = ?');
-  const deleteExpiredEvents = db.transaction((ids) => {
-    for (const id of ids) deleteEvent.run(id);
-  });
-  deleteExpiredEvents(expiredIds);
-  console.log(`Agenda: ${expiredIds.length} événement(s) passé(s) supprimé(s) localement.`);
-  return expiredIds.length;
-}
-
-function purgeExpiredLocalAgendaEventsSafely() {
-  try {
-    return purgeExpiredLocalAgendaEvents();
-  } catch (err) {
-    console.error('Erreur purge automatique agenda local :', err);
-    return 0;
-  }
 }
 
 function toMinutes(hhmm) {
@@ -263,30 +166,6 @@ function fmtMinutes(mins) {
   const h = Math.floor((mins || 0) / 60);
   const m = (mins || 0) % 60;
   return `${h}h${String(m).padStart(2, '0')}`;
-}
-
-function formatChantierDurationLabel(minutes) {
-  const total = Math.max(0, Number(minutes || 0));
-  const hours = Math.floor(total / 60);
-  const remainingMinutes = total % 60;
-  if (!remainingMinutes) return `${hours} h`;
-  return `${hours} h ${String(remainingMinutes).padStart(2, '0')}`;
-}
-
-function parseChantierHoursDuration(hoursValue, minutesValue) {
-  const hoursRaw = String(hoursValue ?? '').trim();
-  const minutesRaw = String(minutesValue ?? '').trim();
-  if (!/^\d+$/.test(hoursRaw)) return { error: 'Heures invalides' };
-  if (!/^(0|15|30|45)$/.test(minutesRaw)) return { error: 'Minutes invalides' };
-
-  const hours = Number(hoursRaw);
-  const minutes = Number(minutesRaw);
-  const minutesTotal = hours * 60 + minutes;
-
-  if (hours < 0) return { error: 'Heures invalides' };
-  if (minutesTotal <= 0) return { error: 'La durée doit être supérieure à 0 minute' };
-
-  return { hours, minutes, minutesTotal };
 }
 
 // Poids tôle : mm + densité "g/cm3" (acier ~7.85)
@@ -352,10 +231,6 @@ const CLIENT_ORDER_FILES_DIR = resolveStoragePath(
 const QUOTE_PHOTO_DIR = resolveStoragePath(process.env.OUTIL_PME_QUOTE_PHOTO_DIR, path.join(STORAGE_DIR, 'quote_photos'));
 const SKETCHES_DIR = resolveStoragePath(process.env.OUTIL_PME_SKETCHES_DIR, path.join(STORAGE_DIR, 'sketches'));
 const PDF_STORAGE_DIR = resolveStoragePath(process.env.OUTIL_PME_PDF_DIR, path.join(STORAGE_DIR, 'pdf'));
-const ESCALIER_V2_PHOTO_DIR = resolveStoragePath(
-  process.env.OUTIL_PME_ESCALIER_V2_PHOTO_DIR,
-  path.join(STORAGE_DIR, 'measurement_photos', 'escalier-v2')
-);
 const EBP_SCAN_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_SCAN_DIR, path.join(STORAGE_DIR, 'ebp_scans'));
 const EBP_SCAN_TMP_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_SCAN_TMP_DIR, path.join(STORAGE_DIR, 'tmp', 'ebp-scans'));
 const EBP_INCOMING_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_INCOMING_DIR, path.join(STORAGE_DIR, 'incoming-ebp'));
@@ -370,7 +245,6 @@ ensureDir(CLIENT_ORDER_FILES_DIR);
 ensureDir(QUOTE_PHOTO_DIR);
 ensureDir(SKETCHES_DIR);
 ensureDir(PDF_STORAGE_DIR);
-ensureDir(ESCALIER_V2_PHOTO_DIR);
 ensureDir(EBP_SCAN_DIR);
 ensureDir(EBP_SCAN_TMP_DIR);
 ensureDir(EBP_INCOMING_DIR);
@@ -379,22 +253,11 @@ ensureDir(EBP_INCOMING_PROCESSED_DIR);
 const MEASUREMENTS_PUBLIC_DIR = path.join(__dirname, 'modules', 'measurements', 'public');
 const MEASUREMENT_SHEETS = {
   escalier: 'measurements.html',
-  'escalier-v2': 'escalier-v2.html',
   'garde-corps': 'garde-corps.html',
   portail: 'portail.html',
   cloture: 'cloture.html',
-  pergola: 'pergola.html',
-  verriere: 'verriere.html',
-  autres: 'autres.html',
 };
-const MEASUREMENTS_ASSETS = new Set([
-  'measurements.css',
-  'measurements.js',
-  'module-sheet.js',
-  'sketchpad.js',
-  'escalier-v2.css',
-  'escalier-v2.js',
-]);
+const MEASUREMENTS_ASSETS = new Set(['measurements.css', 'measurements.js', 'module-sheet.js', 'sketchpad.js']);
 const CHANTIER_STATUSES = ['À préparer', 'En fabrication', 'En pose', 'En attente', 'Terminé', 'Facturé'];
 const QUOTE_STATUSES = ['Brouillon', 'Envoyé', 'Accepté', 'Refusé', 'Facturé'];
 
@@ -432,30 +295,6 @@ function findClientOrderByFolder(clientFolder, orderFolder) {
     .prepare('SELECT * FROM client_orders ORDER BY id DESC')
     .all()
     .find((row) => safeName(row.name) === safeClientFolder && clientOrderFolderName(row) === safeOrderFolder);
-}
-
-function normalizePurchaseStatus(value) {
-  const status = String(value || '').trim();
-  return ['À commander', 'Commandé', 'Reçu'].includes(status) ? status : 'À commander';
-}
-
-function purchaseStatusOptions(selected) {
-  const current = normalizePurchaseStatus(selected);
-  return ['À commander', 'Commandé', 'Reçu']
-    .map((status) => `<option value="${escHtml(status)}"${status === current ? ' selected' : ''}>${escHtml(status)}</option>`)
-    .join('');
-}
-
-function purchaseStatusClass(status) {
-  const current = normalizePurchaseStatus(status);
-  if (current === 'Reçu') return 'received';
-  if (current === 'Commandé') return 'ordered';
-  return 'todo';
-}
-
-function getPurchaseOrderRedirect(order) {
-  const orderFolderName = clientOrderFolderName(order);
-  return `/pc-folders/${encodeURIComponent(safeName(order.name))}/${encodeURIComponent(orderFolderName)}/Commandes`;
 }
 
 function normalizeSearchText(value) {
@@ -947,24 +786,6 @@ const db = new Database(dbPath);
 
 initializeSqlite(db);
 
-const SqliteSessionStore = BetterSqlite3SessionStoreFactory
-  ? BetterSqlite3SessionStoreFactory(session)
-  : null;
-
-const sessionStore = SqliteSessionStore
-  ? new SqliteSessionStore({
-      client: db,
-      expired: {
-        clear: true,
-        intervalMs: SESSION_STORE_CLEAR_INTERVAL_MS,
-      },
-    })
-  : null;
-
-if (!sessionStore) {
-  console.warn('better-sqlite3-session-store indisponible: express-session utilise le MemoryStore.');
-}
-
 /* ===================== TABLES + MIGRATIONS ===================== */
 
 function initializeSqlite(database) {
@@ -1022,7 +843,6 @@ function createSqliteTables(database) {
       title TEXT,
       start_date TEXT,
       end_date TEXT,
-      google_event_id TEXT NULL,
       created_at TEXT
     )
   `).run();
@@ -1070,24 +890,6 @@ function createSqliteTables(database) {
       minutes_total INTEGER DEFAULT 0,
       note TEXT,
       created_at TEXT
-    )
-  `).run();
-
-  database.prepare(`
-    CREATE TABLE IF NOT EXISTS client_order_purchases (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      client_order_id INTEGER NOT NULL,
-      designation TEXT NOT NULL,
-      category TEXT,
-      qty REAL DEFAULT 1,
-      unit TEXT,
-      reference TEXT,
-      supplier TEXT,
-      needed_date TEXT,
-      note TEXT,
-      status TEXT DEFAULT 'À commander',
-      created_at TEXT,
-      updated_at TEXT
     )
   `).run();
 
@@ -1174,7 +976,6 @@ function runSqliteMigrations(ensureColumn) {
   ensureColumn('clients', 'phone', 'TEXT');
   ensureColumn('clients', 'created_at', 'TEXT');
   ensureColumn('events', 'type', 'TEXT');
-  ensureColumn('events', 'google_event_id', 'TEXT NULL');
   ensureColumn('client_orders', 'planned_hours', 'REAL DEFAULT 0');
   ensureColumn('client_orders', 'done_hours', 'REAL DEFAULT 0');
   ensureColumn('client_orders', 'chantier_status', "TEXT DEFAULT 'À préparer'");
@@ -1183,21 +984,8 @@ function runSqliteMigrations(ensureColumn) {
   ensureColumn('client_orders', 'chantier_progress', 'REAL DEFAULT 0');
   ensureColumn('client_orders', 'chantier_notes', 'TEXT');
   ensureColumn('client_orders', 'status', 'TEXT');
-  ensureColumn('client_orders', 'vat_rate', 'REAL NULL');
   ensureColumn('supplier_orders', 'status', 'TEXT');
   ensureColumn('chantier_hours', 'client_order_id', 'INTEGER NULL');
-  ensureColumn('client_order_purchases', 'client_order_id', 'INTEGER');
-  ensureColumn('client_order_purchases', 'designation', 'TEXT');
-  ensureColumn('client_order_purchases', 'category', 'TEXT');
-  ensureColumn('client_order_purchases', 'qty', 'REAL DEFAULT 1');
-  ensureColumn('client_order_purchases', 'unit', 'TEXT');
-  ensureColumn('client_order_purchases', 'reference', 'TEXT');
-  ensureColumn('client_order_purchases', 'supplier', 'TEXT');
-  ensureColumn('client_order_purchases', 'needed_date', 'TEXT');
-  ensureColumn('client_order_purchases', 'note', 'TEXT');
-  ensureColumn('client_order_purchases', 'status', "TEXT DEFAULT 'À commander'");
-  ensureColumn('client_order_purchases', 'created_at', 'TEXT');
-  ensureColumn('client_order_purchases', 'updated_at', 'TEXT');
   ensureColumn('tasks', 'status', 'TEXT');
   ensureColumn('tasks', 'to_invoice', 'INTEGER DEFAULT 0');
   ensureColumn('quotes', 'title', 'TEXT');
@@ -1385,76 +1173,6 @@ const quotePhotoStorage = multer.diskStorage({
 const quotePhotoUpload =
   multer({ storage: quotePhotoStorage });
 
-const ESCALIER_V2_PHOTO_ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif']);
-const ESCALIER_V2_PHOTO_ALLOWED_MIME = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-  'image/heif',
-]);
-const ESCALIER_V2_PHOTO_EXT_BY_MIME = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/heic': '.heic',
-  'image/heif': '.heif',
-};
-
-const escalierV2PhotoStorage = multer.diskStorage({
-  destination(req, file, cb) {
-    try {
-      const measurementId = parseOptionalId(req.params.id);
-      if (!measurementId) return cb(new Error('ID fiche invalide'));
-      const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(measurementId, 'Escalier V2');
-      if (!row) return cb(new Error('Fiche Escalier V2 introuvable'));
-
-      const clientOrderId = parseOptionalId(row.client_order_id);
-      let dir = safeResolveInside(ESCALIER_V2_PHOTO_DIR, String(measurementId));
-
-      if (clientOrderId) {
-        const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(clientOrderId);
-        if (order) {
-          dir = safeResolveInside(
-            CLIENT_PC_DIR,
-            safeName(order.name),
-            clientOrderFolderName(order),
-            'Photos',
-            'prises-cotes-escalier-v2',
-            String(measurementId)
-          );
-        }
-      }
-
-      ensureDir(dir);
-      req.escalierV2PhotoDir = dir;
-      cb(null, dir);
-    } catch (error) {
-      cb(error);
-    }
-  },
-
-  filename(req, file, cb) {
-    const extFromName = path.extname(String(file.originalname || '')).toLowerCase();
-    const ext = ESCALIER_V2_PHOTO_ALLOWED_EXT.has(extFromName)
-      ? extFromName
-      : (ESCALIER_V2_PHOTO_EXT_BY_MIME[String(file.mimetype || '').toLowerCase()] || '.jpg');
-    const base = safeSegment(path.basename(String(file.originalname || 'photo'), extFromName) || 'photo');
-    cb(null, `${Date.now()}-${base}${ext}`);
-  }
-});
-
-const escalierV2PhotoUpload = multer({
-  storage: escalierV2PhotoStorage,
-  limits: { fileSize: 15 * 1024 * 1024, files: 30 },
-  fileFilter(req, file, cb) {
-    const ext = path.extname(String(file.originalname || '')).toLowerCase();
-    const mime = String(file.mimetype || '').toLowerCase();
-    if (ESCALIER_V2_PHOTO_ALLOWED_EXT.has(ext) || ESCALIER_V2_PHOTO_ALLOWED_MIME.has(mime)) return cb(null, true);
-    cb(new Error('Format photo non supporte. Utilisez JPG, PNG, WEBP ou HEIC.'));
-  }
-});
-
 const EBP_SCAN_ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif', '.pdf']);
 const EBP_SCAN_ALLOWED_MIME = new Set([
   'image/jpeg',
@@ -1500,13 +1218,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
   name: 'outil-pme.sid',
   secret: SESSION_SECRET,
-  store: sessionStore || undefined,
-  proxy: TRUST_PROXY,
   resave: false,
   saveUninitialized: false,
-  rolling: true,
   cookie: {
-    maxAge: SESSION_MAX_AGE_MS,
     secure: SESSION_COOKIE_SECURE,
     httpOnly: true,
     sameSite: SESSION_COOKIE_SAMESITE
@@ -1654,7 +1368,7 @@ function renderAuthPage({ title, body }) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escHtml(title)} - A2 METAL</title>
-  <link rel="stylesheet" href="/style.css?v=20260711-2" />
+  <link rel="stylesheet" href="/style.css" />
 </head>
 <body class="login-body">
   <div class="login-wrapper">
@@ -1747,9 +1461,8 @@ function chantierProgress(doneHours, plannedHours) {
   return Math.max(0, Math.min(100, Math.round((done / planned) * 100)));
 }
 
-function getProgressFromChantierStatus(status) {
+function clientOrderStageProgress(status) {
   const normalized = normalizeChantierStatus(status);
-  if (normalized === 'En pose') return 75;
   if (normalized === 'En fabrication') return 50;
   if (normalized === 'Facturé' || normalized === 'Terminé') return 100;
   return 0;
@@ -1790,21 +1503,6 @@ function quoteStatusClass(status) {
 function normalizeVatRate(value) {
   const rate = Number(value);
   return rate === 10 || rate === 20 ? rate : 20;
-}
-
-function parseOptionalVatRate(value) {
-  const rate = Number(value);
-  return rate === 10 || rate === 20 ? rate : null;
-}
-
-function inferVatRateFromHtTtc(amountHt, amountTtc) {
-  const ht = Number(amountHt || 0);
-  const ttc = Number(amountTtc || 0);
-  if (!Number.isFinite(ht) || !Number.isFinite(ttc) || ht <= 0 || ttc <= 0) return null;
-  const rate = ((ttc / ht) - 1) * 100;
-  if (Math.abs(rate - 10) <= 0.25) return 10;
-  if (Math.abs(rate - 20) <= 0.25) return 20;
-  return null;
 }
 
 function quoteVatOptions(selected) {
@@ -1870,124 +1568,6 @@ function renderMeasurementCards(rows) {
       `).join('')}
     </div>
   `;
-}
-
-function parseMeasurementData(data) {
-  try {
-    const parsed = JSON.parse(String(data || '{}'));
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-const ESCALIER_V2_PHOTO_CATEGORIES = [
-  'Vue generale',
-  'Depart',
-  'Arrivee',
-  'Tremie',
-  'Dessous',
-  'Mur gauche',
-  'Mur droit',
-  'Details',
-  'Autres',
-];
-
-function normalizeEscalierV2Category(value) {
-  const raw = String(value || '').trim();
-  return ESCALIER_V2_PHOTO_CATEGORIES.includes(raw) ? raw : 'Autres';
-}
-
-function normalizeEscalierV2PhotoSlots(value) {
-  const map = new Map();
-  ESCALIER_V2_PHOTO_CATEGORIES.forEach((category) => map.set(category, []));
-
-  if (!Array.isArray(value)) {
-    return ESCALIER_V2_PHOTO_CATEGORIES.map((category) => ({ category, photos: [] }));
-  }
-
-  value.forEach((slot) => {
-    const category = normalizeEscalierV2Category(slot?.category);
-    const photos = Array.isArray(slot?.photos) ? slot.photos : [];
-    photos.forEach((photo) => {
-      const photoId = String(photo?.id || '').trim();
-      const fileName = path.basename(String(photo?.fileName || '').trim());
-      if (!photoId || !fileName) return;
-      map.get(category).push({
-        id: photoId,
-        fileName,
-        caption: String(photo?.caption || '').trim(),
-        size: Number(photo?.size || 0),
-        mimeType: String(photo?.mimeType || '').trim(),
-        createdAt: String(photo?.createdAt || '').trim() || null,
-      });
-    });
-  });
-
-  return ESCALIER_V2_PHOTO_CATEGORIES.map((category) => ({
-    category,
-    photos: map.get(category),
-  }));
-}
-
-function measurementEscalierV2PhotoBaseDir(row) {
-  const clientOrderId = parseOptionalId(row?.client_order_id);
-  if (!clientOrderId) {
-    return safeResolveInside(ESCALIER_V2_PHOTO_DIR, String(row.id));
-  }
-
-  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(clientOrderId);
-  if (!order) {
-    return safeResolveInside(ESCALIER_V2_PHOTO_DIR, String(row.id));
-  }
-
-  return safeResolveInside(
-    CLIENT_PC_DIR,
-    safeName(order.name),
-    clientOrderFolderName(order),
-    'Photos',
-    'prises-cotes-escalier-v2',
-    String(row.id)
-  );
-}
-
-function buildEscalierV2PhotoPublicSlots(measurementId, slots) {
-  return normalizeEscalierV2PhotoSlots(slots).map((slot) => ({
-    category: slot.category,
-    count: slot.photos.length,
-    photos: slot.photos.map((photo) => ({
-      id: photo.id,
-      fileName: photo.fileName,
-      caption: photo.caption || '',
-      size: photo.size || 0,
-      mimeType: photo.mimeType || '',
-      createdAt: photo.createdAt || null,
-      url: `/api/measurements/escalier-v2/${measurementId}/photos/${encodeURIComponent(photo.id)}/file`,
-    })),
-  }));
-}
-
-function updateEscalierV2PhotoSlots(measurementId, updater) {
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(measurementId, 'Escalier V2');
-  if (!row) return null;
-
-  const payload = parseMeasurementData(row.data);
-  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-  const slots = normalizeEscalierV2PhotoSlots(fields.photo_slots);
-  const nextSlots = normalizeEscalierV2PhotoSlots(updater(slots) || slots);
-
-  payload.fields = {
-    ...fields,
-    photo_slots: nextSlots,
-  };
-
-  db.prepare('UPDATE measurements SET data = ?, updated_at = ? WHERE id = ?')
-    .run(JSON.stringify(payload), new Date().toISOString(), measurementId);
-
-  return {
-    row,
-    slots: nextSlots,
-  };
 }
 
 function sketchPath(scope, id) {
@@ -2138,138 +1718,11 @@ app.use((req, res, next) => {
 
 /* ===================== GOOGLE (optionnel) ===================== */
 
-const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
-const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
-const GOOGLE_REDIRECT_URI = String(process.env.GOOGLE_REDIRECT_URI || '').trim();
-const GOOGLE_CALENDAR_ID = String(process.env.GOOGLE_CALENDAR_ID || '').trim();
-const GOOGLE_CALENDAR_TIME_ZONE = process.env.GOOGLE_CALENDAR_TIME_ZONE || 'Europe/Paris';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://desktop-stqqsqi.tail3d293a.ts.net:3000/google/callback';
 
 const oauth2Client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
-let googleSyncLocked = false;
-
-function ensureGoogleCalendarConfig(res) {
-  if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_REDIRECT_URI && GOOGLE_CALENDAR_ID && GOOGLE_CALENDAR_ID !== 'primary') {
-    return true;
-  }
-
-  res.status(500).send(`
-    <h2>Configuration Google Agenda manquante</h2>
-    <p>Renseignez GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI et GOOGLE_CALENDAR_ID dans le fichier .env.</p>
-    <p>GOOGLE_CALENDAR_ID doit designer l'agenda secondaire A2 Metal, jamais primary.</p>
-    <a href="/agenda">Retour a l'agenda</a>
-  `);
-  return false;
-}
-
-async function listGoogleCalendarEvents(calendar, calendarId, timeMin) {
-  const items = [];
-  let pageToken;
-  do {
-    const result = await calendar.events.list({
-      calendarId,
-      singleEvents: true,
-      timeMin,
-      maxResults: 2500,
-      pageToken
-    });
-    items.push(...(result.data.items || []));
-    pageToken = result.data.nextPageToken;
-  } while (pageToken);
-  return items;
-}
-
-function googleSyncOptions() {
-  return { timeZone: GOOGLE_CALENDAR_TIME_ZONE };
-}
-
-function getLocalSyncMin() {
-  return parisTodayStartLocal();
-}
-
-function getGoogleSyncTimeMin() {
-  return parisTodayStartGoogleTimeMin();
-}
-
-function getLocalSyncEvents(syncMin) {
-  return db.prepare(`
-    SELECT *
-    FROM events
-    WHERE start_date IS NOT NULL
-      AND COALESCE(NULLIF(end_date, ''), start_date) >= ?
-    ORDER BY start_date ASC, id ASC
-  `).all(syncMin);
-}
-
-async function getGoogleCalendarTarget(calendar) {
-  if (GOOGLE_CALENDAR_ID === 'primary') {
-    throw new Error('GOOGLE_CALENDAR_ID ne doit jamais valoir primary pour A2 Metal.');
-  }
-
-  const result = await calendar.calendarList.get({ calendarId: GOOGLE_CALENDAR_ID });
-  return {
-    id: result.data.id || GOOGLE_CALENDAR_ID,
-    summary: result.data.summary || GOOGLE_CALENDAR_ID,
-    timeZone: result.data.timeZone || GOOGLE_CALENDAR_TIME_ZONE
-  };
-}
-
-function renderErrorList(errors) {
-  if (!errors.length) return '<li>Aucune</li>';
-  return errors.map((error) => `<li>${escHtml(error.message || String(error))}</li>`).join('');
-}
-
-function syncReportCounts(actions) {
-  return {
-    link: actions.link.length,
-    importLocal: actions.importLocal.length,
-    createGoogle: actions.createGoogle.length,
-    updateLocal: actions.updateLocal.length,
-    updateGoogle: actions.updateGoogle.length,
-    ambiguous: actions.ambiguous.length,
-    errors: actions.errors.length,
-    googleDuplicates: actions.googleDuplicates.length
-  };
-}
-
-function renderGoogleSyncSummary(req, report, options = {}) {
-  const actions = report.preview.actions;
-  const counts = syncReportCounts(actions);
-  const added = counts.importLocal + counts.createGoogle;
-  const updated = counts.link + counts.updateLocal + counts.updateGoogle;
-  const ignored = counts.ambiguous + counts.googleDuplicates;
-  const errors = counts.errors;
-
-  const content = `
-    <div class="page-head app-dark-page-head">
-      <div>
-        <h1>Synchronisation Google Calendar</h1>
-        <span>Agenda cible : ${escHtml(report.calendar.summary)} (${escHtml(report.calendar.id)})</span>
-      </div>
-    </div>
-
-    <section class="panel-soft">
-      <h2>Résumé</h2>
-      ${options.message ? `<p>${escHtml(options.message)}</p>` : ''}
-      <div class="dashboard-grid">
-        <div class="stat-card"><strong>${added}</strong><span>Événements ajoutés</span></div>
-        <div class="stat-card"><strong>${updated}</strong><span>Événements mis à jour</span></div>
-        <div class="stat-card"><strong>${ignored}</strong><span>Événements ignorés</span></div>
-        <div class="stat-card"><strong>${errors}</strong><span>Erreurs</span></div>
-      </div>
-    </section>
-
-    ${actions.errors.length ? `
-      <section class="panel-soft">
-        <h2>Erreurs</h2>
-        <ul>${renderErrorList(actions.errors)}</ul>
-      </section>
-    ` : ''}
-
-    <div class="nav-actions"><a class="btn btn-secondary" href="/agenda">Retour à l'agenda</a></div>
-  `;
-
-  return pageTemplate(req, 'Synchronisation Google', content);
-}
 
 /* ===================== TEMPLATES ===================== */
 
@@ -2343,7 +1796,6 @@ function clientPageIcon(name, className = 'clients-ui-icon') {
     barreaudage: '<path d="M5 4v16M19 4v16"/><path d="M8 7v10M11 7v10M14 7v10M17 7v10"/><path d="M4 7h16M4 17h16"/>',
     supplierOrders: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><path d="M6.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
     folder: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>',
-    edit: '<path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="m14 7 3 3"/>',
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   };
   const svg = icons[name] || icons.user;
@@ -2456,7 +1908,7 @@ function pageTemplate(req, title, content) {
 
 <title>${escHtml(title)}</title>
 
-<link rel="stylesheet" href="/style.css?v=20260711-2">
+<link rel="stylesheet" href="/style.css">
 <link rel="apple-touch-icon" href="/logo-192.png">
 <link rel="icon" type="image/png" href="/logo-192.png">
 <link rel="manifest" href="/manifest.json">
@@ -3038,10 +2490,8 @@ app.get('/dashboard/prototype', requireLogin, (req, res) => {
 });
 
 function renderDashboardPrototype(req, res) {
-  purgeExpiredLocalAgendaEventsSafely();
-  const todayIso = dateKeyInTimeZone(new Date(), APP_TIME_ZONE);
+  const todayIso = isoDate();
   const todayLabel = new Date().toLocaleDateString('fr-FR', {
-    timeZone: APP_TIME_ZONE,
     weekday: 'long',
     day: '2-digit',
     month: 'long',
@@ -3122,46 +2572,7 @@ function renderDashboardPrototype(req, res) {
           ELSE co.date
         END ASC,
         co.id DESC
-      LIMIT 12
-    `)
-    .all();
-
-  const activeSupplierOrders = db
-    .prepare(`
-      SELECT id, name, description, date, status
-      FROM supplier_orders
-      WHERE status IS NULL OR TRIM(status) = '' OR status != 'Terminée'
-      ORDER BY date DESC, id DESC
-      LIMIT 12
-    `)
-    .all();
-
-  const pendingPurchases = db
-    .prepare(`
-      SELECT
-        p.id,
-        p.designation,
-        p.category,
-        p.qty,
-        p.unit,
-        p.reference,
-        p.supplier,
-        p.needed_date,
-        p.status,
-        co.id AS order_id,
-        co.name AS client_name,
-        co.description AS order_description
-      FROM client_order_purchases p
-      JOIN client_orders co ON co.id = p.client_order_id
-      WHERE COALESCE(NULLIF(TRIM(p.status), ''), 'À commander') != 'Reçu'
-      ORDER BY
-        CASE COALESCE(NULLIF(TRIM(p.status), ''), 'À commander')
-          WHEN 'À commander' THEN 0
-          WHEN 'Commandé' THEN 1
-          ELSE 2
-        END,
-        p.id DESC
-      LIMIT 12
+      LIMIT 3
     `)
     .all();
 
@@ -3270,12 +2681,20 @@ function renderDashboardPrototype(req, res) {
           const done = hasTrackedHours
             ? Number(order.done_hours_calc || 0)
             : Number(order.done_hours || 0);
-          const progress = getProgressFromChantierStatus(order.chantier_status);
+          const progress = hasTrackedHours
+            ? (planned > 0
+                ? Math.max(0, Math.min(100, Math.round((done / planned) * 100)))
+                : (Number.isFinite(Number(order.chantier_progress))
+                    ? Math.max(0, Math.min(100, Math.round(Number(order.chantier_progress))))
+                    : chantierProgress(done, planned)))
+            : (Number.isFinite(Number(order.chantier_progress))
+                ? Math.max(0, Math.min(100, Math.round(Number(order.chantier_progress))))
+                : chantierProgress(done, planned));
           const gap = done - planned;
           const endDate = String(order.chantier_end_date || '').slice(0, 10);
           const isLate = endDate && endDate < todayIso;
           return `
-        <article class="prototype-order-card prototype-carousel-slide">
+        <article class="prototype-order-card">
           <header>
             <span class="prototype-order-icon">${orderIconFor(order)}</span>
             <div>
@@ -3301,83 +2720,6 @@ function renderDashboardPrototype(req, res) {
         .join('')
     : '<p class="prototype-empty">Aucune commande / chantier actif</p>';
 
-  const supplierDashboardItems = [
-    ...pendingPurchases.map((item) => ({
-      key: `purchase-${item.id}`,
-      source: 'Achat chantier',
-      bucket: normalizePurchaseStatus(item.status) === 'À commander' ? 0 : 1,
-      title: item.designation || 'Article',
-      subtitle: `${item.client_name || 'Client'} · ${item.order_description || `Commande #${item.order_id}`}`,
-      meta: [
-        item.category || '',
-        item.reference ? `Réf. ${item.reference}` : '',
-        item.supplier || 'Fournisseur non renseigné',
-        item.needed_date ? `Besoin ${formatDateShort(item.needed_date)}` : '',
-      ].filter(Boolean).join(' · '),
-      status: normalizePurchaseStatus(item.status),
-      href: `/pc-folders/${encodeURIComponent(safeName(item.client_name))}/${encodeURIComponent(clientOrderFolderName({
-        id: item.order_id,
-        description: item.order_description,
-      }))}/Commandes`,
-    })),
-    ...activeSupplierOrders.map((order) => {
-      const status = String(order.status || 'En cours').trim() || 'En cours';
-      return {
-        key: `supplier-${order.id}`,
-        source: 'Commande fournisseur',
-        bucket: status === 'Terminée' ? 2 : 1,
-        title: order.name || 'Commande fournisseur',
-        subtitle: order.description || 'Aucune désignation',
-        meta: `Date ${formatDateShort(order.date)}`,
-        status,
-        href: `/orders/suppliers#supplier-${order.id}`,
-      };
-    }),
-  ]
-    .sort((a, b) => a.bucket - b.bucket || String(a.title).localeCompare(String(b.title), 'fr'))
-    .slice(0, 12);
-
-  const supplierOrdersHtml = supplierDashboardItems.length
-    ? supplierDashboardItems
-        .map((item) => `
-          <article class="prototype-supplier-order-card prototype-carousel-slide" id="dashboard-${escHtml(item.key)}">
-            <header>
-              <span class="prototype-order-icon">${kpiIcon('suppliers')}</span>
-              <div>
-                <em class="prototype-source-badge">${escHtml(item.source)}</em>
-                <strong>${escHtml(item.title)}</strong>
-                <small>${escHtml(item.subtitle)}</small>
-              </div>
-              <span class="prototype-status">${escHtml(item.status)}</span>
-            </header>
-            <div class="prototype-supplier-order-meta">
-              <span>${escHtml(item.meta || 'Informations non renseignées')}</span>
-            </div>
-            <a class="prototype-open-button" href="${item.href}">Ouvrir</a>
-          </article>
-        `)
-        .join('')
-    : '<p class="prototype-empty">Aucune commande fournisseur ou achat actif.</p>';
-
-  const renderDashboardCarousel = ({ title, href, linkLabel, itemsHtml, count, kind }) => `
-    <div class="prototype-carousel" data-dashboard-carousel data-carousel-count="${count}">
-      <div class="prototype-carousel-head">
-        <div class="prototype-panel-head">
-          <h2>${escHtml(title)}</h2>
-          <a href="${href}">${escHtml(linkLabel)}</a>
-        </div>
-        <div class="prototype-carousel-controls" aria-label="Navigation ${escHtml(title)}">
-          <button type="button" data-carousel-prev aria-label="Précédent">‹</button>
-          <span data-carousel-counter>0 / ${count}</span>
-          <button type="button" data-carousel-next aria-label="Suivant">›</button>
-        </div>
-      </div>
-      <div class="prototype-carousel-track prototype-carousel-${kind}" data-carousel-track>
-        ${itemsHtml}
-      </div>
-    </div>
-  `;
-
   res.send(
     dashboardTemplate(
       req,
@@ -3395,29 +2737,15 @@ function renderDashboardPrototype(req, res) {
         </section>
 
         <section class="prototype-main-layout">
-          <div class="prototype-carousel-stack">
-            <article class="prototype-panel prototype-orders-panel">
-              ${renderDashboardCarousel({
-                title: 'Commandes clients',
-                href: '/orders/clients',
-                linkLabel: 'Voir toutes les commandes',
-                itemsHtml: orderChantiersHtml,
-                count: orderChantiers.length,
-                kind: 'clients',
-              })}
-            </article>
-
-            <article class="prototype-panel prototype-supplier-orders-panel">
-              ${renderDashboardCarousel({
-                title: 'Commandes fournisseurs et achats',
-                href: '/orders/suppliers',
-                linkLabel: 'Voir toutes les commandes',
-                itemsHtml: supplierOrdersHtml,
-                count: supplierDashboardItems.length,
-                kind: 'suppliers',
-              })}
-            </article>
-          </div>
+          <article class="prototype-panel prototype-orders-panel">
+            <div class="prototype-panel-head">
+              <h2>Commandes / chantiers actifs</h2>
+              <a href="/orders/clients">Voir tout ›</a>
+            </div>
+            <div class="prototype-orders-grid">
+              ${orderChantiersHtml}
+            </div>
+          </article>
 
           <aside class="prototype-side-stack">
             <article class="prototype-panel prototype-appointments-panel">
@@ -3463,57 +2791,6 @@ function renderDashboardPrototype(req, res) {
         </section>
       </div>
       <script>
-        (function(){
-          document.querySelectorAll('[data-dashboard-carousel]').forEach(function(carousel){
-            var track = carousel.querySelector('[data-carousel-track]');
-            var prev = carousel.querySelector('[data-carousel-prev]');
-            var next = carousel.querySelector('[data-carousel-next]');
-            var counter = carousel.querySelector('[data-carousel-counter]');
-            if (!track) return;
-            var slides = Array.prototype.slice.call(track.querySelectorAll('.prototype-carousel-slide'));
-            var total = slides.length;
-            if (!total) {
-              if (prev) prev.hidden = true;
-              if (next) next.hidden = true;
-              if (counter) counter.textContent = '0 / 0';
-              return;
-            }
-            if (total <= 1) carousel.classList.add('is-single');
-
-            function currentIndex(){
-              var left = track.scrollLeft;
-              var best = 0;
-              var bestDistance = Infinity;
-              slides.forEach(function(slide, index){
-                var distance = Math.abs(slide.offsetLeft - left);
-                if (distance < bestDistance) {
-                  bestDistance = distance;
-                  best = index;
-                }
-              });
-              return best;
-            }
-
-            function update(){
-              var index = currentIndex();
-              if (counter) counter.textContent = (index + 1) + ' / ' + total;
-              if (prev) prev.disabled = index <= 0;
-              if (next) next.disabled = index >= total - 1;
-            }
-
-            function scrollToIndex(index){
-              var target = slides[Math.max(0, Math.min(total - 1, index))];
-              if (target) track.scrollTo({ left: target.offsetLeft, behavior: 'smooth' });
-            }
-
-            if (prev) prev.addEventListener('click', function(){ scrollToIndex(currentIndex() - 1); });
-            if (next) next.addEventListener('click', function(){ scrollToIndex(currentIndex() + 1); });
-            track.addEventListener('scroll', function(){ window.requestAnimationFrame(update); }, { passive: true });
-            window.addEventListener('resize', update);
-            update();
-          });
-        })();
-
         (function(){
           const card = document.querySelector('[data-weather-card]');
           if (!card) return;
@@ -3654,9 +2931,9 @@ app.get('/tasks', requireLogin, (req, res) => {
             ${
               status !== 'Terminée'
                 ? `
-                <form method="POST" action="/tasks/done" class="modern-task-done-form">
+                <form method="POST" action="/tasks/done">
                   <input type="hidden" name="id" value="${t.id}" />
-                  <button class="modern-secondary-btn modern-task-done-btn" type="submit">✓ Terminer</button>
+                  <button class="modern-secondary-btn" type="submit">Terminer</button>
                 </form>
                 `
                 : `
@@ -3765,10 +3042,8 @@ app.post('/tasks/to-invoice', requireLogin, (req, res) => {
 });
 /* ===================== AGENDA ===================== */
 app.get('/agenda', requireLogin, (req, res) => {
-  purgeExpiredLocalAgendaEventsSafely();
   const requestedView = String(req.query.view || 'week').trim().toLowerCase();
   const agendaView = ['day', 'week', 'month'].includes(requestedView) ? requestedView : 'week';
-  const requestedMonth = String(req.query.month || '').trim();
 
   const events = db.prepare(`
     SELECT *
@@ -3777,8 +3052,8 @@ app.get('/agenda', requireLogin, (req, res) => {
   `).all();
 
   const now = new Date();
-  const todayParts = dateKeyInTimeZone(now, APP_TIME_ZONE).split('-').map(Number);
-  const todayStart = new Date(todayParts[0], todayParts[1] - 1, todayParts[2]);
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
 
   const tomorrow = new Date(todayStart);
   tomorrow.setDate(todayStart.getDate() + 1);
@@ -3791,15 +3066,6 @@ app.get('/agenda', requireLogin, (req, res) => {
 
   const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
   const nextMonth = new Date(todayStart.getFullYear(), todayStart.getMonth() + 1, 1);
-  const selectedMonthStart = /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)
-    ? new Date(Number(requestedMonth.slice(0, 4)), Number(requestedMonth.slice(5, 7)) - 1, 1)
-    : new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
-  if (Number.isNaN(selectedMonthStart.getTime())) {
-    selectedMonthStart.setFullYear(todayStart.getFullYear(), todayStart.getMonth(), 1);
-  }
-  selectedMonthStart.setHours(0, 0, 0, 0);
-  const selectedNextMonth = new Date(selectedMonthStart.getFullYear(), selectedMonthStart.getMonth() + 1, 1);
-  const selectedMonthKey = `${selectedMonthStart.getFullYear()}-${String(selectedMonthStart.getMonth() + 1).padStart(2, '0')}`;
 
   function eventDate(event) {
     const date = new Date(event.start_date);
@@ -3809,42 +3075,6 @@ app.get('/agenda', requireLogin, (req, res) => {
   function inRange(event, start, end) {
     const date = eventDate(event);
     return date && date >= start && date < end;
-  }
-
-  function localDateTime(value) {
-    const normalized = googleSync.normalizeAgendaDateTime(value, APP_TIME_ZONE);
-    if (!normalized) return null;
-    const date = new Date(`${normalized}:00`);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  function eventEndDate(event) {
-    const start = localDateTime(event.start_date);
-    if (!start) return null;
-    const end = localDateTime(event.end_date);
-    if (end && end >= start) return end;
-    const fallback = new Date(start);
-    fallback.setHours(fallback.getHours() + 1);
-    return fallback;
-  }
-
-  function isAllDayAgendaEvent(event) {
-    const startRaw = String(event?.start_date || '').trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(startRaw)) return true;
-    const start = googleSync.normalizeAgendaDateTime(event?.start_date, APP_TIME_ZONE);
-    const end = googleSync.normalizeAgendaDateTime(event?.end_date, APP_TIME_ZONE);
-    return Boolean(start && end && start.slice(11, 16) === '00:00' && end.slice(11, 16) === '23:59');
-  }
-
-  function eventOverlapsDay(event, dayStart, dayEnd) {
-    const start = localDateTime(event.start_date);
-    const end = eventEndDate(event);
-    return Boolean(start && end && start < dayEnd && end > dayStart);
-  }
-
-  function monthHref(monthDate) {
-    const key = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
-    return `/agenda?view=month&month=${key}`;
   }
 
   function formatAgendaDate(date) {
@@ -3880,30 +3110,6 @@ app.get('/agenda', requireLogin, (req, res) => {
     `;
   }
 
-  function renderMonthAgendaEvent(event, dayStart) {
-    const startDate = localDateTime(event.start_date);
-    const endDate = eventEndDate(event);
-    const isMultiDay = startDate && endDate && startDate.toDateString() !== endDate.toDateString();
-    const showTime = startDate && startDate.toDateString() === dayStart.toDateString();
-    const start = showTime && !isAllDayAgendaEvent(event)
-      ? startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-      : '';
-    return `
-      <button
-        type="button"
-        class="planning-event planning-month-event ${escHtml(event.type || 'rdv')}"
-        data-event-id="${event.id}"
-        data-event-title="${escHtml(event.title || '')}"
-        data-event-type="${escHtml(event.type || 'rdv')}"
-        data-event-start="${escHtml(event.start_date || '')}"
-        data-event-end="${escHtml(event.end_date || '')}"
-      >
-        ${start ? `<span class="planning-event-time">${escHtml(start)}</span>` : ''}
-        <span class="planning-event-title">${isMultiDay ? '↔ ' : ''}${escHtml(event.title || 'Événement')}</span>
-      </button>
-    `;
-  }
-
   function renderEventsList(list) {
     const sorted = list.slice().sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
     return sorted.length
@@ -3912,7 +3118,6 @@ app.get('/agenda', requireLogin, (req, res) => {
   }
 
   const dayLabels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-  const workDayLabels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
   function renderDayView() {
     const dayEvents = events.filter((event) => inRange(event, todayStart, tomorrow));
@@ -3946,68 +3151,25 @@ app.get('/agenda', requireLogin, (req, res) => {
   }
 
   function renderMonthView() {
-    const gridStart = new Date(selectedMonthStart);
-    gridStart.setDate(selectedMonthStart.getDate() - ((selectedMonthStart.getDay() + 6) % 7));
-    const gridEnd = new Date(selectedNextMonth);
-    gridEnd.setDate(selectedNextMonth.getDate() - 1);
-    const endWeekdayOffset = (gridEnd.getDay() + 6) % 7;
-    gridEnd.setDate(gridEnd.getDate() + (4 - Math.min(endWeekdayOffset, 4)));
+    const days = [];
+    for (let date = new Date(monthStart); date < nextMonth; date.setDate(date.getDate() + 1)) {
+      const dayStart = new Date(date);
+      const dayEnd = new Date(date);
+      dayEnd.setDate(date.getDate() + 1);
+      const dayEvents = events.filter((event) => inRange(event, dayStart, dayEnd));
 
-    const previousMonth = new Date(selectedMonthStart.getFullYear(), selectedMonthStart.getMonth() - 1, 1);
-    const followingMonth = new Date(selectedMonthStart.getFullYear(), selectedMonthStart.getMonth() + 1, 1);
-    const monthTitle = selectedMonthStart.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-
-    const weeks = [];
-    for (let weekStart = new Date(gridStart); weekStart <= gridEnd; weekStart.setDate(weekStart.getDate() + 7)) {
-      const days = [];
-      for (let index = 0; index < 5; index += 1) {
-        const dayStart = new Date(weekStart);
-        dayStart.setDate(weekStart.getDate() + index);
-        const dayEnd = new Date(dayStart);
-        dayEnd.setDate(dayStart.getDate() + 1);
-        const dayEvents = events
-          .filter((event) => eventOverlapsDay(event, dayStart, dayEnd))
-          .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
-        const visibleEvents = dayEvents.slice(0, 3);
-        const hiddenCount = dayEvents.length - visibleEvents.length;
-        const isOutsideMonth = dayStart < selectedMonthStart || dayStart >= selectedNextMonth;
-        const isToday = dayStart.toDateString() === todayStart.toDateString();
-
-        days.push(`
-          <div class="planning-month-workday${isToday ? ' today' : ''}${isOutsideMonth ? ' outside-month' : ''}">
-            <div class="planning-month-header">
-              <strong>${dayStart.toLocaleDateString('fr-FR', { day: '2-digit' })}</strong>
-              <span>${dayStart.toLocaleDateString('fr-FR', { month: 'short' })}</span>
-            </div>
-            <div class="planning-events planning-month-events">
-              ${visibleEvents.map((event) => renderMonthAgendaEvent(event, dayStart)).join('')}
-              ${hiddenCount > 0 ? `<div class="planning-month-more">+${hiddenCount} autre${hiddenCount > 1 ? 's' : ''}</div>` : ''}
-            </div>
+      days.push(`
+        <div class="planning-month-day${dayStart.toDateString() === todayStart.toDateString() ? ' today' : ''}">
+          <div class="planning-month-header">
+            <strong>${dayStart.toLocaleDateString('fr-FR', { day: '2-digit' })}</strong>
+            <span>${dayStart.toLocaleDateString('fr-FR', { weekday: 'short' })}</span>
           </div>
-        `);
-      }
-      weeks.push(`<div class="planning-month-week">${days.join('')}</div>`);
+          <div class="planning-events">${renderEventsList(dayEvents)}</div>
+        </div>
+      `);
     }
 
-    return `
-      <section class="planning-month-shell">
-        <div class="planning-month-nav">
-          <a class="btn btn-secondary" href="${monthHref(previousMonth)}">‹ Mois précédent</a>
-          <div>
-            <h2>${escHtml(monthTitle)}</h2>
-            <span>Du lundi au vendredi</span>
-          </div>
-          <a class="btn btn-secondary" href="/agenda?view=month&month=${dateKeyInTimeZone(new Date(), APP_TIME_ZONE).slice(0, 7)}">Aujourd’hui</a>
-          <a class="btn btn-secondary" href="${monthHref(followingMonth)}">Mois suivant ›</a>
-        </div>
-        <div class="planning-month-workgrid" aria-label="Agenda mensuel ${escHtml(monthTitle)}">
-          <div class="planning-month-weekdays">
-            ${workDayLabels.map((label) => `<div><span class="weekday-long">${label}</span><span class="weekday-short">${label[0]}</span></div>`).join('')}
-          </div>
-          ${weeks.join('')}
-        </div>
-      </section>
-    `;
+    return `<div class="planning-month">${days.join('')}</div>`;
   }
 
   const agendaLabels = {
@@ -4026,16 +3188,14 @@ app.get('/agenda', requireLogin, (req, res) => {
     <nav class="agenda-view-switch" aria-label="Vue agenda">
       <a class="${agendaView === 'day' ? 'active' : ''}" href="/agenda?view=day">Jour</a>
       <a class="${agendaView === 'week' ? 'active' : ''}" href="/agenda?view=week">Semaine</a>
-      <a class="${agendaView === 'month' ? 'active' : ''}" href="/agenda?view=month&month=${selectedMonthKey}">Mois</a>
+      <a class="${agendaView === 'month' ? 'active' : ''}" href="/agenda?view=month">Mois</a>
     </nav>
   `;
 
   const googleSyncButton = `
-    <form method="POST" action="/google/sync" class="agenda-sync-form" onsubmit="const b=this.querySelector('button'); if(b.disabled) return false; b.disabled=true; b.textContent='Synchronisation...';">
-      <button class="btn btn-secondary" type="submit">
-        Synchroniser maintenant
-      </button>
-    </form>
+    <a class="btn btn-secondary" href="/google/sync">
+      Synchroniser Google Agenda
+    </a>
   `;
 
   const newEventButton = `
@@ -4199,74 +3359,36 @@ app.get('/outils/prises-cotes', requireLogin, (req, res) => {
     .prepare('SELECT * FROM measurements ORDER BY updated_at DESC, id DESC LIMIT 12')
     .all();
 
-  const measurementTypeIcon = (name) => {
-    const icons = {
-      escalier: '<path d="M4 19h16M4 15h4v4M8 11h4v8M12 7h4v12M16 3h4v16"/>',
-      compass: '<path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/><path d="m15 9-2 5-5 2 2-5 5-2z"/>',
-      rail: '<path d="M4 18V7M20 18V7M4 9h16M7 9v9M11 9v9M15 9v9M19 9v9"/>',
-      gate: '<path d="M4 20V5M20 20V5M6 8h12M6 18h12M8 18V8M12 18V8M16 18V8"/>',
-      fence: '<path d="M4 20V9l3-4 3 4v11M10 20V9l3-4 3 4v11M16 20V9l3-4 3 4v11"/><path d="M3 13h18M3 17h18"/>',
-      pergola: '<path d="M4 9h16M6 9l2-4h8l2 4M7 9v11M17 9v11M5 20h14M9 9v4M12 9v4M15 9v4"/>',
-      window: '<path d="M5 4h14v16H5zM12 4v16M5 12h14"/><path d="M8.5 4v16M15.5 4v16"/>',
-      other: '<path d="M12 4v16M4 12h16"/><path d="M6 6l12 12M18 6 6 18"/>',
-    };
-    return `<svg class="measurement-card-svg" viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.other}</svg>`;
-  };
-
   const cards = [
     {
       href: '/outils/prises-cotes/escalier',
-      icon: 'escalier',
+      icon: '🪜',
       title: 'Escalier',
       desc: 'Fiche de prises de cotes Escalier',
     },
     {
-      href: '/outils/prises-cotes/escalier-v2',
-      icon: 'compass',
-      title: 'Escalier V2',
-      desc: 'Prise de cotes Escalier V2 (brouillon)',
-    },
-    {
       href: '/outils/prises-cotes/garde-corps',
-      icon: 'rail',
+      icon: '🧱',
       title: 'Garde-corps',
-      desc: 'Longueurs, hauteurs, angles, supports et remplissages',
+      desc: 'Fiche de prises de cotes Garde-corps',
     },
     {
       href: '/outils/prises-cotes/portail',
-      icon: 'gate',
+      icon: '🚪',
       title: 'Portail',
-      desc: 'Dimensions, sens d’ouverture, piliers et motorisation',
+      desc: 'Fiche de prises de cotes Portail',
     },
     {
       href: '/outils/prises-cotes/cloture',
-      icon: 'fence',
+      icon: '🧰',
       title: 'Clôture',
-      desc: 'Longueurs, hauteurs, poteaux, pentes et soubassements',
-    },
-    {
-      href: '/outils/prises-cotes/pergola',
-      icon: 'pergola',
-      title: 'Pergola',
-      desc: 'Emprise, hauteurs, poteaux, toiture et fixations',
-    },
-    {
-      href: '/outils/prises-cotes/verriere',
-      icon: 'window',
-      title: 'Verrière',
-      desc: 'Ouverture, divisions, supports, vitrage et pose',
-    },
-    {
-      href: '/outils/prises-cotes/autres',
-      icon: 'other',
-      title: 'Autres',
-      desc: 'Prise de cotes libre pour un ouvrage spécifique',
+      desc: 'Fiche de prises de cotes Clôture',
     },
   ]
     .map(
       (item) => `
       <a class="card" href="${item.href}">
-        <div class="card-icon">${measurementTypeIcon(item.icon)}</div>
+        <div class="card-icon">${item.icon}</div>
         <div class="card-main">
           <div class="card-title">${escHtml(item.title)}</div>
           <div class="card-sub">${escHtml(item.desc)}</div>
@@ -4325,265 +3447,6 @@ app.get('/api/measurements/link-options', requireLogin, (req, res) => {
   res.json({ quotes, clientOrders });
 });
 
-app.get('/api/measurements/escalier-v2/bootstrap', requireLogin, (req, res) => {
-  const moduleName = 'Escalier V2';
-  const requestedId = parseOptionalId(req.query.id);
-  const clientOrderId = parseOptionalId(req.query.client_order_id);
-  const prefill = {
-    client: '',
-    commande: '',
-    client_order_id: clientOrderId,
-  };
-  let linkedDraftId = null;
-
-  if (clientOrderId) {
-    const order = db.prepare('SELECT id, name, description FROM client_orders WHERE id = ?').get(clientOrderId);
-    if (order) {
-      prefill.client = String(order.name || '').trim();
-      prefill.commande = String(order.description || `Commande_${order.id}`).trim();
-      const linked = db
-        .prepare('SELECT id FROM measurements WHERE module = ? AND client_order_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1')
-        .get(moduleName, clientOrderId);
-      if (linked) linkedDraftId = linked.id;
-    }
-  }
-
-  let currentDraftId = null;
-  if (requestedId) {
-    const exists = db.prepare('SELECT id FROM measurements WHERE id = ? AND module = ?').get(requestedId, moduleName);
-    if (exists) currentDraftId = exists.id;
-  }
-  if (!currentDraftId && linkedDraftId) currentDraftId = linkedDraftId;
-
-  res.json({
-    module: moduleName,
-    prefill,
-    linkedDraftId,
-    currentDraftId,
-  });
-});
-
-app.get('/api/measurements/escalier-v2/list', requireLogin, (req, res) => {
-  const moduleName = 'Escalier V2';
-  const clientOrderId = parseOptionalId(req.query.client_order_id);
-  const rows = clientOrderId
-    ? db
-        .prepare('SELECT * FROM measurements WHERE module = ? AND client_order_id = ? ORDER BY updated_at DESC, id DESC')
-        .all(moduleName, clientOrderId)
-    : db.prepare('SELECT * FROM measurements WHERE module = ? ORDER BY updated_at DESC, id DESC').all(moduleName);
-
-  const items = rows.map((row) => {
-    const payload = parseMeasurementData(row.data);
-    const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-    return {
-      id: row.id,
-      recordName: row.record_name || `Fiche Escalier V2 #${row.id}`,
-      client: row.client || fields.client || '',
-      commande: fields.commande || '',
-      chantier: row.chantier || fields.chantier || '',
-      date: row.measure_date || fields.date || '',
-      metreur: fields.metreur || '',
-      referenceInterne: fields.reference_interne || '',
-      typeEscalier: fields.type_escalier || 'Autre',
-      statut: fields.statut || 'Brouillon',
-      quote_id: parseOptionalId(row.quote_id),
-      client_order_id: parseOptionalId(row.client_order_id),
-      updatedAt: row.updated_at || row.created_at || null,
-    };
-  });
-
-  res.json({ ok: true, items });
-});
-
-app.get('/api/measurements/escalier-v2/:id', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  if (!id) return res.status(400).json({ ok: false, error: 'ID invalide' });
-
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-  if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-  const payload = parseMeasurementData(row.data);
-  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-
-  res.json({
-    ok: true,
-    item: {
-      id: row.id,
-      module: row.module,
-      recordName: row.record_name,
-      quote_id: parseOptionalId(row.quote_id),
-      client_order_id: parseOptionalId(row.client_order_id),
-      fields,
-      photoSlots: buildEscalierV2PhotoPublicSlots(row.id, fields.photo_slots),
-      updatedAt: row.updated_at || row.created_at || null,
-    },
-  });
-});
-
-app.delete('/api/measurements/escalier-v2/:id', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  if (!id) return res.status(400).json({ ok: false, error: 'ID invalide' });
-
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-  if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-  try {
-    const photoDirs = [
-      measurementEscalierV2PhotoBaseDir(row),
-      safeResolveInside(ESCALIER_V2_PHOTO_DIR, String(id)),
-    ];
-    const uniquePhotoDirs = Array.from(new Set(photoDirs.map((dir) => path.resolve(dir))));
-    uniquePhotoDirs.forEach((dir) => removeStoragePathIfExists(dir));
-    removeStoragePathIfExists(sketchPath('measurements', id));
-
-    const result = db.prepare('DELETE FROM measurements WHERE id = ? AND module = ?').run(id, 'Escalier V2');
-    if (!result.changes) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-    return res.json({ ok: true, deletedId: id, redirect: '/outils/prises-cotes/escalier-v2' });
-  } catch (error) {
-    console.error('Erreur suppression fiche Escalier V2:', error);
-    return res.status(500).json({ ok: false, error: 'Erreur suppression fiche Escalier V2' });
-  }
-});
-
-app.get('/api/measurements/escalier-v2/:id/photos', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  if (!id) return res.status(400).json({ ok: false, error: 'ID invalide' });
-
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-  if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-  const payload = parseMeasurementData(row.data);
-  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-  return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, fields.photo_slots) });
-});
-
-app.post('/api/measurements/escalier-v2/:id/photos', requireLogin, (req, res) => {
-  escalierV2PhotoUpload.array('photos', 30)(req, res, (err) => {
-    if (err) {
-      return res.status(400).json({ ok: false, error: err.message || 'Upload impossible' });
-    }
-
-    const id = parseOptionalId(req.params.id);
-    if (!id) return res.status(400).json({ ok: false, error: 'ID invalide' });
-
-    const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-    if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-    if (!Array.isArray(req.files) || !req.files.length) {
-      return res.status(400).json({ ok: false, error: 'Aucune photo recue' });
-    }
-
-    const category = normalizeEscalierV2Category(req.body?.category);
-    const updated = updateEscalierV2PhotoSlots(id, (slots) => {
-      const next = normalizeEscalierV2PhotoSlots(slots);
-      const target = next.find((slot) => slot.category === category);
-      if (!target) return next;
-
-      req.files.forEach((file) => {
-        target.photos.push({
-          id: crypto.randomUUID(),
-          fileName: path.basename(file.filename),
-          caption: '',
-          size: Number(file.size || 0),
-          mimeType: String(file.mimetype || ''),
-          createdAt: new Date().toISOString(),
-        });
-      });
-
-      return next;
-    });
-
-    if (!updated) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-    return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, updated.slots) });
-  });
-});
-
-app.patch('/api/measurements/escalier-v2/:id/photos/:photoId', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  const photoId = String(req.params.photoId || '').trim();
-  if (!id || !photoId) return res.status(400).json({ ok: false, error: 'Parametres invalides' });
-
-  const caption = String(req.body?.caption || '').trim().slice(0, 300);
-  const updated = updateEscalierV2PhotoSlots(id, (slots) => {
-    const next = normalizeEscalierV2PhotoSlots(slots);
-    next.forEach((slot) => {
-      slot.photos.forEach((photo) => {
-        if (photo.id === photoId) photo.caption = caption;
-      });
-    });
-    return next;
-  });
-
-  if (!updated) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-  return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, updated.slots) });
-});
-
-app.delete('/api/measurements/escalier-v2/:id/photos/:photoId', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  const photoId = String(req.params.photoId || '').trim();
-  if (!id || !photoId) return res.status(400).json({ ok: false, error: 'Parametres invalides' });
-
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-  if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-  const payload = parseMeasurementData(row.data);
-  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-  const slots = normalizeEscalierV2PhotoSlots(fields.photo_slots);
-  let removedFileName = null;
-
-  slots.forEach((slot) => {
-    slot.photos = slot.photos.filter((photo) => {
-      if (photo.id !== photoId) return true;
-      removedFileName = photo.fileName;
-      return false;
-    });
-  });
-
-  if (!removedFileName) return res.status(404).json({ ok: false, error: 'Photo introuvable' });
-
-  const baseDir = measurementEscalierV2PhotoBaseDir(row);
-  ensureDir(baseDir);
-  const filePath = safeResolveInside(baseDir, path.basename(removedFileName));
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
-  payload.fields = {
-    ...fields,
-    photo_slots: slots,
-  };
-
-  db.prepare('UPDATE measurements SET data = ?, updated_at = ? WHERE id = ?')
-    .run(JSON.stringify(payload), new Date().toISOString(), id);
-
-  return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, slots) });
-});
-
-app.get('/api/measurements/escalier-v2/:id/photos/:photoId/file', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  const photoId = String(req.params.photoId || '').trim();
-  if (!id || !photoId) return res.status(400).send('Parametres invalides');
-
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-  if (!row) return res.status(404).send('Fiche Escalier V2 introuvable');
-
-  const payload = parseMeasurementData(row.data);
-  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-  const slots = normalizeEscalierV2PhotoSlots(fields.photo_slots);
-
-  let fileName = null;
-  slots.forEach((slot) => {
-    slot.photos.forEach((photo) => {
-      if (photo.id === photoId) fileName = photo.fileName;
-    });
-  });
-
-  if (!fileName) return res.status(404).send('Photo introuvable');
-  const filePath = safeResolveInside(measurementEscalierV2PhotoBaseDir(row), path.basename(fileName));
-  if (!fs.existsSync(filePath)) return res.status(404).send('Fichier introuvable');
-  return res.sendFile(filePath);
-});
-
 app.post('/api/measurements', requireLogin, (req, res) => {
   const body = req.body || {};
   const fields = body.fields && typeof body.fields === 'object' ? body.fields : {};
@@ -4627,24 +3490,6 @@ app.post('/api/measurements', requireLogin, (req, res) => {
   `).run(moduleName, recordName, client, chantier, measureDate, quoteId, orderId, data, now, now);
 
   res.json({ ok: true, id: info.lastInsertRowid });
-});
-
-app.delete('/api/measurements/:id', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  if (!id) return res.status(400).json({ ok: false, error: 'ID prise de cote invalide' });
-
-  const measurement = db.prepare('SELECT id FROM measurements WHERE id = ?').get(id);
-  if (!measurement) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
-
-  try {
-    removeStoragePathIfExists(sketchPath('measurements', id));
-    const result = db.prepare('DELETE FROM measurements WHERE id = ?').run(id);
-    if (!result.changes) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
-    return res.json({ ok: true, deletedId: id, redirect: '/outils/prises-cotes' });
-  } catch (error) {
-    console.error('Erreur suppression prise de cote:', error);
-    return res.status(500).json({ ok: false, error: 'Erreur suppression prise de cote' });
-  }
 });
 
 app.get('/sketches/measurements/:id.png', requireLogin, (req, res) => {
@@ -4714,11 +3559,6 @@ app.get('/outils/prises-cotes/fiche/:id', requireLogin, (req, res) => {
   );
 });
 
-app.get('/outils/prises-cotes/escalier-v2', requireLogin, (req, res) => {
-  const filePath = path.join(MEASUREMENTS_PUBLIC_DIR, 'escalier-v2.html');
-  return res.sendFile(filePath);
-});
-
 app.get('/outils/prises-cotes/:module', requireLogin, (req, res, next) => {
   const moduleName = String(req.params.module || '').trim().toLowerCase();
   const fileName = MEASUREMENT_SHEETS[moduleName];
@@ -4740,8 +3580,6 @@ app.get('/outils/prises-cotes/:asset', requireLogin, (req, res, next) => {
 /* ===================== GOOGLE OAUTH ROUTES ===================== */
 
 app.get('/google/auth', requireLogin, (req, res) => {
-  if (!ensureGoogleCalendarConfig(res)) return;
-
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: ['https://www.googleapis.com/auth/calendar'],
@@ -4752,8 +3590,6 @@ app.get('/google/auth', requireLogin, (req, res) => {
 });
 
 app.get('/google/callback', requireLogin, async (req, res) => {
-  if (!ensureGoogleCalendarConfig(res)) return;
-
   try {
     const { tokens } = await oauth2Client.getToken(req.query.code);
     oauth2Client.setCredentials(tokens);
@@ -4766,29 +3602,13 @@ app.get('/google/callback', requireLogin, async (req, res) => {
   }
 });
 
-// Synchronisation bidirectionnelle directe avec Google Agenda.
-app.get('/google/sync', requireLogin, (req, res) => {
-  res.redirect('/agenda');
-});
-
-app.post('/google/sync', requireLogin, async (req, res) => {
-  if (!ensureGoogleCalendarConfig(res)) return;
-
+// Synchronisation des événements internes → Google Agenda (sans doublons)
+app.get('/google/sync', requireLogin, async (req, res) => {
+  
   if (!req.session.googleTokens) {
     return res.redirect('/google/auth');
   }
 
-  if (googleSyncLocked) {
-    return res.status(409).send(pageTemplate(req, 'Synchronisation en cours', `
-      <section class="panel-soft">
-        <h1>Synchronisation deja en cours</h1>
-        <p>Une autre synchronisation Google Agenda est en cours. Reessayez dans quelques instants.</p>
-        <a class="btn btn-secondary" href="/agenda">Retour a l'agenda</a>
-      </section>
-    `));
-  }
-
-  googleSyncLocked = true;
   oauth2Client.setCredentials(req.session.googleTokens);
 
   const calendar = google.calendar({
@@ -4796,142 +3616,186 @@ app.post('/google/sync', requireLogin, async (req, res) => {
     auth: oauth2Client,
   });
 
+
+
   try {
-    purgeExpiredLocalAgendaEventsSafely();
-    const localSyncMin = getLocalSyncMin();
-    const googleSyncTimeMin = getGoogleSyncTimeMin();
-    const target = await getGoogleCalendarTarget(calendar);
-    const googleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, googleSyncTimeMin);
-    const localEvents = getLocalSyncEvents(localSyncMin);
-    const preview = googleSync.buildSyncPreview(localEvents, googleEvents, googleSyncOptions());
+    const GOOGLE_CALENDAR_ID =
+'family00522959929950336958@group.calendar.google.com';
 
-    if (preview.actions.ambiguous.length || preview.actions.errors.length) {
-      return res.status(409).send(renderGoogleSyncSummary(req, { calendar: target, preview }, {
-        message: 'Synchronisation annulée : des ambiguïtés ou erreurs doivent être corrigées.'
-      }));
-    }
+const now = new Date();
 
-    const setGoogleEventId = db.prepare('UPDATE events SET google_event_id = ? WHERE id = ?');
-    const updateLocalFromGoogle = db.prepare(`
-      UPDATE events
-      SET title = ?,
-          start_date = ?,
-          end_date = ?,
-          type = ?,
-          google_event_id = ?
+const oneWeekAgo = new Date();
+oneWeekAgo.setDate(now.getDate() - 7);
+
+const googleEvents = await calendar.events.list({
+  calendarId: GOOGLE_CALENDAR_ID,
+  singleEvents: true,
+  timeMin: oneWeekAgo.toISOString(),
+  maxResults: 2500
+});
+const googleIds = new Set(
+  (googleEvents.data.items || []).map(e => e.id)
+);
+
+
+
+const localEvents = db.prepare(`
+  SELECT *
+  FROM events
+  WHERE start_date >= ?
+`).all(oneWeekAgo.toISOString());
+
+for (const e of localEvents) {
+
+  if (!googleIds.has(e.google_event_id)) {
+
+    db.prepare(`
+      DELETE FROM events
       WHERE id = ?
-    `);
-    const insertLocalFromGoogle = db.prepare(`
-      INSERT INTO events (
-        title,
-        start_date,
-        end_date,
-        google_event_id,
-        type,
-        created_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
+    `).run(e.id);
 
-    for (const item of preview.actions.link) {
-      setGoogleEventId.run(item.google.normalized.id, item.local.normalized.rawId);
-    }
+  }
+}
+for (const g of googleEvents.data.items || []) {
 
-    for (const item of preview.actions.updateLocal) {
-      const g = item.google.normalized;
-      updateLocalFromGoogle.run(
-        g.title,
-        g.start_date,
-        g.end_date,
-        item.local.row.type || 'chantier',
-        g.id,
-        item.local.normalized.rawId
-      );
-    }
+  const existing = db.prepare(`
+    SELECT *
+    FROM events
+    WHERE google_event_id = ?
+  `).get(g.id);
 
-    for (const item of preview.actions.importLocal) {
-      const g = item.google.normalized;
-      insertLocalFromGoogle.run(g.title, g.start_date, g.end_date, g.id, 'chantier', new Date().toISOString());
-    }
+  if (!existing) {
 
-    const recoverOrCreateGoogle = async (localItem) => {
-      const body = googleSync.googleRequestBodyFromLocal(localItem.row, googleSyncOptions());
-      if (!body) return null;
+ const start =
+  g.start?.dateTime || g.start?.date;
 
-      const refreshedGoogleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, googleSyncTimeMin);
-      const refreshedPreview = googleSync.buildSyncPreview([localItem.row], refreshedGoogleEvents, googleSyncOptions());
-      const relink = refreshedPreview.actions.link[0] || refreshedPreview.actions.updateGoogle[0];
-      if (relink?.google?.normalized?.id) {
-        setGoogleEventId.run(relink.google.normalized.id, localItem.normalized.rawId);
-        return relink.google.normalized.id;
-      }
+const end =
+  g.end?.dateTime || g.end?.date;
 
-      const created = await calendar.events.insert({
-        calendarId: GOOGLE_CALENDAR_ID,
-        requestBody: body
-      });
-      if (created.data.id) setGoogleEventId.run(created.data.id, localItem.normalized.rawId);
-      return created.data.id || null;
-    };
+console.log(
+  'IMPORT GOOGLE',
+  g.summary,
+  start,
+  end
+);
 
-    const applyErrors = [];
+if (!start || !end) {
+  console.log('ÉVÉNEMENT IGNORÉ');
+  continue;
+}
 
-    for (const item of preview.actions.updateGoogle) {
-      const body = googleSync.googleRequestBodyFromLocal(item.local.row, googleSyncOptions());
-      if (!body) continue;
+db.prepare(`
+  INSERT INTO events (
+    title,
+    start_date,
+    end_date,
+    google_event_id,
+    type
+  )
+  VALUES (?, ?, ?, ?, ?)
+`).run(
+  g.summary || 'Sans titre',
+  start,
+  end,
+  g.id,
+  'chantier'
+);
 
-      try {
-        await calendar.events.update({
-          calendarId: GOOGLE_CALENDAR_ID,
-          eventId: item.google.normalized.id,
-          requestBody: body
-        });
-      } catch (err) {
-        if (googleSync.isNotFoundGoogleError(err)) {
-          try {
-            await recoverOrCreateGoogle(item.local);
-          } catch (recoverErr) {
-            console.error('Erreur recuperation lien Google Agenda :', recoverErr.response ? recoverErr.response.data : recoverErr);
-            applyErrors.push(`Recuperation impossible pour ${item.local.normalized.title}`);
-          }
-        } else {
-          console.error('Erreur mise a jour Google Agenda :', err.response ? err.response.data : err);
-          applyErrors.push(`Mise a jour Google impossible pour ${item.local.normalized.title}`);
+  }
+}
+
+const allEvents = db.prepare(`
+  SELECT *
+  FROM events
+  WHERE start_date >= ?
+`).all(oneWeekAgo.toISOString());
+
+for (const e of allEvents) {
+
+  console.log('EVENT =', e);
+
+  const startDate = new Date(e.start_date);
+  const endDate = new Date(e.end_date || e.start_date);
+
+  if (isNaN(startDate.getTime())) {
+    console.error('DATE DEBUT INVALIDE', e);
+    continue;
+  }
+
+  if (isNaN(endDate.getTime())) {
+    console.error('DATE FIN INVALIDE', e);
+    continue;
+  }
+
+  const startIso = startDate.toISOString();
+  const endIso = endDate.toISOString();
+
+  // Déjà lié à Google → mise à jour
+  if (e.google_event_id) {
+
+    await calendar.events.update({
+      calendarId: GOOGLE_CALENDAR_ID,
+      eventId: e.google_event_id,
+      requestBody: {
+        summary: e.title,
+        start: {
+          dateTime: startIso,
+          timeZone: 'Europe/Paris',
+        },
+        end: {
+          dateTime: endIso,
+          timeZone: 'Europe/Paris',
         }
       }
-    }
+    });
 
-    for (const item of preview.actions.createGoogle) {
-      try {
-        await recoverOrCreateGoogle(item.local);
-      } catch (err) {
-        console.error('Erreur creation Google Agenda :', err.response ? err.response.data : err);
-        applyErrors.push(`Creation Google impossible pour ${item.local.normalized.title}`);
+    continue;
+  }
+
+  // Pas encore lié → création Google
+  const created = await calendar.events.insert({
+    calendarId: GOOGLE_CALENDAR_ID,
+    requestBody: {
+      summary: e.title,
+      start: {
+        dateTime: startIso,
+        timeZone: 'Europe/Paris',
+      },
+      end: {
+        dateTime: endIso,
+        timeZone: 'Europe/Paris',
       }
     }
+  });
 
-    preview.actions.errors.push(...applyErrors.map((message) => ({ message })));
-    res.send(renderGoogleSyncSummary(req, { calendar: target, preview }, {
-      message: applyErrors.length
-        ? 'Synchronisation appliquée partiellement : certains événements sont en erreur.'
-        : 'Synchronisation appliquée. Aucun événement Google n’a été supprimé.'
-    }));
+  db.prepare(`
+    UPDATE events
+    SET google_event_id = ?
+    WHERE id = ?
+  `).run(
+    created.data.id,
+    e.id
+  );
+
+}
+    
+
+    res.send(`
+      <h2>✅ Synchronisation Google Agenda terminée (sans doublons)</h2>
+      <a href="/agenda">Retour à l’agenda</a>
+    `);
   } catch (err) {
-    console.error('Erreur application Google Agenda :', err.response ? err.response.data : err);
-    res.status(502).send(pageTemplate(req, 'Erreur Google Agenda', `
-      <section class="panel-soft">
-        <h1>Impossible d'appliquer la synchronisation</h1>
-        <p>Google Agenda n'a pas repondu correctement. Aucune suppression automatique n'a ete executee.</p>
-        <a class="btn btn-secondary" href="/agenda">Retour a l'agenda</a>
-      </section>
-    `));
-  } finally {
-    googleSyncLocked = false;
+    console.error('Erreur Google :', err.response ? err.response.data : err);
+    res.send(`
+      <h2>❌ Erreur lors de la synchro Google</h2>
+      <pre>${err.response ? JSON.stringify(err.response.data, null, 2) : err}</pre>
+      <a href="/agenda">Retour à l’agenda</a>
+    `);
   }
 });
 
+
 app.get('/google/calendars', requireLogin, async (req, res) => {
-  if (!ensureGoogleCalendarConfig(res)) return;
 
   oauth2Client.setCredentials(req.session.googleTokens);
 
@@ -5315,8 +4179,6 @@ for (const folder of pcFolders) {
 }
 
   merged.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }));
-  const clientCreateError = String(req.query.error || '').trim();
-  const clientCreateOpen = Boolean(clientCreateError);
 
   const cards = merged.length
     ? merged
@@ -5382,72 +4244,66 @@ for (const folder of pcFolders) {
       'Clients',
       `
       <div class="clients-page-modern">
-        <form method="POST" action="/clients" class="clients-create-card clients-create-collapsible ${clientCreateOpen ? 'is-open' : 'is-collapsed'}" data-clients-create-card>
-          <button type="button" class="clients-create-head clients-create-toggle" aria-expanded="${clientCreateOpen ? 'true' : 'false'}" aria-controls="client-create-panel" data-clients-create-toggle>
-            <span class="clients-create-title">
-              ${clientPageIcon('add', 'clients-title-icon')}
-              <h1>Nouveau client</h1>
-            </span>
-            <span class="clients-create-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
-          </button>
-
-          <div class="clients-create-panel" id="client-create-panel" ${clientCreateOpen ? '' : 'hidden'} data-clients-create-panel>
-            ${clientCreateError ? `<p class="error">${escHtml(clientCreateError)}</p>` : ''}
-            <div class="clients-form-grid">
-              <label class="clients-field">
-                <span>Nom *</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('user')}
-                  <input name="name" required placeholder="Nom du client" />
-                </div>
-              </label>
-
-              <label class="clients-field">
-                <span>Email</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('mail')}
-                  <input name="email" type="email" placeholder="client@email.com" />
-                </div>
-              </label>
-
-              <label class="clients-field clients-field-wide">
-                <span>Adresse</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('location')}
-                  <input name="address" placeholder="Adresse" />
-                </div>
-              </label>
-
-              <label class="clients-field">
-                <span>Code postal</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('postal')}
-                  <input name="postal_code" placeholder="00000" />
-                </div>
-              </label>
-
-              <label class="clients-field">
-                <span>Ville</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('building')}
-                  <input name="city" placeholder="Ville" />
-                </div>
-              </label>
-
-              <label class="clients-field">
-                <span>Téléphone</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('phone')}
-                  <input name="phone" placeholder="06…" />
-                </div>
-              </label>
-            </div>
-
-            <button class="clients-submit-btn" type="submit">
-              <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-              Ajouter le client
-            </button>
+        <form method="POST" action="/clients" class="clients-create-card">
+          <div class="clients-create-head">
+            ${clientPageIcon('clients', 'clients-title-icon')}
+            <h1>Ajouter un client</h1>
           </div>
+
+          <div class="clients-form-grid">
+            <label class="clients-field">
+              <span>Nom *</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('user')}
+                <input name="name" required placeholder="Nom du client" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Email</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('mail')}
+                <input name="email" type="email" placeholder="client@email.com" />
+              </div>
+            </label>
+
+            <label class="clients-field clients-field-wide">
+              <span>Adresse</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('location')}
+                <input name="address" placeholder="Adresse" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Code postal</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('postal')}
+                <input name="postal_code" placeholder="00000" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Ville</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('building')}
+                <input name="city" placeholder="Ville" />
+              </div>
+            </label>
+
+            <label class="clients-field">
+              <span>Téléphone</span>
+              <div class="clients-input-shell">
+                ${clientPageIcon('phone')}
+                <input name="phone" placeholder="06…" />
+              </div>
+            </label>
+          </div>
+
+          <button class="clients-submit-btn" type="submit">
+            <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
+            Ajouter le client
+          </button>
         </form>
 
         <section class="clients-list-card">
@@ -5470,29 +4326,6 @@ for (const folder of pcFolders) {
 
       <script>
         (function(){
-          const createCard = document.querySelector('[data-clients-create-card]');
-          if (createCard) {
-            const toggle = createCard.querySelector('[data-clients-create-toggle]');
-            const panel = createCard.querySelector('[data-clients-create-panel]');
-            if (toggle && panel) {
-              toggle.addEventListener('click', function(){
-                const isOpen = toggle.getAttribute('aria-expanded') === 'true';
-                toggle.setAttribute('aria-expanded', String(!isOpen));
-                if (isOpen) {
-                  createCard.classList.remove('is-open');
-                  createCard.classList.add('is-collapsed');
-                  panel.hidden = true;
-                } else {
-                  panel.hidden = false;
-                  window.requestAnimationFrame(function(){
-                    createCard.classList.add('is-open');
-                    createCard.classList.remove('is-collapsed');
-                  });
-                }
-              });
-            }
-          }
-
           const input = document.getElementById('clientSearch');
           const cards = document.querySelectorAll('.client-card-modern');
           if (!input) return;
@@ -5609,54 +4442,6 @@ app.get('/orders/clients', requireLogin, (req, res) => {
 
   const pcFoldersOptions = pcFolders.map((name) => `<option value="${escHtml(name)}"></option>`).join('');
 
-  const buildPoseAgendaTitle = (order) => {
-    const chantierName = String(order.description || '').trim() || `Commande #${order.id}`;
-    return `Pose - ${String(order.name || '').trim()} - ${chantierName}`;
-  };
-
-  const poseAgendaEvents = db
-    .prepare(`
-      SELECT id, title, start_date, end_date
-      FROM events
-      WHERE type = 'pose'
-      ORDER BY datetime(start_date) DESC, id DESC
-    `)
-    .all();
-
-  const poseAgendaByOrderId = new Map();
-  orders.forEach((order) => {
-    const status = normalizeChantierStatus(order.chantier_status);
-    if (status !== 'En pose') return;
-    const baseTitle = buildPoseAgendaTitle(order);
-    const existing = poseAgendaEvents.find((evt) => {
-      const title = String(evt.title || '');
-      return title === baseTitle || title.startsWith(`${baseTitle} · `);
-    });
-    if (existing) poseAgendaByOrderId.set(Number(order.id), existing);
-  });
-
-  const poseAgendaStatus = String(req.query.poseAgendaStatus || '').trim();
-  const poseAgendaOrderId = Number(req.query.poseAgendaOrderId || 0);
-  const poseAgendaFlash =
-    poseAgendaStatus === 'created'
-      ? 'Événement de pose ajouté à l’agenda.'
-      : poseAgendaStatus === 'exists'
-        ? (poseAgendaOrderId > 0
-            ? `Un événement de pose existe déjà pour la commande #${poseAgendaOrderId}.`
-            : 'Un événement de pose existe déjà pour cette commande.')
-        : poseAgendaStatus === 'error'
-          ? 'Impossible d’ajouter l’événement de pose. Vérifiez les champs.'
-          : '';
-  const orderUpdateStatus = String(req.query.orderUpdate || '').trim();
-  const orderUpdateFlash =
-    orderUpdateStatus === 'ok'
-      ? 'Commande mise à jour.'
-      : orderUpdateStatus === 'notfound'
-        ? 'Commande introuvable.'
-        : orderUpdateStatus === 'error'
-          ? 'Impossible de mettre à jour la commande.'
-          : '';
-
   const todayIso = isoDate();
 
   const cards =
@@ -5669,20 +4454,8 @@ app.get('/orders/clients', requireLogin, (req, res) => {
             const chantierHoursUrl = `${clientFolderUrl}/Heure%20chantier`;
 
             const dateLabel = (o.date || '').slice(0, 10);
-            const chantierPrice = Number(o.price || 0);
-            const chantierVatRate = parseOptionalVatRate(o.vat_rate);
-            const chantierPriceTtc = chantierVatRate !== null ? round2(chantierPrice * (1 + chantierVatRate / 100)) : null;
-            const chantierPriceLabel = chantierPrice > 0 ? `${formatEuroFr(chantierPrice)} HT` : 'Non renseigné';
-            const chantierVatLabel = chantierVatRate !== null ? `TVA : ${chantierVatRate} %` : 'TVA non renseignée';
-            const chantierPriceTtcLabel = chantierPrice > 0 && chantierPriceTtc !== null ? `${formatEuroFr(chantierPriceTtc)} TTC` : 'TTC non calculé';
+            const priceLabel = (o.price || 0).toFixed(2) + ' €';
             const statusLabel = o.status || 'En cours';
-            const plannedHoursValue = Number(o.planned_hours || 0);
-            const editPriceValue = chantierPrice > 0 ? chantierPrice.toFixed(2) : '';
-            const editVatOptions = `
-              <option value=""${chantierVatRate === null ? ' selected' : ''}>TVA non renseignée</option>
-              <option value="20"${chantierVatRate === 20 ? ' selected' : ''}>TVA 20 %</option>
-              <option value="10"${chantierVatRate === 10 ? ' selected' : ''}>TVA 10 %</option>
-            `;
 const actualMinutes =
   (chantierHoursByOrderId.get(Number(o.id)) || 0)
   + (legacyChantierHoursTotals.get(`${safeClientFolder}\u0000${orderFolderName}`) || 0);
@@ -5694,14 +4467,11 @@ const plannedHours =
   Number(o.planned_hours || 0);
 
 const chantierStatus = normalizeChantierStatus(o.chantier_status);
-const progress = getProgressFromChantierStatus(chantierStatus);
+const progress = clientOrderStageProgress(chantierStatus);
 const isOverHours = plannedHours > 0 && actualHours > plannedHours;
 
 const endDate = String(o.chantier_end_date || '').slice(0, 10);
 const isLate = endDate && endDate < todayIso;
-const isPoseStatus = chantierStatus === 'En pose';
-const existingPoseEvent = poseAgendaByOrderId.get(Number(o.id));
-const poseAgendaTitle = buildPoseAgendaTitle(o);
             return `
               <article class="order-card modern-client-order-card">
                 <header class="modern-client-order-head">
@@ -5722,90 +4492,11 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                   ${isLate ? '<span class="modern-late-badge">Retard</span>' : ''}
                 </div>
 
-                <div class="modern-client-order-info-list">
-                  <div><span>Date commande</span><strong>${escHtml(dateLabel || 'Non renseignée')}</strong></div>
-                  ${!isAtelier ? `
-                  <div><span>Prix HT</span><strong>${escHtml(chantierPriceLabel)}</strong></div>
-                  <div><span>TVA</span><strong>${escHtml(chantierVatLabel)}</strong></div>
-                  <div><span>Prix TTC</span><strong>${escHtml(chantierPriceTtcLabel)}</strong></div>
-                  ` : ''}
-                </div>
-
                 <div class="modern-client-order-progress">
                   <div class="chantier-progress client-order-stage-progress ${isOverHours ? 'over-hours' : 'ok-hours'}"><span style="width:${progress}%"></span></div>
                 </div>
 
-                ${isPoseStatus ? `
-                <section class="modern-client-order-agenda-block">
-                  ${existingPoseEvent
-                    ? `
-                  <div class="modern-client-order-agenda-inline modern-client-order-agenda-ready">
-                    <a class="modern-client-order-open modern-client-order-agenda-trigger" href="/agenda">
-                      ${clientPageIcon('calendar', 'modern-client-order-open-icon')}
-                      <span>Voir dans l'agenda</span>
-                      <b aria-hidden="true">›</b>
-                    </a>
-                    <span class="modern-status-badge done">Pose déjà planifiée</span>
-                  </div>
-                    `
-                    : `
-                  <details class="modern-client-order-agenda-inline">
-                    <summary class="modern-client-order-open modern-client-order-agenda-trigger">
-                      ${clientPageIcon('calendar', 'modern-client-order-open-icon')}
-                      <span>Ajouter à l’agenda</span>
-                      <b aria-hidden="true">›</b>
-                    </summary>
-                    <form method="POST" action="/orders/client/${o.id}/add-agenda-pose" class="modern-client-order-add-form modern-client-order-agenda-form">
-                      <input type="hidden" name="client" value="${escHtml(o.name || '')}">
-                      <input type="hidden" name="order_name" value="${escHtml(o.description || '')}">
-                      <input type="hidden" name="title" value="${escHtml(poseAgendaTitle)}">
-                      <div class="modern-client-order-agenda-grid">
-                        <label class="clients-field modern-client-order-agenda-field-wide">
-                          <span>Date de pose</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('calendar')}
-                            <input type="date" name="pose_date" required>
-                          </div>
-                        </label>
-                        <label class="clients-field">
-                          <span>Heure de début</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('calendar')}
-                            <input type="time" name="start_time" required>
-                          </div>
-                        </label>
-                        <label class="clients-field">
-                          <span>Heure de fin</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('calendar')}
-                            <input type="time" name="end_time" required>
-                          </div>
-                        </label>
-                        <label class="clients-field modern-client-order-agenda-field-wide">
-                          <span>Lieu / adresse (facultatif)</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('location')}
-                            <input name="place" placeholder="Adresse de pose">
-                          </div>
-                        </label>
-                        <label class="clients-field modern-client-order-agenda-field-wide">
-                          <span>Note (facultatif)</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('tasks')}
-                            <input name="note" placeholder="Infos chantier / équipe">
-                          </div>
-                        </label>
-                      </div>
-                      <div class="modern-form-actions modern-client-order-agenda-actions">
-                        <button type="submit" class="clients-submit-btn">Valider</button>
-                      </div>
-                    </form>
-                  </details>
-                    `}
-                </section>
-                ` : ''}
-
-                <div class="modern-client-order-actions modern-client-order-actions-bottom">
+                <div class="modern-client-order-actions">
                   <a class="modern-client-order-open" href="${clientFolderUrl}">
                     ${clientPageIcon('folder', 'modern-client-order-open-icon')}
                     <span>Ouvrir</span>
@@ -5816,87 +4507,11 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                     <span>Heures</span>
                     <b aria-hidden="true">›</b>
                   </a>
-                  <button type="button" class="modern-client-order-open modern-client-order-edit-trigger" aria-expanded="false" aria-controls="order-edit-${o.id}" data-order-edit-toggle>
-                    ${clientPageIcon('edit', 'modern-client-order-open-icon')}
-                    <span>Modifier</span>
-                    <b aria-hidden="true">›</b>
-                  </button>
                   <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');">
                     <input type="hidden" name="id" value="${o.id}" />
-                    <button type="submit" class="modern-order-done-btn" aria-label="Terminer la commande" title="Terminer la commande">✅</button>
+                    <button type="submit" class="modern-order-done-btn" title="Terminer">${clientPageIcon('check', 'modern-action-icon')} Terminer</button>
                   </form>
                 </div>
-                <form method="POST" action="/orders/client/${o.id}/update" id="order-edit-${o.id}" class="modern-client-order-edit-form" data-order-edit-form hidden onsubmit="const b=this.querySelector('[type=submit]'); if (b && b.disabled) return false; if (b) b.disabled = true;">
-                  <div class="modern-client-order-edit-note">
-                    <strong>Nom verrouillé</strong>
-                    <span>${escHtml(o.description || `Commande #${o.id}`)}</span>
-                    <small>Utilisé par le dossier physique.</small>
-                  </div>
-                  <div class="modern-client-order-edit-grid">
-                    <label class="clients-field">
-                      <span>Date commande</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('calendar')}
-                        <input type="date" name="date" value="${escHtml(dateLabel)}">
-                      </div>
-                    </label>
-                    ${!isAtelier ? `
-                    <label class="clients-field">
-                      <span>Prix HT (€)</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('postal')}
-                        <input type="number" name="price" step="0.01" min="0" value="${escHtml(editPriceValue)}" data-order-edit-price-ht>
-                      </div>
-                    </label>
-                    <label class="clients-field">
-                      <span>TVA</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('postal')}
-                        <select name="vat_rate" data-order-edit-vat-rate>${editVatOptions}</select>
-                      </div>
-                    </label>
-                    <label class="clients-field">
-                      <span>Prix TTC (€)</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('postal')}
-                        <input type="number" step="0.01" readonly data-order-edit-price-ttc>
-                      </div>
-                    </label>
-                    ` : ''}
-                    <label class="clients-field">
-                      <span>Heures prévues</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('calendar')}
-                        <input type="number" name="planned_hours" min="0" step="0.25" value="${plannedHoursValue > 0 ? escHtml(String(plannedHoursValue)) : ''}">
-                      </div>
-                    </label>
-                    <label class="clients-field">
-                      <span>Date fin prévue</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('calendar')}
-                        <input type="date" name="chantier_end_date" value="${escHtml(endDate || '')}">
-                      </div>
-                    </label>
-                    <label class="clients-field">
-                      <span>Étape chantier</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('database')}
-                        <select name="chantier_status">${chantierStatusOptions(chantierStatus)}</select>
-                      </div>
-                    </label>
-                    <label class="clients-field">
-                      <span>Avancement (%)</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('tasks')}
-                        <input type="number" name="chantier_progress" min="0" max="100" step="1" value="${escHtml(String(Number(o.chantier_progress || progress || 0)))}">
-                      </div>
-                    </label>
-                  </div>
-                  <div class="modern-client-order-edit-actions">
-                    <button type="submit" class="clients-submit-btn">${clientPageIcon('check', 'clients-submit-icon')} Enregistrer</button>
-                    <button type="button" class="modern-cancel-link" data-order-edit-cancel>Annuler</button>
-                  </div>
-                </form>
               </article>
             `;
           })
@@ -5920,9 +4535,6 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
             </div>
           </div>
         </section>
-
-        ${poseAgendaFlash ? `<section class="clients-create-card modern-form-card"><p class="info">${escHtml(poseAgendaFlash)}</p></section>` : ''}
-        ${orderUpdateFlash ? `<section class="clients-create-card modern-form-card"><p class="${orderUpdateStatus === 'ok' ? 'info' : 'error'}">${escHtml(orderUpdateFlash)}</p></section>` : ''}
 
         <section class="clients-create-card modern-form-card modern-client-order-form modern-client-order-add-card is-collapsed" id="new-client-order" data-client-order-add-card>
           <button type="button" class="modern-client-order-add-toggle" aria-expanded="false" aria-controls="client-order-add-panel" data-client-order-add-toggle>
@@ -6004,27 +4616,10 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
 
                 ${!isAtelier ? `
                 <label class="clients-field">
-                  <span>Prix HT (€)</span>
+                  <span>Prix (€)</span>
                   <div class="clients-input-shell">
                     ${clientPageIcon('postal')}
-                    <input type="number" name="price" step="0.01" min="0" placeholder="0.00" data-order-price-ht />
-                  </div>
-                </label>
-                <label class="clients-field">
-                  <span>TVA</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('postal')}
-                    <select name="vat_rate" data-order-vat-rate>
-                      <option value="20" selected>TVA 20 %</option>
-                      <option value="10">TVA 10 %</option>
-                    </select>
-                  </div>
-                </label>
-                <label class="clients-field">
-                  <span>Prix TTC (€)</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('postal')}
-                    <input type="number" step="0.01" placeholder="0.00" readonly data-order-price-ttc />
+                    <input type="number" name="price" step="0.01" placeholder="0.00" />
                   </div>
                 </label>
                 ` : ''}
@@ -6062,56 +4657,6 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
           var toggle = card.querySelector('[data-client-order-add-toggle]');
           var panel = card.querySelector('[data-client-order-add-panel]');
           if (!toggle || !panel) return;
-          var priceHt = card.querySelector('[data-order-price-ht]');
-          var vatRate = card.querySelector('[data-order-vat-rate]');
-          var priceTtc = card.querySelector('[data-order-price-ttc]');
-          function syncOrderTtc(){
-            if (!priceHt || !vatRate || !priceTtc) return;
-            var ht = Number(String(priceHt.value || '').replace(',', '.'));
-            var rate = Number(vatRate.value || 20);
-            priceTtc.value = Number.isFinite(ht) && ht > 0 ? (ht * (1 + rate / 100)).toFixed(2) : '';
-          }
-          if (priceHt && vatRate && priceTtc) {
-            priceHt.addEventListener('input', syncOrderTtc);
-            vatRate.addEventListener('change', syncOrderTtc);
-            syncOrderTtc();
-          }
-          document.querySelectorAll('[data-order-edit-form]').forEach(function(form){
-            var editPriceHt = form.querySelector('[data-order-edit-price-ht]');
-            var editVatRate = form.querySelector('[data-order-edit-vat-rate]');
-            var editPriceTtc = form.querySelector('[data-order-edit-price-ttc]');
-            function syncEditTtc(){
-              if (!editPriceHt || !editVatRate || !editPriceTtc) return;
-              var ht = Number(String(editPriceHt.value || '').replace(',', '.'));
-              var rate = Number(editVatRate.value || '');
-              editPriceTtc.value = Number.isFinite(ht) && ht > 0 && (rate === 10 || rate === 20)
-                ? (ht * (1 + rate / 100)).toFixed(2)
-                : '';
-            }
-            if (editPriceHt && editVatRate && editPriceTtc) {
-              editPriceHt.addEventListener('input', syncEditTtc);
-              editVatRate.addEventListener('change', syncEditTtc);
-              syncEditTtc();
-            }
-          });
-          document.querySelectorAll('[data-order-edit-toggle]').forEach(function(toggle){
-            var panel = document.getElementById(toggle.getAttribute('aria-controls') || '');
-            if (!panel) return;
-            toggle.addEventListener('click', function(){
-              var isOpen = toggle.getAttribute('aria-expanded') === 'true';
-              toggle.setAttribute('aria-expanded', String(!isOpen));
-              panel.hidden = isOpen;
-            });
-          });
-          document.querySelectorAll('[data-order-edit-cancel]').forEach(function(button){
-            button.addEventListener('click', function(){
-              var panel = button.closest('[data-order-edit-form]');
-              if (!panel) return;
-              panel.hidden = true;
-              var toggle = document.querySelector('[data-order-edit-toggle][aria-controls="' + panel.id + '"]');
-              if (toggle) toggle.setAttribute('aria-expanded', 'false');
-            });
-          });
           toggle.addEventListener('click', function(){
             var isOpen = toggle.getAttribute('aria-expanded') === 'true';
             toggle.setAttribute('aria-expanded', String(!isOpen));
@@ -6169,7 +4714,6 @@ async function renderEbpScanValidationPage(req, res, options) {
     || (analysis.source === 'pdf' && pdfTooShort ? 'Le PDF est peu textuel: vérifiez les champs détectés.' : '')
     || (analysis.source === 'ocr' && ocrTooShort ? 'OCR vide ou trop court: vérifiez le fichier, puis corrigez les champs manuellement.' : '')
     || (!extractedText ? 'Analyse incertaine: vérifiez et corrigez les champs.' : '');
-  const htMissingWithTtc = fields.amount_ht === null && fields.amount_ttc !== null;
 
   const optionsHtml = candidates
     .map((c) => {
@@ -6197,7 +4741,6 @@ async function renderEbpScanValidationPage(req, res, options) {
 
         <section class="clients-create-card modern-form-card modern-client-order-form">
           ${warning ? `<p class="info">${escHtml(warning)}</p>` : ''}
-          ${htMissingWithTtc ? '<p class="info">Montant TTC détecté, mais aucun montant HT fiable. Renseignez le montant HT avant création si vous voulez afficher un prix chantier HT.</p>' : ''}
 
           <form method="POST" action="/orders/clients/scan-ebp/create" class="modern-client-order-add-form">
             <input type="hidden" name="scan_file" value="${escHtml(scanFileName)}" />
@@ -6307,12 +4850,12 @@ app.get('/orders/clients/incoming-ebp', requireLogin, (req, res) => {
       const openUrl = `/orders/clients/incoming-ebp/open?file=${encodeURIComponent(file.name)}`;
       return `
         <tr>
-          <td data-label="Fichier PDF">${escHtml(file.name)}</td>
-          <td data-label="Date d'ajout">${escHtml(formatDateTimeLabel(file.addedAt))}</td>
-          <td data-label="Taille">${escHtml(formatFileSize(file.size))}</td>
-          <td data-label="Actions">
-            <div class="modern-form-actions ebp-file-actions" style="justify-content:flex-start;gap:8px;">
-              <a class="modern-cancel-link ebp-open-link" href="${openUrl}">Ouvrir</a>
+          <td>${escHtml(file.name)}</td>
+          <td>${escHtml(formatDateTimeLabel(file.addedAt))}</td>
+          <td>${escHtml(formatFileSize(file.size))}</td>
+          <td>
+            <div class="modern-form-actions" style="justify-content:flex-start;gap:8px;">
+              <a class="modern-cancel-link" href="${openUrl}" target="_blank" rel="noopener">Ouvrir</a>
               <form method="POST" action="/orders/clients/scan-ebp/analyze-incoming" style="margin:0;">
                 <input type="hidden" name="incoming_file" value="${escHtml(file.name)}" />
                 <button type="submit" class="clients-submit-btn">
@@ -6327,54 +4870,28 @@ app.get('/orders/clients/incoming-ebp', requireLogin, (req, res) => {
     }).join('')
     : '<tr><td colspan="4" class="empty">Aucun PDF à traiter dans le dossier incoming.</td></tr>';
 
-  const mobileCards = files.length
-    ? files.map((file) => {
-      const openUrl = `/orders/clients/incoming-ebp/open?file=${encodeURIComponent(file.name)}`;
-      return `
-        <article class="ebp-file-card">
-          <div class="ebp-file-card-main">
-            <h2>${escHtml(file.name)}</h2>
-            <p><strong>Ajouté le</strong> ${escHtml(formatDateTimeLabel(file.addedAt))}</p>
-            <p><strong>Taille :</strong> ${escHtml(formatFileSize(file.size))}</p>
-          </div>
-          <div class="ebp-file-card-actions">
-            <a class="modern-cancel-link ebp-open-link" href="${openUrl}">Ouvrir</a>
-            <form method="POST" action="/orders/clients/scan-ebp/analyze-incoming">
-              <input type="hidden" name="incoming_file" value="${escHtml(file.name)}" />
-              <button type="submit" class="clients-submit-btn">
-                <span>${clientPageIcon('search', 'clients-submit-icon')}</span>
-                Scanner ce devis
-              </button>
-            </form>
-          </div>
-        </article>
-      `;
-    }).join('')
-    : '<div class="empty-state ebp-empty-state">Aucun PDF à traiter dans le dossier incoming.</div>';
-
   res.send(
     pageTemplate(
       req,
       'Devis EBP à traiter',
       `
-      <div class="modern-page modern-client-orders-page ebp-page">
-        <section class="modern-list-head modern-client-orders-head ebp-head">
+      <div class="modern-page modern-client-orders-page">
+        <section class="modern-list-head modern-client-orders-head">
           <div class="clients-create-head">
             ${clientPageIcon('quotes', 'clients-title-icon')}
-            <div class="ebp-head-copy">
+            <div>
               <h1>Devis EBP à traiter</h1>
-              <span class="ebp-source-label">Dossier source :</span>
-              <span class="ebp-source-path">${escHtml(EBP_INCOMING_DIR)}</span>
+              <span>Dossier source: ${escHtml(EBP_INCOMING_DIR)}</span>
             </div>
           </div>
         </section>
 
-        <section class="clients-create-card modern-form-card modern-client-order-form ebp-card">
+        <section class="clients-create-card modern-form-card modern-client-order-form">
           ${error ? `<p class="error">${escHtml(error)}</p>` : ''}
           ${message ? `<p class="info">${escHtml(message)}</p>` : ''}
 
-          <div class="ebp-files-wrapper">
-            <table class="modern-list-table ebp-files-table">
+          <div style="overflow:auto;">
+            <table class="modern-list-table">
               <thead>
                 <tr>
                   <th>Fichier PDF</th>
@@ -6389,11 +4906,7 @@ app.get('/orders/clients/incoming-ebp', requireLogin, (req, res) => {
             </table>
           </div>
 
-          <div class="ebp-files-cards" aria-label="Liste mobile des devis EBP à traiter">
-            ${mobileCards}
-          </div>
-
-          <div class="modern-form-actions ebp-page-actions">
+          <div class="modern-form-actions">
             <a class="modern-cancel-link" href="/orders/clients">Retour commandes</a>
             <a class="clients-submit-btn" href="/orders/clients/scan-ebp">
               <span>${clientPageIcon('quotes', 'clients-submit-icon')}</span>
@@ -6402,80 +4915,12 @@ app.get('/orders/clients/incoming-ebp', requireLogin, (req, res) => {
           </div>
         </section>
       </div>
-      <script>
-        (function(){
-          var storageKey = 'incoming-ebp-scroll';
-          try {
-            var saved = window.sessionStorage.getItem(storageKey);
-            if (saved) {
-              window.requestAnimationFrame(function(){
-                window.scrollTo(0, Number(saved) || 0);
-                window.sessionStorage.removeItem(storageKey);
-              });
-            }
-          } catch {}
-
-          document.querySelectorAll('.ebp-open-link').forEach(function(link){
-            link.addEventListener('click', function(){
-              try {
-                window.sessionStorage.setItem(storageKey, String(window.scrollY || window.pageYOffset || 0));
-              } catch {}
-            });
-          });
-        })();
-      </script>
       `
     )
   );
 });
 
 app.get('/orders/clients/incoming-ebp/open', requireLogin, (req, res) => {
-  const incomingFileName = safeIncomingPdfName(req.query.file || '');
-  if (!incomingFileName) return res.status(400).send('Nom de fichier PDF invalide');
-
-  const filePath = safeResolveInside(EBP_INCOMING_DIR, incomingFileName);
-  if (!fs.existsSync(filePath)) return res.status(404).send('Fichier introuvable');
-
-  const rawUrl = `/orders/clients/incoming-ebp/raw?file=${encodeURIComponent(incomingFileName)}`;
-  const escapedTitle = escHtml(incomingFileName);
-
-  return res.send(`
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapedTitle}</title>
-  <link rel="stylesheet" href="/style.css?v=20260711-2">
-</head>
-<body class="incoming-pdf-viewer-body">
-  <div class="incoming-pdf-viewer">
-    <header class="incoming-pdf-viewer-header">
-      <button type="button" class="incoming-pdf-back" onclick="goBackToIncomingList()">← Retour</button>
-      <strong class="incoming-pdf-title">${escapedTitle}</strong>
-      <a class="incoming-pdf-download" href="${rawUrl}" download="${escapedTitle}">Télécharger</a>
-    </header>
-    <main class="incoming-pdf-frame-wrap">
-      <embed src="${rawUrl}" type="application/pdf" class="incoming-pdf-frame">
-    </main>
-  </div>
-  <script>
-    function goBackToIncomingList() {
-      try {
-        if (window.history.length > 1 && document.referrer) {
-          window.history.back();
-          return;
-        }
-      } catch {}
-      window.location = '/orders/clients/incoming-ebp';
-    }
-  </script>
-</body>
-</html>
-  `);
-});
-
-app.get('/orders/clients/incoming-ebp/raw', requireLogin, (req, res) => {
   const incomingFileName = safeIncomingPdfName(req.query.file || '');
   if (!incomingFileName) return res.status(400).send('Nom de fichier PDF invalide');
 
@@ -6635,12 +5080,7 @@ app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
     const quoteDate = String(req.body.quote_date || '').trim() || isoDate();
     const amountTtc = parseDecimalInput(req.body.amount_ttc, 0);
     const amountHt = parseDecimalInput(req.body.amount_ht, 0);
-    const hasOnlyTtc = amountHt <= 0 && amountTtc > 0;
-    if (hasOnlyTtc) {
-      console.warn('Scan EBP: montant TTC détecté sans HT fiable, client_orders.price laissé à 0.');
-    }
-    const price = amountHt > 0 ? amountHt : 0;
-    const vatRate = inferVatRateFromHtTtc(amountHt, amountTtc);
+    const price = amountTtc > 0 ? amountTtc : amountHt;
 
     const info = db.prepare(
       `
@@ -6649,7 +5089,6 @@ app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
         description,
         date,
         price,
-        vat_rate,
         planned_hours,
         chantier_status,
         chantier_start_date,
@@ -6657,14 +5096,13 @@ app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
         status,
         created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'En cours', ?)
+      VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 'En cours', ?)
     `
     ).run(
       finalClientName,
       description,
       quoteDate,
       price,
-      vatRate,
       0,
       'À préparer',
       new Date().toISOString()
@@ -6721,7 +5159,6 @@ app.post('/orders/client', requireLogin, (req, res) => {
   const description = String(req.body.description || '').trim();
   const date = String(req.body.date || '').trim();
   const price = req.body.price;
-  const vatRate = parseOptionalVatRate(req.body.vat_rate) || 20;
   const chantierStatus = normalizeChantierStatus(req.body.chantier_status);
   const plannedHours = parsePositiveNumber(req.body.planned_hours);
   const chantierStartDate = String(req.body.chantier_start_date || '').trim() || null;
@@ -6739,7 +5176,6 @@ app.post('/orders/client', requireLogin, (req, res) => {
         description,
         date,
         price,
-        vat_rate,
         planned_hours,
         chantier_status,
         chantier_start_date,
@@ -6747,7 +5183,7 @@ app.post('/orders/client', requireLogin, (req, res) => {
         status,
         created_at
       )
-	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'En cours', ?)
+	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'En cours', ?)
 	  `
     )
 	    .run(
@@ -6755,7 +5191,6 @@ app.post('/orders/client', requireLogin, (req, res) => {
         description || null,
         dateValue,
         price ? parseFloat(price) : 0,
-        vatRate,
         plannedHours,
         chantierStatus,
         chantierStartDate,
@@ -6799,75 +5234,6 @@ ensureDir(internalDir);
   res.redirect('/orders/clients');
 });
 
-app.post('/orders/client/:id/update', requireLogin, (req, res) => {
-  try {
-    const orderId = Number(req.params.id || 0);
-    if (!Number.isFinite(orderId) || orderId <= 0) {
-      return res.redirect('/orders/clients?orderUpdate=notfound');
-    }
-
-    const existing = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-    if (!existing) {
-      return res.redirect('/orders/clients?orderUpdate=notfound');
-    }
-
-    const isAtelier = req.session?.user?.role === 'atelier';
-    const dateValue = String(req.body.date || '').trim() || existing.date || isoDate();
-    const plannedHours = parsePositiveNumber(req.body.planned_hours);
-    const chantierEndDate = String(req.body.chantier_end_date || '').trim() || null;
-    const chantierStatus = normalizeChantierStatus(req.body.chantier_status || existing.chantier_status);
-    const chantierProgressRaw = parseDecimalInput(req.body.chantier_progress, Number(existing.chantier_progress || 0));
-    const chantierProgress = Math.max(0, Math.min(100, chantierProgressRaw));
-
-    if (isAtelier) {
-      db.prepare(`
-        UPDATE client_orders
-        SET date = ?,
-            planned_hours = ?,
-            chantier_end_date = ?,
-            chantier_status = ?,
-            chantier_progress = ?
-        WHERE id = ?
-      `).run(
-        dateValue,
-        plannedHours,
-        chantierEndDate,
-        chantierStatus,
-        chantierProgress,
-        orderId
-      );
-    } else {
-      const priceHt = parseDecimalInput(req.body.price, 0);
-      const vatRate = parseOptionalVatRate(req.body.vat_rate);
-      db.prepare(`
-        UPDATE client_orders
-        SET date = ?,
-            price = ?,
-            vat_rate = ?,
-            planned_hours = ?,
-            chantier_end_date = ?,
-            chantier_status = ?,
-            chantier_progress = ?
-        WHERE id = ?
-      `).run(
-        dateValue,
-        priceHt,
-        vatRate,
-        plannedHours,
-        chantierEndDate,
-        chantierStatus,
-        chantierProgress,
-        orderId
-      );
-    }
-
-    return res.redirect('/orders/clients?orderUpdate=ok');
-  } catch (e) {
-    console.error('Erreur modification commande client', e);
-    return res.redirect('/orders/clients?orderUpdate=error');
-  }
-});
-
 app.post('/orders/client/done', requireLogin, (req, res) => {
   db.prepare("UPDATE client_orders SET status = 'Terminée' WHERE id = ?").run(req.body.id);
   res.redirect('/orders/clients');
@@ -6881,206 +5247,36 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
     .all();
 
   const activeCount = orders.filter((o) => String(o.status || 'En cours') !== 'Terminée').length;
-
-  const chantierPurchases = db
-    .prepare(`
-      SELECT
-        p.id,
-        p.designation,
-        p.category,
-        p.qty,
-        p.unit,
-        p.reference,
-        p.supplier,
-        p.needed_date,
-        p.status,
-        co.id AS order_id,
-        co.name AS client_name,
-        co.description AS order_description
-      FROM client_order_purchases p
-      JOIN client_orders co ON co.id = p.client_order_id
-      ORDER BY
-        CASE COALESCE(NULLIF(TRIM(p.status), ''), 'À commander')
-          WHEN 'À commander' THEN 0
-          WHEN 'Commandé' THEN 1
-          ELSE 2
-        END,
-        COALESCE(NULLIF(TRIM(p.needed_date), ''), '9999-12-31') ASC,
-        p.id DESC
-    `)
-    .all();
-
-  const statusFilter = ['todo', 'ordered', 'done'].includes(String(req.query.status || '').trim())
-    ? String(req.query.status).trim()
-    : 'all';
-  const supplierFilter = String(req.query.supplier || 'all').trim() || 'all';
-  const searchFilter = normalizeSearchText(req.query.q || '');
-
-  const combinedSupplierItems = [
-    ...chantierPurchases.map((item) => {
-      const status = normalizePurchaseStatus(item.status);
-      const bucket = status === 'À commander' ? 'todo' : status === 'Commandé' ? 'ordered' : 'done';
-      const orderFolderName = clientOrderFolderName({
-        id: item.order_id,
-        description: item.order_description,
-      });
-      const orderUrl = `/pc-folders/${encodeURIComponent(safeName(item.client_name))}/${encodeURIComponent(orderFolderName)}/Commandes`;
-      return {
-        type: 'purchase',
-        key: `purchase-${item.id}`,
-        id: item.id,
-        sourceLabel: 'Achat chantier',
-        bucket,
-        sortRank: bucket === 'todo' ? 0 : bucket === 'ordered' ? 1 : 2,
-        status,
-        supplier: String(item.supplier || '').trim(),
-        title: item.designation || 'Article',
-        subtitle: `${item.client_name || 'Client'} · ${item.order_description || `Commande #${item.order_id}`}`,
-        meta: [
-          item.category || 'Catégorie non renseignée',
-          `${Number(item.qty || 0).toLocaleString('fr-FR')} ${item.unit || ''}`.trim(),
-          item.reference ? `Réf. ${item.reference}` : 'Référence non renseignée',
-          item.supplier || 'Fournisseur non renseigné',
-          item.needed_date ? `Besoin ${formatDateLabel(item.needed_date)}` : 'Besoin non renseigné',
-        ],
-        searchText: normalizeSearchText([
-          item.designation,
-          item.category,
-          item.reference,
-          item.supplier,
-          item.client_name,
-          item.order_description,
-        ].join(' ')),
-        href: orderUrl,
-      };
-    }),
-    ...orders.map((order) => {
-      const status = String(order.status || 'En cours').trim() || 'En cours';
-      const bucket = status === 'Terminée' ? 'done' : 'ordered';
-      return {
-        type: 'supplier',
-        key: `supplier-${order.id}`,
-        id: order.id,
-        sourceLabel: 'Commande fournisseur',
-        bucket,
-        sortRank: bucket === 'ordered' ? 1 : 2,
-        status,
-        supplier: String(order.name || '').trim(),
-        title: order.name || 'Commande fournisseur',
-        subtitle: order.description || 'Aucune description',
-        meta: [
-          `Date ${formatDateLabel(order.date)}`,
-          order.description || '',
-        ].filter(Boolean),
-        searchText: normalizeSearchText([order.name, order.description, order.date, status].join(' ')),
-        href: `/orders/suppliers#supplier-${order.id}`,
-      };
-    }),
-  ]
-    .filter((item) => statusFilter === 'all' || item.bucket === statusFilter)
-    .filter((item) => {
-      if (supplierFilter === 'all') return true;
-      if (supplierFilter === '__missing') return item.supplier === '';
-      return item.supplier === supplierFilter;
-    })
-    .filter((item) => !searchFilter || item.searchText.includes(searchFilter))
-    .sort((a, b) => a.sortRank - b.sortRank || String(a.supplier).localeCompare(String(b.supplier), 'fr') || String(a.title).localeCompare(String(b.title), 'fr'));
-
-  const supplierChoices = Array.from(
-    new Set(
-      [
-        ...orders.map((order) => String(order.name || '').trim()),
-        ...chantierPurchases.map((item) => String(item.supplier || '').trim()),
-      ]
-    )
-  ).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
-
-  const currentListUrl = () => {
-    const params = new URLSearchParams();
-    if (statusFilter !== 'all') params.set('status', statusFilter);
-    if (supplierFilter !== 'all') params.set('supplier', supplierFilter);
-    if (String(req.query.q || '').trim()) params.set('q', String(req.query.q).trim());
-    const query = params.toString();
-    return `/orders/suppliers${query ? `?${query}` : ''}#supplier-list`;
-  };
-
-  const supplierFilterOptions = [
-    '<option value="all">Tous fournisseurs</option>',
-    ...supplierChoices.map((supplier) => {
-      const value = supplier ? supplier : '__missing';
-      const label = supplier || 'Fournisseur non renseigné';
-      return `<option value="${escHtml(value)}"${value === supplierFilter ? ' selected' : ''}>${escHtml(label)}</option>`;
-    }),
-  ].join('');
-
-  const statusFilterOptions = [
-    ['all', 'Tous'],
-    ['todo', 'À commander'],
-    ['ordered', 'Commandés'],
-    ['done', 'Reçus ou terminés'],
-  ]
-    .map(([value, label]) => {
-      return `<option value="${escHtml(value)}"${value === statusFilter ? ' selected' : ''}>${escHtml(label)}</option>`;
-    })
-    .join('');
-
-  const combinedSupplierCards = combinedSupplierItems.length
-    ? combinedSupplierItems
-        .map((item) => {
-          const isPurchase = item.type === 'purchase';
-          const statusClass = isPurchase
-            ? purchaseStatusClass(item.status)
-            : item.status === 'Terminée' ? 'done' : 'ordered';
-          const redirect = currentListUrl();
-          return `
-            <article class="supplier-purchase-card supplier-combined-card" id="${escHtml(item.key)}">
-              <div class="supplier-purchase-context">
-                <span class="supplier-source-badge ${isPurchase ? 'purchase' : 'supplier'}">${escHtml(item.sourceLabel)}</span>
-                <strong>${escHtml(item.subtitle)}</strong>
+  const cards = orders.length > 0
+    ? orders.map((o) => {
+        const status = String(o.status || 'En cours');
+        const statusClass = status === 'Terminée' ? 'done' : 'progress';
+        const dateLabel = String(o.date || '').slice(0, 10) || 'Date non renseignée';
+        return `
+          <article class="supplier-modern-card">
+            <header>
+              <span class="supplier-modern-icon">${clientPageIcon('supplierOrders', 'modern-client-order-svg')}</span>
+              <div>
+                <h2>${escHtml(o.name || 'Commande fournisseur')}</h2>
+                <p>${escHtml(o.description || 'Aucune description')}</p>
               </div>
-              <div class="supplier-purchase-main">
-                <div>
-                  <h3>${escHtml(item.title)}</h3>
-                  <p>
-                    ${item.meta.map((meta) => `<span>${escHtml(meta)}</span>`).join('')}
-                  </p>
-                </div>
-                <span class="order-purchase-status ${statusClass}">${escHtml(item.status)}</span>
-              </div>
-              <div class="supplier-purchase-actions">
-                <a class="supplier-purchase-link" href="${item.href}">${isPurchase ? 'Ouvrir chantier' : 'Ouvrir'}</a>
-                ${isPurchase && item.status !== 'Commandé' ? `
-                  <form method="POST" action="/orders/suppliers/purchases/${item.id}/status">
-                    <input type="hidden" name="status" value="Commandé">
-                    <input type="hidden" name="redirect" value="${escHtml(redirect)}">
-                    <button type="submit">Marquer commandé</button>
-                  </form>
-                ` : ''}
-                ${isPurchase && item.status !== 'Reçu' ? `
-                  <form method="POST" action="/orders/suppliers/purchases/${item.id}/status">
-                    <input type="hidden" name="status" value="Reçu">
-                    <input type="hidden" name="redirect" value="${escHtml(redirect)}">
-                    <button type="submit">Marquer reçu</button>
-                  </form>
-                ` : ''}
-                ${!isPurchase && item.status !== 'Terminée' ? `
-                  <form method="POST" action="/orders/suppliers/done">
-                    <input type="hidden" name="id" value="${item.id}">
-                    <button type="submit">Marquer terminé</button>
-                  </form>
-                ` : ''}
-                ${!isPurchase ? `
-                  <form method="POST" action="/orders/supplier/delete" onsubmit="return confirm('Supprimer cette commande ?');">
-                    <input type="hidden" name="id" value="${item.id}">
-                    <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
-                  </form>
-                ` : ''}
-              </div>
-            </article>
-          `;
-        })
-        .join('')
-    : '<div class="empty-state">Aucune commande fournisseur ou achat ne correspond aux filtres.</div>';
+              <span class="modern-status-badge ${statusClass}">${escHtml(status)}</span>
+            </header>
+
+            <div class="supplier-modern-meta">
+              <span>${clientPageIcon('calendar', 'modern-action-icon')} ${escHtml(dateLabel)}</span>
+            </div>
+
+            <div class="supplier-modern-actions">
+              <form method="POST" action="/orders/supplier/delete" onsubmit="return confirm('Supprimer cette commande ?');">
+                <input type="hidden" name="id" value="${o.id}">
+                <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
+              </form>
+            </div>
+          </article>
+        `;
+      }).join('')
+    : '<div class="empty-state">Aucune commande fournisseur</div>';
 
   res.send(
     pageTemplate(req, 'Commandes fournisseurs', `
@@ -7089,8 +5285,8 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
           <div class="clients-create-head">
             ${clientPageIcon('supplierOrders', 'clients-title-icon')}
             <div>
-              <h1>Commandes fournisseurs et achats</h1>
-              <span>${orders.length} commande${orders.length > 1 ? 's' : ''} fournisseur · ${chantierPurchases.length} achat${chantierPurchases.length > 1 ? 's' : ''} chantier · ${activeCount} fournisseur${activeCount > 1 ? 's' : ''} en cours</span>
+              <h1>Commandes fournisseurs</h1>
+              <span>${orders.length} commande${orders.length > 1 ? 's' : ''} · ${activeCount} en cours</span>
             </div>
           </div>
         </section>
@@ -7142,27 +5338,8 @@ app.get('/orders/suppliers', requireLogin, (req, res) => {
           </div>
         </section>
 
-        <section class="supplier-purchases-section" id="supplier-list">
-          <p class="supplier-list-summary">${combinedSupplierItems.length} élément${combinedSupplierItems.length > 1 ? 's' : ''} affiché${combinedSupplierItems.length > 1 ? 's' : ''}</p>
-          <form method="GET" action="/orders/suppliers" class="supplier-purchase-filters">
-            <label>
-              <span>Statut</span>
-              <select name="status" onchange="this.form.submit()">${statusFilterOptions}</select>
-            </label>
-            <label>
-              <span>Fournisseur</span>
-              <select name="supplier" onchange="this.form.submit()">${supplierFilterOptions}</select>
-            </label>
-            <label>
-              <span>Recherche</span>
-              <input name="q" value="${escHtml(String(req.query.q || ''))}" placeholder="Désignation, client, chantier, référence">
-            </label>
-            <button type="submit">Rechercher</button>
-            <a href="/orders/suppliers#supplier-list">Réinitialiser</a>
-          </form>
-          <div class="supplier-purchase-list">
-            ${combinedSupplierCards}
-          </div>
+        <section class="supplier-modern-grid">
+          ${cards}
         </section>
       </div>
       <script>
@@ -7214,26 +5391,6 @@ app.post('/orders/supplier', requireLogin, (req, res) => {
 app.post('/orders/supplier/delete', requireLogin, (req, res) => {
   db.prepare('DELETE FROM supplier_orders WHERE id = ?').run(req.body.id);
   res.redirect('/orders/suppliers');
-});
-
-app.post('/orders/suppliers/purchases/:purchaseId/status', requireLogin, (req, res) => {
-  const purchaseId = Number(req.params.purchaseId || 0);
-  const status = normalizePurchaseStatus(req.body.status);
-  const redirect = String(req.body.redirect || '/orders/suppliers#supplier-list');
-  const safeRedirect = redirect.startsWith('/orders/suppliers')
-    ? redirect
-    : '/orders/suppliers#supplier-list';
-
-  const existing = db.prepare('SELECT id FROM client_order_purchases WHERE id = ?').get(purchaseId);
-  if (!existing) return res.status(404).send('Article introuvable');
-
-  db.prepare(`
-    UPDATE client_order_purchases
-    SET status = ?, updated_at = ?
-    WHERE id = ?
-  `).run(status, new Date().toISOString(), purchaseId);
-
-  res.redirect(safeRedirect);
 });
 
 /* ===================== PC FOLDERS (NAVIGATION) ===================== */
@@ -7363,9 +5520,6 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
       })()
     : '';
   const chantierHoursUrl = `/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/Heure%20chantier`;
-  const stairV2Url = orderDb
-    ? `/outils/prises-cotes/escalier-v2?client_order_id=${encodeURIComponent(String(orderDb.id))}`
-    : '/outils/prises-cotes/escalier-v2';
 
   const content = `
     <div class="pc-modern-page">
@@ -7389,10 +5543,6 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
             <a class="pc-order-hero-link" href="/orders/clients">
               ${clientPageIcon('folder', 'pc-order-hero-link-icon')}
               Commandes
-            </a>
-            <a class="pc-order-hero-link" href="${stairV2Url}">
-              ${clientPageIcon('measurements', 'pc-order-hero-link-icon')}
-              Escalier V2
             </a>
           </div>
         </div>
@@ -7429,7 +5579,12 @@ app.post('/orders/client/:id/chantier', requireLogin, (req, res) => {
   const doneHours = Object.prototype.hasOwnProperty.call(req.body, 'done_hours')
     ? parsePositiveNumber(req.body.done_hours)
     : Number(existing.done_hours || 0);
-  const chantierProgressValue = getProgressFromChantierStatus(chantierStatus);
+  const progressRaw = Object.prototype.hasOwnProperty.call(req.body, 'chantier_progress')
+    ? Number(req.body.chantier_progress || 0)
+    : Number(existing.chantier_progress || 0);
+  const chantierProgressValue = Number.isFinite(progressRaw)
+    ? Math.max(0, Math.min(100, progressRaw))
+    : chantierProgress(doneHours, plannedHours);
   const startDate = Object.prototype.hasOwnProperty.call(req.body, 'chantier_start_date')
     ? String(req.body.chantier_start_date || '').trim() || null
     : existing.chantier_start_date || null;
@@ -7481,7 +5636,6 @@ app.get('/pc-folders/:client/:order/:type', requireLogin, (req, res) => {
 
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
   const files = entries.filter((e) => e.isFile()).map((e) => e.name);
-  const orderDb = findClientOrderByFolder(client, order);
 
 const list = files.length
   ? `
@@ -7507,163 +5661,6 @@ const list = files.length
     </div>
   `
   : `<div class="empty-state">Aucun fichier dans ce dossier.</div>`;
-
-  const purchasesBlock = type === 'Commandes'
-    ? (() => {
-        if (!orderDb) {
-          return `
-            <section class="pc-modern-panel order-purchases-panel">
-              <div class="modern-section-title">
-                ${clientPageIcon('materials', 'clients-title-icon')}
-                <div>
-                  <h2>Quincaillerie et achats à commander</h2>
-                  <p>Commande non retrouvée en base, liste indisponible.</p>
-                </div>
-              </div>
-            </section>
-          `;
-        }
-
-        const purchases = db
-          .prepare('SELECT * FROM client_order_purchases WHERE client_order_id = ? ORDER BY id DESC')
-          .all(orderDb.id);
-        const purchaseCards = purchases.length
-          ? purchases
-              .map((item) => {
-                const status = normalizePurchaseStatus(item.status);
-                return `
-                  <article class="order-purchase-card">
-                    <div class="order-purchase-main">
-                      <div>
-                        <h3>${escHtml(item.designation || 'Article')}</h3>
-                        <p>
-                          ${item.category ? `<span>${escHtml(item.category)}</span>` : ''}
-                          <span>${Number(item.qty || 0).toLocaleString('fr-FR')} ${escHtml(item.unit || '')}</span>
-                          ${item.reference ? `<span>Réf. ${escHtml(item.reference)}</span>` : ''}
-                          ${item.supplier ? `<span>${escHtml(item.supplier)}</span>` : ''}
-                          ${item.needed_date ? `<span>Besoin ${escHtml(formatDateLabel(item.needed_date))}</span>` : ''}
-                        </p>
-                        ${item.note ? `<small>${escHtml(item.note)}</small>` : ''}
-                      </div>
-                      <span class="order-purchase-status ${purchaseStatusClass(status)}">${escHtml(status)}</span>
-                    </div>
-                    <details class="order-purchase-edit">
-                      <summary>Modifier</summary>
-                      <form method="POST" action="/orders/client/${orderDb.id}/purchases/${item.id}/update" class="order-purchase-form">
-                        <div class="order-purchase-form-grid">
-                          <label class="clients-field">
-                            <span>Désignation</span>
-                            <div class="clients-input-shell"><input name="designation" value="${escHtml(item.designation || '')}" required></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Catégorie</span>
-                            <div class="clients-input-shell"><input name="category" value="${escHtml(item.category || '')}" placeholder="Quincaillerie, acier..."></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Quantité</span>
-                            <div class="clients-input-shell"><input type="number" min="0" step="0.01" name="qty" value="${escHtml(String(Number(item.qty || 0)))}"></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Unité</span>
-                            <div class="clients-input-shell"><input name="unit" value="${escHtml(item.unit || '')}" placeholder="pièce, ml, lot"></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Référence</span>
-                            <div class="clients-input-shell"><input name="reference" value="${escHtml(item.reference || '')}"></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Fournisseur</span>
-                            <div class="clients-input-shell"><input name="supplier" value="${escHtml(item.supplier || '')}"></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Date de besoin</span>
-                            <div class="clients-input-shell"><input type="date" name="needed_date" value="${escHtml(String(item.needed_date || '').slice(0, 10))}"></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Statut</span>
-                            <div class="clients-input-shell"><select name="status">${purchaseStatusOptions(status)}</select></div>
-                          </label>
-                          <label class="clients-field order-purchase-wide">
-                            <span>Note</span>
-                            <div class="clients-input-shell"><input name="note" value="${escHtml(item.note || '')}"></div>
-                          </label>
-                        </div>
-                        <div class="order-purchase-actions">
-                          <button class="clients-submit-btn" type="submit">Enregistrer</button>
-                        </div>
-                      </form>
-                    </details>
-                    <form method="POST" action="/orders/client/${orderDb.id}/purchases/${item.id}/delete" class="order-purchase-delete" onsubmit="return confirm('Supprimer cet article ?');">
-                      <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
-                    </form>
-                  </article>
-                `;
-              })
-              .join('')
-          : '<div class="empty-state">Aucun achat à commander pour cette commande.</div>';
-
-        return `
-          <section class="pc-modern-panel order-purchases-panel">
-            <div class="modern-section-title">
-              ${clientPageIcon('materials', 'clients-title-icon')}
-              <div>
-                <h2>Quincaillerie et achats à commander</h2>
-                <p>${purchases.length} article${purchases.length > 1 ? 's' : ''}</p>
-              </div>
-            </div>
-            <form method="POST" action="/orders/client/${orderDb.id}/purchases" class="order-purchase-form order-purchase-add-form">
-              <div class="order-purchase-form-grid">
-                <label class="clients-field order-purchase-wide">
-                  <span>Désignation</span>
-                  <div class="clients-input-shell"><input name="designation" placeholder="Ex : chevilles, visserie, paumelles..." required></div>
-                </label>
-                <label class="clients-field">
-                  <span>Catégorie</span>
-                  <div class="clients-input-shell"><input name="category" placeholder="Quincaillerie, acier..."></div>
-                </label>
-                <label class="clients-field">
-                  <span>Quantité</span>
-                  <div class="clients-input-shell"><input type="number" min="0" step="0.01" name="qty" value="1"></div>
-                </label>
-                <label class="clients-field">
-                  <span>Unité</span>
-                  <div class="clients-input-shell"><input name="unit" placeholder="pièce"></div>
-                </label>
-                <label class="clients-field">
-                  <span>Référence</span>
-                  <div class="clients-input-shell"><input name="reference" placeholder="Référence fournisseur"></div>
-                </label>
-                <label class="clients-field">
-                  <span>Fournisseur</span>
-                  <div class="clients-input-shell"><input name="supplier" placeholder="Fournisseur"></div>
-                </label>
-                <label class="clients-field">
-                  <span>Date de besoin</span>
-                  <div class="clients-input-shell"><input type="date" name="needed_date"></div>
-                </label>
-                <label class="clients-field">
-                  <span>Statut</span>
-                  <div class="clients-input-shell"><select name="status">${purchaseStatusOptions('À commander')}</select></div>
-                </label>
-                <label class="clients-field order-purchase-wide">
-                  <span>Note</span>
-                  <div class="clients-input-shell"><input name="note" placeholder="Détail, dimensions, consigne..."></div>
-                </label>
-              </div>
-              <div class="order-purchase-actions">
-                <button class="clients-submit-btn" type="submit">
-                  <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-                  Ajouter l'article
-                </button>
-              </div>
-            </form>
-            <div class="order-purchase-list">
-              ${purchaseCards}
-            </div>
-          </section>
-        `;
-      })()
-    : '';
     
 
   const content = `
@@ -7705,94 +5702,10 @@ const list = files.length
         </div>
         ${list}
       </section>
-
-      ${purchasesBlock}
     </div>
   `;
 
   res.send(pageTemplate(req, `${type} - ${order}`, content));
-});
-
-app.post('/orders/client/:id/purchases', requireLogin, (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-  if (!order) return res.status(404).send('Commande introuvable');
-
-  const designation = String(req.body.designation || '').trim();
-  if (!designation) return res.status(400).send('Désignation requise');
-
-  const category = String(req.body.category || '').trim() || null;
-  const qty = parseDecimalInput(req.body.qty, 1);
-  const unit = String(req.body.unit || '').trim() || null;
-  const reference = String(req.body.reference || '').trim() || null;
-  const supplier = String(req.body.supplier || '').trim() || null;
-  const neededDate = String(req.body.needed_date || '').trim() || null;
-  const note = String(req.body.note || '').trim() || null;
-  const status = normalizePurchaseStatus(req.body.status);
-  const now = new Date().toISOString();
-
-  db.prepare(`
-    INSERT INTO client_order_purchases
-      (client_order_id, designation, category, qty, unit, reference, supplier, needed_date, note, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(orderId, designation, category, qty, unit, reference, supplier, neededDate, note, status, now, now);
-
-  res.redirect(getPurchaseOrderRedirect(order));
-});
-
-app.post('/orders/client/:id/purchases/:purchaseId/update', requireLogin, (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  const purchaseId = Number(req.params.purchaseId || 0);
-  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-  if (!order) return res.status(404).send('Commande introuvable');
-
-  const existing = db
-    .prepare('SELECT id FROM client_order_purchases WHERE id = ? AND client_order_id = ?')
-    .get(purchaseId, orderId);
-  if (!existing) return res.status(404).send('Article introuvable');
-
-  const designation = String(req.body.designation || '').trim();
-  if (!designation) return res.status(400).send('Désignation requise');
-
-  db.prepare(`
-    UPDATE client_order_purchases
-    SET designation = ?,
-        category = ?,
-        qty = ?,
-        unit = ?,
-        reference = ?,
-        supplier = ?,
-        needed_date = ?,
-        note = ?,
-        status = ?,
-        updated_at = ?
-    WHERE id = ? AND client_order_id = ?
-  `).run(
-    designation,
-    String(req.body.category || '').trim() || null,
-    parseDecimalInput(req.body.qty, 1),
-    String(req.body.unit || '').trim() || null,
-    String(req.body.reference || '').trim() || null,
-    String(req.body.supplier || '').trim() || null,
-    String(req.body.needed_date || '').trim() || null,
-    String(req.body.note || '').trim() || null,
-    normalizePurchaseStatus(req.body.status),
-    new Date().toISOString(),
-    purchaseId,
-    orderId
-  );
-
-  res.redirect(getPurchaseOrderRedirect(order));
-});
-
-app.post('/orders/client/:id/purchases/:purchaseId/delete', requireLogin, (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  const purchaseId = Number(req.params.purchaseId || 0);
-  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-  if (!order) return res.status(404).send('Commande introuvable');
-
-  db.prepare('DELETE FROM client_order_purchases WHERE id = ? AND client_order_id = ?').run(purchaseId, orderId);
-  res.redirect(getPurchaseOrderRedirect(order));
 });
 
 app.post('/pc-folders/:client/:order/:type/upload', requireLogin, pcUpload.single('file'), (req, res) => {
@@ -7982,10 +5895,12 @@ const isOver =
             <article class="pc-modern-hour-card">
               <header>
                 <strong>${escHtml(r.work_date)}</strong>
-                <span>${escHtml(formatChantierDurationLabel(r.minutes_total || 0))}</span>
+                <span>${fmtMinutes(r.minutes_total || 0)}</span>
               </header>
               <div class="pc-modern-hour-meta">
-                <span>Durée <strong>${escHtml(formatChantierDurationLabel(r.minutes_total || 0))}</strong></span>
+                <span>Début <strong>${escHtml(r.start_time || '—')}</strong></span>
+                <span>Fin <strong>${escHtml(r.end_time || '—')}</strong></span>
+                <span>Pause <strong>${Number(r.break_minutes || 0)} min</strong></span>
               </div>
               ${r.note ? `<p>${escHtml(r.note)}</p>` : ''}
                 <form method="POST" action="/chantier-hours/delete" onsubmit="return confirm('Supprimer cette ligne ?');" style="margin:0">
@@ -8053,7 +5968,7 @@ const isOver =
       <section class="pc-modern-panel">
         <div class="modern-section-title">
           ${pcFolderIcon('Heure chantier', 'clients-title-icon')}
-          <div><h2>Ajouter une durée</h2></div>
+          <div><h2>Ajouter une ligne</h2></div>
         </div>
         <form method="POST" action="/chantier-hours/add" class="hours-form">
           <input type="hidden" name="client" value="${escHtml(client)}">
@@ -8067,23 +5982,18 @@ const isOver =
             </div>
 
             <div class="field">
-              <label>Heures</label>
-              <input type="number" name="work_hours" min="0" step="1" inputmode="numeric" value="0" required data-chantier-hours-input>
+              <label>Début</label>
+              <input type="time" name="start_time" required>
             </div>
 
             <div class="field">
-              <label>Minutes</label>
-              <select name="work_minutes" required data-chantier-minutes-select>
-                <option value="0">0</option>
-                <option value="15">15</option>
-                <option value="30">30</option>
-                <option value="45">45</option>
-              </select>
+              <label>Fin</label>
+              <input type="time" name="end_time" required>
             </div>
 
             <div class="field">
-              <label>Total</label>
-              <strong data-chantier-duration-total aria-live="polite">0 h</strong>
+              <label>Pause (min)</label>
+              <input type="number" name="break_minutes" min="0" step="5" value="0">
             </div>
 
             <div class="field field-wide">
@@ -8096,28 +6006,6 @@ const isOver =
             </div>
           </div>
         </form>
-        <script>
-          (function() {
-            const form = document.querySelector('.hours-form');
-            if (!form) return;
-            const hoursInput = form.querySelector('[data-chantier-hours-input]');
-            const minutesSelect = form.querySelector('[data-chantier-minutes-select]');
-            const totalNode = form.querySelector('[data-chantier-duration-total]');
-            if (!hoursInput || !minutesSelect || !totalNode) return;
-
-            const updateTotal = () => {
-              const hours = Math.max(0, parseInt(hoursInput.value || '0', 10) || 0);
-              const minutes = parseInt(minutesSelect.value || '0', 10) || 0;
-              const totalMinutes = (hours * 60) + minutes;
-              totalNode.textContent = hours + ' h' + (minutes ? ' ' + String(minutes).padStart(2, '0') : '');
-              totalNode.dataset.totalMinutes = String(totalMinutes);
-            };
-
-            hoursInput.addEventListener('input', updateTotal);
-            minutesSelect.addEventListener('change', updateTotal);
-            updateTotal();
-          })();
-        </script>
       </section>
 
       <section class="pc-modern-panel">
@@ -8142,23 +6030,26 @@ app.post('/chantier-hours/add', requireLogin, (req, res) => {
     : null;
   const clientOrderId = linkedOrder ? requestedOrderId : null;
   const work_date = String(req.body.work_date || '').trim();
-  const work_hours = req.body.work_hours;
-  const work_minutes = req.body.work_minutes;
+  const start_time = String(req.body.start_time || '').trim();
+  const end_time = String(req.body.end_time || '').trim();
+  const break_minutes = parseInt(req.body.break_minutes || '0', 10) || 0;
   const note = String(req.body.note || '').trim();
 
   if (!client || !order || !work_date) return res.status(400).send('Données manquantes');
 
-  const duration = parseChantierHoursDuration(work_hours, work_minutes);
-  if (duration.error) return res.status(400).send(duration.error);
+  const s = toMinutes(start_time);
+  const e = toMinutes(end_time);
+  if (s === null || e === null) return res.status(400).send('Heures invalides');
+  if (e <= s) return res.status(400).send('Fin doit être après début');
 
-  const minutes_total = duration.minutesTotal;
+  const minutes_total = Math.max(0, e - s - break_minutes);
 
   db.prepare(
     `
     INSERT INTO chantier_hours (client, order_name, client_order_id, work_date, start_time, end_time, break_minutes, minutes_total, note, created_at)
-    VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
-  ).run(client, order, clientOrderId, work_date, minutes_total, note || null, new Date().toISOString());
+  ).run(client, order, clientOrderId, work_date, start_time, end_time, break_minutes, minutes_total, note || null, new Date().toISOString());
 
   res.redirect(`/pc-folders/${encodeURIComponent(safeName(client))}/${encodeURIComponent(safeName(order))}/Heure%20chantier`);
 });
@@ -9053,32 +6944,24 @@ function printCuts() {
   }
 
   const win = window.open('', '', 'width=900,height=650');
-  if (!win) {
-    alert('Impossible d\'ouvrir la fenêtre d\'impression.');
-    return;
-  }
 
-  const printHtml = \`
-<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Plan de coupe</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    h2 { text-align: center; margin-bottom: 15px; }
-    .bar-box { border: 1px solid #000; padding: 10px; margin-bottom: 8px; }
-  </style>
-</head>
-<body>
-  <h2>Plan de coupe</h2>
-  \${result.innerHTML}
-</body>
-</html>\`;
+  win.document.write(
+    '<html>' +
+      '<head>' +
+        '<title>Plan de coupe</title>' +
+        '<style>' +
+          'body{font-family:Arial,sans-serif;padding:20px;}' +
+          'h2{text-align:center;margin-bottom:15px;}' +
+          '.bar-box{border:1px solid #000;padding:10px;margin-bottom:8px;}' +
+        '</style>' +
+      '</head>' +
+      '<body>' +
+        '<h2>Plan de coupe</h2>' +
+        result.innerHTML +
+      '</body>' +
+    '</html>'
+  );
 
-  win.document.open();
-  win.document.write(printHtml);
   win.document.close();
   win.focus();
   win.print();
@@ -9359,32 +7242,24 @@ function printPlan() {
   var result = document.getElementById('result').innerHTML;
 
   var w = window.open('', '', 'width=1000,height=700');
-  if (!w) {
-    alert('Impossible d\'ouvrir la fenêtre d\'impression.');
-    return;
-  }
 
-  var printHtml = \`
-<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Plan de découpe tôles</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    img { max-width: 100%; border: 1px solid #000; }
-  </style>
-</head>
-<body>
-  <h2>Plan de découpe tôles</h2>
-  \${result}
-  <img src="\${imgData}" alt="Plan de découpe">
-</body>
-</html>\`;
+  w.document.write(
+    '<html>' +
+      '<head>' +
+        '<title>Plan de découpe tôles</title>' +
+        '<style>' +
+          'body{font-family:Arial;padding:20px;}' +
+          'img{max-width:100%;border:1px solid #000;}' +
+        '</style>' +
+      '</head>' +
+      '<body>' +
+        '<h2>Plan de découpe tôles</h2>' +
+        result +
+        '<img src="' + imgData + '">' +
+      '</body>' +
+    '</html>'
+  );
 
-  w.document.open();
-  w.document.write(printHtml);
   w.document.close();
   w.focus();
   w.print();
@@ -10151,19 +8026,17 @@ console.log('orderTitle =', orderTitle);
     description,
     date,
     price,
-    vat_rate,
     planned_hours,
     status,
     created_at
   )
-  VALUES (?, ?, ?, ?, ?, ?, 'En cours', ?)
+  VALUES (?, ?, ?, ?, ?, 'En cours', ?)
   `
 ).run(
   clientName,
   orderTitle,
   isoDate(),
   totalWithMargin,
-  parseOptionalVatRate(quote.vat_rate),
   plannedHours,
   new Date().toISOString()
 );
@@ -10715,42 +8588,9 @@ function printBars() {
   }
 
   var win = window.open('', '', 'width=900,height=650');
-  if (!win) {
-    alert('Impossible d\\'ouvrir la fenêtre d\\'impression.');
-    return;
-  }
-
-  var printHtml =
-    '<!doctype html>' +
-    '<html lang="fr">' +
-      '<head>' +
-        '<meta charset="utf-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-        '<title>Plan de coupe barres</title>' +
-        '<style>' +
-          'body{font-family:Arial,sans-serif;padding:20px;}' +
-          'h2{text-align:center;margin-bottom:15px;}' +
-          '.bar-box{border:1px solid #000;padding:10px;margin-bottom:8px;}' +
-          '.print-toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px;}' +
-          '.print-toolbar a,.print-toolbar button{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border:1px solid #999;border-radius:999px;background:#fff;color:#111;text-decoration:none;font:600 14px Arial,sans-serif;cursor:pointer;}' +
-          '.print-toolbar button{background:#f3f4f6;}' +
-          '@media print{.print-toolbar{display:none !important;}}' +
-        '</style>' +
-      '</head>' +
-      '<body>' +
-        '<div class="print-toolbar">' +
-          '<a href="/outils/logibarre">← Retour à LogiBarre</a>' +
-          '<button type="button" onclick="window.print()">Imprimer</button>' +
-        '</div>' +
-        '<h2>Plan de coupe barres</h2>' +
-        content +
-      '</body>' +
-    '</html>';
-
-  win.document.open();
-  win.document.write(printHtml);
+  win.document.write('<h2>Plan de coupe barres</h2>' + content);
   win.document.close();
-  win.focus();
+  win.print();
 }
 </script>
 
@@ -11188,42 +9028,9 @@ function printSheets() {
   }
 
   var win = window.open('', '', 'width=900,height=650');
-  if (!win) {
-    alert('Impossible d\\'ouvrir la fenêtre d\\'impression.');
-    return;
-  }
-
-  var printHtml =
-    '<!doctype html>' +
-    '<html lang="fr">' +
-      '<head>' +
-        '<meta charset="utf-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-        '<title>Plan de découpe tôles</title>' +
-        '<style>' +
-          'body{font-family:Arial,sans-serif;padding:20px;}' +
-          'h2{text-align:center;margin-bottom:15px;}' +
-          '.sheet-box{border:1px solid #000;padding:10px;margin-bottom:8px;}' +
-          '.print-toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px;}' +
-          '.print-toolbar a,.print-toolbar button{display:inline-flex;align-items:center;justify-content:center;padding:10px 14px;border:1px solid #999;border-radius:999px;background:#fff;color:#111;text-decoration:none;font:600 14px Arial,sans-serif;cursor:pointer;}' +
-          '.print-toolbar button{background:#f3f4f6;}' +
-          '@media print{.print-toolbar{display:none !important;}}' +
-        '</style>' +
-      '</head>' +
-      '<body>' +
-        '<div class="print-toolbar">' +
-          '<a href="/outils/logitole">← Retour à LogiTôle</a>' +
-          '<button type="button" onclick="window.print()">Imprimer</button>' +
-        '</div>' +
-        '<h2>Plan de découpe tôles</h2>' +
-        content +
-      '</body>' +
-    '</html>';
-
-  win.document.open();
-  win.document.write(printHtml);
+  win.document.write('<h2>Plan de découpe tôles</h2>' + content);
   win.document.close();
-  win.focus();
+  win.print();
 }
 </script>
 
@@ -11312,75 +9119,6 @@ app.post('/orders/suppliers/delete', requireLogin, (req, res) => {
 
   res.redirect('/orders/suppliers');
 });
-app.post('/orders/client/:id/add-agenda-pose', requireLogin, (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  if (!Number.isFinite(orderId) || orderId <= 0) {
-    return res.redirect('/orders/clients?poseAgendaStatus=error');
-  }
-
-  const order = db
-    .prepare('SELECT id, name, description, chantier_status FROM client_orders WHERE id = ? LIMIT 1')
-    .get(orderId);
-
-  if (!order) {
-    return res.redirect('/orders/clients?poseAgendaStatus=error');
-  }
-
-  const chantierStatus = normalizeChantierStatus(order.chantier_status);
-  if (chantierStatus !== 'En pose') {
-    return res.redirect('/orders/clients?poseAgendaStatus=error');
-  }
-
-  const poseDate = String(req.body.pose_date || '').trim();
-  const startTime = String(req.body.start_time || '').trim();
-  const endTime = String(req.body.end_time || '').trim();
-  const place = String(req.body.place || '').trim();
-  const note = String(req.body.note || '').trim();
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(poseDate) || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
-    return res.redirect(`/orders/clients?poseAgendaStatus=error&poseAgendaOrderId=${orderId}`);
-  }
-  if (startTime >= endTime) {
-    return res.redirect(`/orders/clients?poseAgendaStatus=error&poseAgendaOrderId=${orderId}`);
-  }
-
-  const orderName = String(order.description || '').trim() || `Commande #${order.id}`;
-  const clientName = String(order.name || '').trim();
-  const baseTitle = `Pose - ${clientName} - ${orderName}`;
-  const detailParts = [];
-  if (place) detailParts.push(`Lieu: ${place}`);
-  if (note) detailParts.push(`Note: ${note}`);
-  const title = detailParts.length ? `${baseTitle} · ${detailParts.join(' · ')}` : baseTitle;
-
-  const startIso = `${poseDate}T${startTime}`;
-  const endIso = `${poseDate}T${endTime}`;
-
-  const duplicate = db
-    .prepare(
-      `
-      SELECT id
-      FROM events
-      WHERE type = 'pose'
-        AND start_date = ?
-        AND (title = ? OR title LIKE ?)
-      LIMIT 1
-    `
-    )
-    .get(startIso, baseTitle, `${baseTitle} · %`);
-
-  if (duplicate) {
-    return res.redirect(`/orders/clients?poseAgendaStatus=exists&poseAgendaOrderId=${orderId}`);
-  }
-
-  db.prepare(
-    `
-    INSERT INTO events (title, type, start_date, end_date, created_at)
-    VALUES (?, ?, ?, ?, ?)
-  `
-  ).run(title, 'pose', startIso, endIso, new Date().toISOString());
-
-  return res.redirect(`/orders/clients?poseAgendaStatus=created&poseAgendaOrderId=${orderId}`);
-});
 app.post('/agenda/add', requireLogin, (req, res) => {
   const { title, type, start_date, end_date } = req.body;
 
@@ -11408,38 +9146,12 @@ app.post('/agenda/update', requireLogin, (req, res) => {
 
   res.json({ success: true });
 });
-app.post('/agenda/delete', requireLogin, async (req, res) => {
-  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.body.id);
-
-  if (event?.google_event_id && req.session.googleTokens) {
-    try {
-      oauth2Client.setCredentials(req.session.googleTokens);
-      const calendar = google.calendar({
-        version: 'v3',
-        auth: oauth2Client
-      });
-      await calendar.events.delete({
-        calendarId: GOOGLE_CALENDAR_ID,
-        eventId: event.google_event_id
-      });
-    } catch (err) {
-      const status = err.response?.status || err.code;
-      if (status !== 404 && status !== 410) {
-        console.error('Erreur suppression Google Agenda :', err.response ? err.response.data : err);
-        return res.status(502).json({ success: false, error: 'Erreur suppression Google Agenda' });
-      }
-    }
-  }
-
+app.post('/agenda/delete', requireLogin, (req, res) => {
   db.prepare('DELETE FROM events WHERE id = ?').run(req.body.id);
   res.json({ success: true });
 });
 
 /* ===================== START ===================== */
-
-purgeExpiredLocalAgendaEventsSafely();
-const agendaPurgeTimer = setInterval(purgeExpiredLocalAgendaEventsSafely, 60 * 60 * 1000);
-if (typeof agendaPurgeTimer.unref === 'function') agendaPurgeTimer.unref();
 
 app.listen(PORT, HOST, () => {
   console.log(`Serveur démarré sur ${HOST}:${PORT}`);
