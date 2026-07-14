@@ -171,16 +171,9 @@
       </div>
       <button type="button" id="sketchToolbarToggle" class="sketch-toolbar-toggle" aria-label="Masquer la barre d'outils" title="Masquer la barre d'outils" aria-expanded="true">‹</button>
       <div class="sketch-toolbar-left" id="sketchToolbarLeft">
-        <button type="button" id="toolPenBtn" class="is-active sketch-icon-btn" aria-label="Stylo" title="Stylo" aria-pressed="true">✎</button>
+        <button type="button" id="toolPenBtn" class="is-active sketch-icon-btn sketch-tool-wide" aria-label="Main libre" title="Main libre" aria-pressed="true">Main libre</button>
         <button type="button" id="toolEraserBtn" class="sketch-icon-btn" aria-label="Gomme" title="Gomme" aria-pressed="false">⌫</button>
-        <button type="button" class="sketch-icon-btn" data-sketch-tool="line" aria-label="Ligne droite" title="Ligne droite" aria-pressed="false">╱</button>
-        <button type="button" class="sketch-icon-btn" data-sketch-tool="arrow" aria-label="Flèche" title="Flèche" aria-pressed="false">➜</button>
-        <button type="button" class="sketch-icon-btn" data-sketch-tool="rect" aria-label="Rectangle" title="Rectangle" aria-pressed="false">□</button>
-        <button type="button" class="sketch-icon-btn" data-sketch-tool="ellipse" aria-label="Cercle ou ellipse" title="Cercle ou ellipse" aria-pressed="false">○</button>
-        <button type="button" class="sketch-icon-btn" data-sketch-tool="text" aria-label="Texte" title="Texte" aria-pressed="false">T</button>
-        <button type="button" class="sketch-icon-btn" data-sketch-tool="marker" aria-label="Repère numéroté" title="Repère numéroté" aria-pressed="false">1</button>
-        <button type="button" class="sketch-icon-btn" data-sketch-tool="dimension" aria-label="Cotation simple" title="Cotation simple" aria-pressed="false">⇔</button>
-        <button type="button" id="openSketchSymbolBtn" class="sketch-icon-btn" aria-label="Bibliothèque de symboles" title="Bibliothèque de symboles">⌘</button>
+        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="auto_trace" aria-label="Tracé automatique" title="Tracé automatique" aria-pressed="false">Tracé auto</button>
         <button type="button" id="useSketchPhotoBtn" class="sketch-icon-btn" aria-label="Choisir une photo de fond" title="Choisir une photo de fond">▧</button>
         <button type="button" id="removeSketchPhotoBtn" class="sketch-icon-btn" aria-label="Retirer la photo de fond" title="Retirer la photo de fond">▨</button>
         <div class="sketch-toolbar-card">
@@ -206,6 +199,11 @@
       </div>
       <span id="sketchStatus" class="sketch-status">Prêt</span>
       <span id="sketchBgLabel" class="sketch-bg-label">Fond: aucun</span>
+      <div id="sketchAutoTraceControls" class="sketch-auto-trace-controls" hidden aria-hidden="true">
+        <button type="button" id="finishAutoTraceBtn">✓ Terminer le tracé</button>
+        <button type="button" id="undoAutoTraceBtn">Annuler le dernier segment</button>
+        <button type="button" id="cancelAutoTraceBtn">Annuler le tracé</button>
+      </div>
       <div id="sketchSymbolControls" class="sketch-symbol-controls" hidden aria-hidden="true">
         <button type="button" id="sketchSymbolSmallerBtn" aria-label="Réduire le symbole" title="Réduire le symbole">−</button>
         <button type="button" id="sketchSymbolLargerBtn" aria-label="Agrandir le symbole" title="Agrandir le symbole">+</button>

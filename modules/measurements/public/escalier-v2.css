@@ -1106,6 +1106,14 @@ select {
   height: 48px;
 }
 
+.sketch-icon-btn.sketch-tool-wide {
+  width: auto;
+  min-width: 92px;
+  padding: 0 10px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
 .sketch-toolbar-top button {
   width: 44px;
   min-width: 44px;
@@ -1269,6 +1277,44 @@ select {
   padding: 0 10px;
 }
 
+.sketch-auto-trace-controls {
+  position: absolute;
+  left: calc(env(safe-area-inset-left) + 10px);
+  right: calc(env(safe-area-inset-right) + 10px);
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  padding: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(12px);
+}
+
+.sketch-auto-trace-controls[hidden] {
+  display: none !important;
+}
+
+.sketch-auto-trace-controls button {
+  width: auto;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.sketch-auto-trace-controls button:first-child {
+  background: #111827;
+  color: #ffffff;
+}
+
 .sketch-photo-choice img {
   width: 100%;
   aspect-ratio: 4 / 3;
@@ -1425,7 +1471,7 @@ body.sketch-open {
 
   .sketch-toolbar-left {
     top: calc(env(safe-area-inset-top) + 8px);
-    width: 58px;
+    width: 76px;
   }
 
   .sketch-toolbar-left > button,
@@ -1435,6 +1481,15 @@ body.sketch-open {
     min-height: 44px;
     padding: 0;
     font-size: 0.95rem;
+  }
+
+  .sketch-toolbar-left > button.sketch-tool-wide {
+    width: 64px;
+    min-width: 64px;
+    padding: 0 4px;
+    font-size: 0.58rem;
+    line-height: 1.05;
+    white-space: normal;
   }
 
   .sketch-photo-picker {

@@ -66,12 +66,16 @@
   const sketchTextInput = document.getElementById('sketchTextInput');
   const sketchTextCancelBtn = document.getElementById('sketchTextCancelBtn');
   const sketchTextConfirmBtn = document.getElementById('sketchTextConfirmBtn');
+  const sketchAutoTraceControls = document.getElementById('sketchAutoTraceControls');
+  const finishAutoTraceBtn = document.getElementById('finishAutoTraceBtn');
+  const undoAutoTraceBtn = document.getElementById('undoAutoTraceBtn');
+  const cancelAutoTraceBtn = document.getElementById('cancelAutoTraceBtn');
   const measurementsV2Progress = document.getElementById('measurementsV2Progress');
   const measurementsV2Schema = document.getElementById('measurementsV2Schema');
   const measurementsV2Fields = document.getElementById('measurementsV2Fields');
   const measurementsV2Checks = document.getElementById('measurementsV2Checks');
 
-  const ANNOTATION_TOOLS = new Set(['line', 'arrow', 'rect', 'ellipse', 'text', 'marker', 'dimension', 'symbol']);
+  const ANNOTATION_TOOLS = new Set(['line', 'arrow', 'rect', 'ellipse', 'text', 'marker', 'dimension', 'symbol', 'auto_trace']);
   const SYMBOL_LIBRARY = [
     { key: 'prise_electrique', label: 'Prise électrique', icon: 'P' },
     { key: 'interrupteur', label: 'Interrupteur', icon: 'I' },
@@ -207,6 +211,8 @@
   let sketchTextRequest = null;
   let sketchSelectedAnnotationIndex = -1;
   let sketchMoveState = null;
+  let sketchAutoTracePoints = [];
+  let sketchAutoTracePreviewPoint = null;
   let measurementsV2State = null;
   let activeMeasurementKey = '';
 
@@ -936,6 +942,18 @@
         label: String(annotation.label || (found ? found.label : 'Symbole')).slice(0, 80),
       };
     }
+    if (type === 'auto_trace') {
+      const points = (Array.isArray(annotation.points) ? annotation.points : [])
+        .map((point) => ({
+          x: normalizeUnit(point && point.x),
+          y: normalizeUnit(point && point.y),
+        }))
+        .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+      return {
+        ...base,
+        points,
+      };
+    }
     return {
       ...base,
       x1: normalizeUnit(annotation.x1),
@@ -1208,6 +1226,33 @@
         ctx.fill();
         ctx.restore();
       }
+      ctx.restore();
+      return;
+    }
+
+    if (item.type === 'auto_trace') {
+      const points = Array.isArray(item.points) ? item.points : [];
+      if (!points.length) {
+        ctx.restore();
+        return;
+      }
+      const canvasPoints = points.map((point) => sketchUnitToCanvasPoint(point.x, point.y));
+      if (canvasPoints.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(canvasPoints[0].x, canvasPoints[0].y);
+        canvasPoints.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
+        ctx.stroke();
+      }
+      canvasPoints.forEach((point) => {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, Math.max(4, width * 1.6), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = Math.max(1, width * 0.45);
+        ctx.stroke();
+        ctx.restore();
+      });
       ctx.restore();
       return;
     }
@@ -1516,6 +1561,9 @@
     }
     sketchDraftAnnotation = null;
     sketchMoveState = null;
+    sketchAutoTracePoints = [];
+    sketchAutoTracePreviewPoint = null;
+    updateAutoTraceControls();
     setSelectedSketchAnnotation(-1);
     sketchRenderComposite();
     sketchLoadingState = false;
@@ -1604,6 +1652,131 @@
       width: Math.max(1, sketchSize * 2),
       text: text || '',
     });
+  }
+
+  function makeAutoTraceAnnotation(points) {
+    return normalizeSketchAnnotation({
+      type: 'auto_trace',
+      points: Array.isArray(points) ? points : [],
+      color: sketchColor,
+      width: Math.max(1, sketchSize * 2),
+    });
+  }
+
+  function correctedAutoTracePoint(lastPoint, rawPoint) {
+    const dx = Number(rawPoint.x || 0) - Number(lastPoint.x || 0);
+    const dy = Number(rawPoint.y || 0) - Number(lastPoint.y || 0);
+    if (Math.abs(dy) >= Math.abs(dx)) {
+      return { x: normalizeUnit(lastPoint.x), y: normalizeUnit(rawPoint.y) };
+    }
+    return { x: normalizeUnit(rawPoint.x), y: normalizeUnit(lastPoint.y) };
+  }
+
+  function updateAutoTraceControls() {
+    const active = sketchTool === 'auto_trace' && sketchAutoTracePoints.length > 0;
+    if (sketchAutoTraceControls) {
+      sketchAutoTraceControls.hidden = !active;
+      sketchAutoTraceControls.setAttribute('aria-hidden', active ? 'false' : 'true');
+    }
+    if (finishAutoTraceBtn) finishAutoTraceBtn.disabled = sketchAutoTracePoints.length < 2;
+    if (undoAutoTraceBtn) undoAutoTraceBtn.disabled = sketchAutoTracePoints.length < 2;
+    if (cancelAutoTraceBtn) cancelAutoTraceBtn.disabled = sketchAutoTracePoints.length < 1;
+  }
+
+  function renderAutoTraceDraft() {
+    if (!sketchAutoTracePoints.length) {
+      sketchDraftAnnotation = null;
+    } else {
+      const points = sketchAutoTracePreviewPoint
+        ? [...sketchAutoTracePoints, sketchAutoTracePreviewPoint]
+        : sketchAutoTracePoints;
+      sketchDraftAnnotation = makeAutoTraceAnnotation(points);
+    }
+    updateAutoTraceControls();
+    sketchRenderComposite();
+  }
+
+  function handleAutoTraceTap(point) {
+    if (!sketchAutoTracePoints.length) {
+      sketchAutoTracePoints = [{ x: normalizeUnit(point.x), y: normalizeUnit(point.y) }];
+      sketchAutoTracePreviewPoint = null;
+      setSketchStatus('Point de depart place');
+      renderAutoTraceDraft();
+      return;
+    }
+    const last = sketchAutoTracePoints[sketchAutoTracePoints.length - 1];
+    const nextPoint = correctedAutoTracePoint(last, point);
+    const dx = Math.abs(nextPoint.x - last.x);
+    const dy = Math.abs(nextPoint.y - last.y);
+    if (dx < 0.002 && dy < 0.002) {
+      setSketchStatus('Point trop proche du precedent', true);
+      renderAutoTraceDraft();
+      return;
+    }
+    sketchAutoTracePoints.push(nextPoint);
+    sketchAutoTracePreviewPoint = null;
+    dirty = true;
+    setSketchStatus(`${sketchAutoTracePoints.length - 1} segment${sketchAutoTracePoints.length > 2 ? 's' : ''}`);
+    renderAutoTraceDraft();
+  }
+
+  function updateAutoTracePreview(point) {
+    if (sketchTool !== 'auto_trace' || !sketchAutoTracePoints.length) return;
+    const last = sketchAutoTracePoints[sketchAutoTracePoints.length - 1];
+    sketchAutoTracePreviewPoint = correctedAutoTracePoint(last, point);
+    renderAutoTraceDraft();
+  }
+
+  function finishAutoTrace() {
+    if (sketchAutoTracePoints.length < 2) {
+      setSketchStatus('Ajoutez au moins deux points pour terminer le trace', true);
+      return false;
+    }
+    const annotation = makeAutoTraceAnnotation(sketchAutoTracePoints);
+    if (annotation && annotation.points.length >= 2) {
+      sketchAnnotations.push(annotation);
+      dirty = true;
+      sketchPushHistory();
+      setSketchStatus('Trace automatique ajoute');
+    }
+    sketchAutoTracePoints = [];
+    sketchAutoTracePreviewPoint = null;
+    sketchDraftAnnotation = null;
+    updateAutoTraceControls();
+    sketchRenderComposite();
+    return true;
+  }
+
+  function undoAutoTraceSegment() {
+    if (sketchAutoTracePoints.length <= 1) return;
+    sketchAutoTracePoints.pop();
+    sketchAutoTracePreviewPoint = null;
+    setSketchStatus('Dernier segment annule');
+    renderAutoTraceDraft();
+  }
+
+  function cancelAutoTrace() {
+    sketchAutoTracePoints = [];
+    sketchAutoTracePreviewPoint = null;
+    sketchDraftAnnotation = null;
+    updateAutoTraceControls();
+    sketchRenderComposite();
+    setSketchStatus('Trace automatique annule');
+  }
+
+  function confirmAutoTraceBeforeToolChange() {
+    if (sketchTool !== 'auto_trace' || !sketchAutoTracePoints.length) return true;
+    if (sketchAutoTracePoints.length >= 2) {
+      const shouldFinish = window.confirm('Terminer le trace automatique en cours avant de changer d outil ?');
+      if (shouldFinish) return finishAutoTrace();
+      return false;
+    }
+    const shouldCancel = window.confirm('Annuler le point de depart du trace automatique ?');
+    if (shouldCancel) {
+      cancelAutoTrace();
+      return true;
+    }
+    return false;
   }
 
   function openSketchTextDialog(options) {
@@ -1747,6 +1920,12 @@
     event.preventDefault();
     const canvasPoint = sketchCanvasPoint(event);
     const point = sketchCanvasPointToUnit(canvasPoint);
+
+    if (sketchTool === 'auto_trace') {
+      handleAutoTraceTap(point);
+      return;
+    }
+
     const symbolHit = findSketchSymbolAtPoint(canvasPoint);
 
     if (symbolHit) {
@@ -1804,6 +1983,11 @@
   }
 
   function sketchDraw(event) {
+    if (sketchTool === 'auto_trace' && sketchAutoTracePoints.length) {
+      event.preventDefault();
+      updateAutoTracePreview(sketchCanvasPointToUnit(sketchCanvasPoint(event)));
+      return;
+    }
     if (!sketchDrawing || !sketchInkCtx) return;
     event.preventDefault();
     if (sketchMoveState) {
@@ -1952,6 +2136,9 @@
     closeSketchSymbolPicker();
     closeSketchTextDialog();
     sketchDraftAnnotation = null;
+    sketchAutoTracePoints = [];
+    sketchAutoTracePreviewPoint = null;
+    updateAutoTraceControls();
     document.body.classList.remove('sketch-open');
   }
 
@@ -1968,8 +2155,14 @@
   }
 
   function setSketchTool(nextTool) {
-    sketchTool = nextTool === 'eraser' || ANNOTATION_TOOLS.has(nextTool) ? nextTool : 'pen';
+    const normalizedTool = nextTool === 'eraser' || ANNOTATION_TOOLS.has(nextTool) ? nextTool : 'pen';
+    if (normalizedTool !== sketchTool && !confirmAutoTraceBeforeToolChange()) return;
+    sketchTool = normalizedTool;
     sketchDraftAnnotation = null;
+    if (sketchTool !== 'auto_trace') {
+      sketchAutoTracePoints = [];
+      sketchAutoTracePreviewPoint = null;
+    }
     if (toolPenBtn) {
       const active = sketchTool === 'pen';
       toolPenBtn.classList.toggle('is-active', active);
@@ -1985,6 +2178,7 @@
       button.classList.toggle('annotation-active', active);
       button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+    updateAutoTraceControls();
     sketchApplyBrush();
     sketchRenderComposite();
   }
@@ -2022,7 +2216,10 @@
     sketchClearInk();
     sketchAnnotations = [];
     sketchDraftAnnotation = null;
+    sketchAutoTracePoints = [];
+    sketchAutoTracePreviewPoint = null;
     sketchMarkerCounter = 0;
+    updateAutoTraceControls();
     sketchPushHistory();
     setSketchStatus('Annotations effacees');
   }
@@ -2368,6 +2565,9 @@
     sketchBackgroundUrl = '';
     sketchBackgroundImage = null;
     sketchDraftAnnotation = null;
+    sketchAutoTracePoints = [];
+    sketchAutoTracePreviewPoint = null;
+    updateAutoTraceControls();
     setSelectedSketchAnnotation(-1);
     setSketchBackgroundUi();
     setSketchStatus(sketchUpdatedAt ? 'Croquis existant' : 'Pret');
@@ -2412,6 +2612,9 @@
     sketchBackgroundImage = null;
     sketchAnnotations = [];
     sketchDraftAnnotation = null;
+    sketchAutoTracePoints = [];
+    sketchAutoTracePreviewPoint = null;
+    updateAutoTraceControls();
     sketchMarkerCounter = 0;
     setSelectedSketchAnnotation(-1);
     setSketchBackgroundUi();
@@ -2676,6 +2879,18 @@
 
   if (redoSketchBtn) {
     redoSketchBtn.addEventListener('click', sketchRedo);
+  }
+
+  if (finishAutoTraceBtn) {
+    finishAutoTraceBtn.addEventListener('click', finishAutoTrace);
+  }
+
+  if (undoAutoTraceBtn) {
+    undoAutoTraceBtn.addEventListener('click', undoAutoTraceSegment);
+  }
+
+  if (cancelAutoTraceBtn) {
+    cancelAutoTraceBtn.addEventListener('click', cancelAutoTrace);
   }
 
   if (clearSketchBtn) {
