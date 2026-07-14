@@ -66,6 +66,13 @@
   const sketchTextInput = document.getElementById('sketchTextInput');
   const sketchTextCancelBtn = document.getElementById('sketchTextCancelBtn');
   const sketchTextConfirmBtn = document.getElementById('sketchTextConfirmBtn');
+  const sketchDimensionDialog = document.getElementById('sketchDimensionDialog');
+  const sketchDimensionInput = document.getElementById('sketchDimensionInput');
+  const sketchDimensionSideLabel = document.getElementById('sketchDimensionSideLabel');
+  const sketchDimensionSaveBtn = document.getElementById('sketchDimensionSaveBtn');
+  const sketchDimensionSideBtn = document.getElementById('sketchDimensionSideBtn');
+  const sketchDimensionDeleteBtn = document.getElementById('sketchDimensionDeleteBtn');
+  const sketchDimensionCancelBtn = document.getElementById('sketchDimensionCancelBtn');
   const sketchAutoTraceControls = document.getElementById('sketchAutoTraceControls');
   const finishAutoTraceBtn = document.getElementById('finishAutoTraceBtn');
   const undoAutoTraceBtn = document.getElementById('undoAutoTraceBtn');
@@ -76,6 +83,7 @@
   const measurementsV2Checks = document.getElementById('measurementsV2Checks');
 
   const ANNOTATION_TOOLS = new Set(['line', 'arrow', 'rect', 'ellipse', 'text', 'marker', 'dimension', 'symbol', 'auto_trace']);
+  const SKETCH_TOOLS = new Set([...ANNOTATION_TOOLS, 'auto_dimension']);
   const SYMBOL_LIBRARY = [
     { key: 'prise_electrique', label: 'Prise électrique', icon: 'P' },
     { key: 'interrupteur', label: 'Interrupteur', icon: 'I' },
@@ -213,6 +221,9 @@
   let sketchMoveState = null;
   let sketchAutoTracePoints = [];
   let sketchAutoTracePreviewPoint = null;
+  let sketchAutoTraceDimensions = [];
+  let sketchSelectedAutoTraceSegment = null;
+  let sketchDimensionRequest = null;
   let measurementsV2State = null;
   let activeMeasurementKey = '';
 
@@ -901,6 +912,26 @@
     return Math.min(1, Math.max(0, num));
   }
 
+  function normalizeAutoTraceSide(value, fallback = 'right') {
+    const side = String(value || '').trim();
+    return ['top', 'bottom', 'left', 'right'].includes(side) ? side : fallback;
+  }
+
+  function normalizeAutoTraceDimension(value, segmentCount) {
+    if (!value || typeof value !== 'object') return null;
+    const segmentIndex = Math.floor(Number(value.segmentIndex));
+    if (!Number.isFinite(segmentIndex) || segmentIndex < 0 || segmentIndex >= segmentCount) return null;
+    const rawValue = String(value.value ?? '').trim();
+    if (!rawValue) return null;
+    const numberValue = Number(String(rawValue).replace(',', '.'));
+    return {
+      segmentIndex,
+      value: Number.isFinite(numberValue) ? numberValue : rawValue.slice(0, 40),
+      unit: String(value.unit || 'mm').trim() || 'mm',
+      side: normalizeAutoTraceSide(value.side),
+    };
+  }
+
   function normalizeSketchAnnotation(annotation) {
     if (!annotation || typeof annotation !== 'object') return null;
     const type = String(annotation.type || '').trim();
@@ -952,6 +983,9 @@
       return {
         ...base,
         points,
+        dimensions: (Array.isArray(annotation.dimensions) ? annotation.dimensions : [])
+          .map((dimension) => normalizeAutoTraceDimension(dimension, Math.max(0, points.length - 1)))
+          .filter(Boolean),
       };
     }
     return {
@@ -997,6 +1031,104 @@
     ctx.lineTo(to.x - length * Math.cos(angle + Math.PI / 7), to.y - length * Math.sin(angle + Math.PI / 7));
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
+  }
+
+  function formatSketchDimensionValue(dimension) {
+    const value = dimension && dimension.value;
+    const unit = String((dimension && dimension.unit) || 'mm').trim() || 'mm';
+    const number = Number(value);
+    const label = Number.isFinite(number)
+      ? number.toLocaleString('fr-FR', { maximumFractionDigits: 1 })
+      : String(value || '').trim();
+    return label ? `${label} ${unit}` : '';
+  }
+
+  function autoTraceDefaultSide(p1, p2) {
+    return Math.abs(p2.x - p1.x) >= Math.abs(p2.y - p1.y) ? 'top' : 'right';
+  }
+
+  function autoTraceToggleSide(p1, p2, currentSide) {
+    const horizontal = Math.abs(p2.x - p1.x) >= Math.abs(p2.y - p1.y);
+    if (horizontal) return currentSide === 'bottom' ? 'top' : 'bottom';
+    return currentSide === 'left' ? 'right' : 'left';
+  }
+
+  function dimensionSideLabel(side) {
+    if (side === 'top') return 'au-dessus';
+    if (side === 'bottom') return 'en dessous';
+    if (side === 'left') return 'à gauche';
+    return 'à droite';
+  }
+
+  function drawDimensionArrow(ctx, from, to, size) {
+    const angle = Math.atan2(to.y - from.y, to.x - from.x);
+    ctx.beginPath();
+    ctx.moveTo(to.x, to.y);
+    ctx.lineTo(to.x - size * Math.cos(angle - Math.PI / 6), to.y - size * Math.sin(angle - Math.PI / 6));
+    ctx.moveTo(to.x, to.y);
+    ctx.lineTo(to.x - size * Math.cos(angle + Math.PI / 6), to.y - size * Math.sin(angle + Math.PI / 6));
+    ctx.stroke();
+  }
+
+  function autoTraceDimensionGeometry(p1, p2, side, width) {
+    const horizontal = Math.abs(p2.x - p1.x) >= Math.abs(p2.y - p1.y);
+    const offset = Math.max(18, width * 7);
+    const attach = Math.max(9, width * 4);
+    const sign = horizontal
+      ? (side === 'bottom' ? 1 : -1)
+      : (side === 'left' ? -1 : 1);
+    if (horizontal) {
+      const y = p1.y + sign * offset;
+      return {
+        horizontal,
+        a: { x: p1.x, y },
+        b: { x: p2.x, y },
+        ext1a: { x: p1.x, y: p1.y },
+        ext1b: { x: p1.x, y: y + sign * attach },
+        ext2a: { x: p2.x, y: p2.y },
+        ext2b: { x: p2.x, y: y + sign * attach },
+        text: { x: (p1.x + p2.x) / 2, y: y + sign * -4, baseline: sign < 0 ? 'bottom' : 'top' },
+      };
+    }
+    const x = p1.x + sign * offset;
+    return {
+      horizontal,
+      a: { x, y: p1.y },
+      b: { x, y: p2.y },
+      ext1a: { x: p1.x, y: p1.y },
+      ext1b: { x: x + sign * attach, y: p1.y },
+      ext2a: { x: p2.x, y: p2.y },
+      ext2b: { x: x + sign * attach, y: p2.y },
+      text: { x: x + sign * 8, y: (p1.y + p2.y) / 2, baseline: 'middle', align: sign < 0 ? 'right' : 'left' },
+    };
+  }
+
+  function drawAutoTraceDimension(ctx, p1, p2, dimension, color, width) {
+    const side = normalizeAutoTraceSide(dimension.side, autoTraceDefaultSide(p1, p2));
+    const geometry = autoTraceDimensionGeometry(p1, p2, side, width);
+    const arrow = Math.max(7, width * 3);
+    const label = formatSketchDimensionValue(dimension);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = Math.max(1, width * 0.65);
+    ctx.beginPath();
+    ctx.moveTo(geometry.ext1a.x, geometry.ext1a.y);
+    ctx.lineTo(geometry.ext1b.x, geometry.ext1b.y);
+    ctx.moveTo(geometry.ext2a.x, geometry.ext2a.y);
+    ctx.lineTo(geometry.ext2b.x, geometry.ext2b.y);
+    ctx.moveTo(geometry.a.x, geometry.a.y);
+    ctx.lineTo(geometry.b.x, geometry.b.y);
+    ctx.stroke();
+    drawDimensionArrow(ctx, geometry.b, geometry.a, arrow);
+    drawDimensionArrow(ctx, geometry.a, geometry.b, arrow);
+    if (label) {
+      ctx.font = `700 ${Math.max(14, width * 4 + 9)}px Arial, sans-serif`;
+      ctx.textAlign = geometry.text.align || 'center';
+      ctx.textBaseline = geometry.text.baseline || 'bottom';
+      ctx.fillText(label, geometry.text.x, geometry.text.y);
+    }
     ctx.restore();
   }
 
@@ -1243,6 +1375,30 @@
         canvasPoints.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
         ctx.stroke();
       }
+      if (
+        sketchSelectedAutoTraceSegment &&
+        ((sketchSelectedAutoTraceSegment.source === 'annotation' && sketchSelectedAutoTraceSegment.annotationIndex === index) ||
+          (sketchSelectedAutoTraceSegment.source === 'draft' && !Number.isInteger(index))) &&
+        canvasPoints[sketchSelectedAutoTraceSegment.segmentIndex] &&
+        canvasPoints[sketchSelectedAutoTraceSegment.segmentIndex + 1]
+      ) {
+        const a = canvasPoints[sketchSelectedAutoTraceSegment.segmentIndex];
+        const b = canvasPoints[sketchSelectedAutoTraceSegment.segmentIndex + 1];
+        ctx.save();
+        ctx.strokeStyle = '#f97316';
+        ctx.lineWidth = Math.max(width + 4, 6);
+        ctx.globalAlpha = 0.78;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        ctx.restore();
+      }
+      (item.dimensions || []).forEach((dimension) => {
+        const a = canvasPoints[dimension.segmentIndex];
+        const b = canvasPoints[dimension.segmentIndex + 1];
+        if (a && b) drawAutoTraceDimension(ctx, a, b, dimension, color, width);
+      });
       canvasPoints.forEach((point) => {
         ctx.beginPath();
         ctx.arc(point.x, point.y, Math.max(4, width * 1.6), 0, Math.PI * 2);
@@ -1563,6 +1719,8 @@
     sketchMoveState = null;
     sketchAutoTracePoints = [];
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDimensions = [];
+    sketchSelectedAutoTraceSegment = null;
     updateAutoTraceControls();
     setSelectedSketchAnnotation(-1);
     sketchRenderComposite();
@@ -1654,10 +1812,11 @@
     });
   }
 
-  function makeAutoTraceAnnotation(points) {
+  function makeAutoTraceAnnotation(points, dimensions) {
     return normalizeSketchAnnotation({
       type: 'auto_trace',
       points: Array.isArray(points) ? points : [],
+      dimensions: Array.isArray(dimensions) ? dimensions : [],
       color: sketchColor,
       width: Math.max(1, sketchSize * 2),
     });
@@ -1690,7 +1849,7 @@
       const points = sketchAutoTracePreviewPoint
         ? [...sketchAutoTracePoints, sketchAutoTracePreviewPoint]
         : sketchAutoTracePoints;
-      sketchDraftAnnotation = makeAutoTraceAnnotation(points);
+      sketchDraftAnnotation = makeAutoTraceAnnotation(points, sketchAutoTraceDimensions);
     }
     updateAutoTraceControls();
     sketchRenderComposite();
@@ -1732,7 +1891,7 @@
       setSketchStatus('Ajoutez au moins deux points pour terminer le trace', true);
       return false;
     }
-    const annotation = makeAutoTraceAnnotation(sketchAutoTracePoints);
+    const annotation = makeAutoTraceAnnotation(sketchAutoTracePoints, sketchAutoTraceDimensions);
     if (annotation && annotation.points.length >= 2) {
       sketchAnnotations.push(annotation);
       dirty = true;
@@ -1741,6 +1900,8 @@
     }
     sketchAutoTracePoints = [];
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDimensions = [];
+    sketchSelectedAutoTraceSegment = null;
     sketchDraftAnnotation = null;
     updateAutoTraceControls();
     sketchRenderComposite();
@@ -1750,7 +1911,10 @@
   function undoAutoTraceSegment() {
     if (sketchAutoTracePoints.length <= 1) return;
     sketchAutoTracePoints.pop();
+    const segmentCount = Math.max(0, sketchAutoTracePoints.length - 1);
+    sketchAutoTraceDimensions = sketchAutoTraceDimensions.filter((dimension) => Number(dimension.segmentIndex) < segmentCount);
     sketchAutoTracePreviewPoint = null;
+    sketchSelectedAutoTraceSegment = null;
     setSketchStatus('Dernier segment annule');
     renderAutoTraceDraft();
   }
@@ -1758,6 +1922,8 @@
   function cancelAutoTrace() {
     sketchAutoTracePoints = [];
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDimensions = [];
+    sketchSelectedAutoTraceSegment = null;
     sketchDraftAnnotation = null;
     updateAutoTraceControls();
     sketchRenderComposite();
@@ -1765,7 +1931,7 @@
   }
 
   function confirmAutoTraceBeforeToolChange() {
-    if (sketchTool !== 'auto_trace' || !sketchAutoTracePoints.length) return true;
+    if (!sketchAutoTracePoints.length || !['auto_trace', 'auto_dimension'].includes(sketchTool)) return true;
     if (sketchAutoTracePoints.length >= 2) {
       const shouldFinish = window.confirm('Terminer le trace automatique en cours avant de changer d outil ?');
       if (shouldFinish) return finishAutoTrace();
@@ -1777,6 +1943,199 @@
       return true;
     }
     return false;
+  }
+
+  function distanceToCanvasSegment(point, a, b) {
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const wx = point.x - a.x;
+    const wy = point.y - a.y;
+    const lenSq = vx * vx + vy * vy;
+    const t = lenSq > 0 ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / lenSq)) : 0;
+    const px = a.x + t * vx;
+    const py = a.y + t * vy;
+    return Math.hypot(point.x - px, point.y - py);
+  }
+
+  function dimensionForSegment(dimensions, segmentIndex) {
+    return (Array.isArray(dimensions) ? dimensions : []).find((dimension) => Number(dimension.segmentIndex) === Number(segmentIndex)) || null;
+  }
+
+  function upsertDimension(dimensions, nextDimension) {
+    const list = (Array.isArray(dimensions) ? dimensions : []).filter((dimension) => Number(dimension.segmentIndex) !== Number(nextDimension.segmentIndex));
+    list.push(nextDimension);
+    return list.sort((a, b) => Number(a.segmentIndex) - Number(b.segmentIndex));
+  }
+
+  function removeDimension(dimensions, segmentIndex) {
+    return (Array.isArray(dimensions) ? dimensions : []).filter((dimension) => Number(dimension.segmentIndex) !== Number(segmentIndex));
+  }
+
+  function findAutoTraceSegmentAtPoint(canvasPoint) {
+    const tolerance = 18;
+    let best = null;
+    const inspect = (source, points, dimensions, annotationIndex) => {
+      const canvasPoints = points.map((point) => sketchUnitToCanvasPoint(point.x, point.y));
+      for (let index = 0; index < canvasPoints.length - 1; index += 1) {
+        const distance = distanceToCanvasSegment(canvasPoint, canvasPoints[index], canvasPoints[index + 1]);
+        const dimension = dimensionForSegment(dimensions, index);
+        let dimensionDistance = Infinity;
+        if (dimension) {
+          const side = normalizeAutoTraceSide(dimension.side, autoTraceDefaultSide(canvasPoints[index], canvasPoints[index + 1]));
+          const geometry = autoTraceDimensionGeometry(canvasPoints[index], canvasPoints[index + 1], side, 2);
+          dimensionDistance = distanceToCanvasSegment(canvasPoint, geometry.a, geometry.b);
+        }
+        const score = Math.min(distance, dimensionDistance);
+        if (score <= tolerance && (!best || score < best.distance)) {
+          best = { source, annotationIndex, segmentIndex: index, distance: score };
+        }
+      }
+    };
+
+    if (sketchAutoTracePoints.length > 1) {
+      inspect('draft', sketchAutoTracePoints, sketchAutoTraceDimensions, -1);
+    }
+    sketchAnnotations.forEach((annotation, annotationIndex) => {
+      const item = normalizeSketchAnnotation(annotation);
+      if (!item || item.type !== 'auto_trace' || !Array.isArray(item.points) || item.points.length < 2) return;
+      inspect('annotation', item.points, item.dimensions || [], annotationIndex);
+    });
+    return best;
+  }
+
+  function getAutoTraceDimensionTarget(target) {
+    if (!target) return null;
+    if (target.source === 'draft') {
+      const p1 = sketchAutoTracePoints[target.segmentIndex];
+      const p2 = sketchAutoTracePoints[target.segmentIndex + 1];
+      if (!p1 || !p2) return null;
+      return {
+        points: sketchAutoTracePoints,
+        dimensions: sketchAutoTraceDimensions,
+        dimension: dimensionForSegment(sketchAutoTraceDimensions, target.segmentIndex),
+        p1,
+        p2,
+      };
+    }
+    const annotation = sketchAnnotations[target.annotationIndex];
+    const item = normalizeSketchAnnotation(annotation);
+    if (!item || item.type !== 'auto_trace') return null;
+    const p1 = item.points[target.segmentIndex];
+    const p2 = item.points[target.segmentIndex + 1];
+    if (!p1 || !p2) return null;
+    return {
+      annotation,
+      item,
+      points: item.points,
+      dimensions: item.dimensions || [],
+      dimension: dimensionForSegment(item.dimensions || [], target.segmentIndex),
+      p1,
+      p2,
+    };
+  }
+
+  function updateDimensionSideLabel(side) {
+    if (sketchDimensionSideLabel) sketchDimensionSideLabel.textContent = `Côté : ${dimensionSideLabel(side)}`;
+  }
+
+  function openAutoTraceDimensionDialog(target) {
+    if (!sketchDimensionDialog || !sketchDimensionInput) return;
+    const detail = getAutoTraceDimensionTarget(target);
+    if (!detail) {
+      setSketchStatus('Touchez un segment de trace automatique', true);
+      return;
+    }
+    const existing = detail.dimension;
+    const defaultSide = autoTraceDefaultSide(sketchUnitToCanvasPoint(detail.p1.x, detail.p1.y), sketchUnitToCanvasPoint(detail.p2.x, detail.p2.y));
+    sketchDimensionRequest = {
+      ...target,
+      side: normalizeAutoTraceSide(existing && existing.side, defaultSide),
+    };
+    sketchSelectedAutoTraceSegment = { ...target };
+    sketchDimensionInput.value = existing ? String(existing.value) : '';
+    updateDimensionSideLabel(sketchDimensionRequest.side);
+    if (sketchDimensionDeleteBtn) sketchDimensionDeleteBtn.disabled = !existing;
+    sketchDimensionDialog.hidden = false;
+    sketchDimensionDialog.setAttribute('aria-hidden', 'false');
+    sketchRenderComposite();
+    window.setTimeout(() => sketchDimensionInput.focus(), 30);
+  }
+
+  function closeAutoTraceDimensionDialog() {
+    if (!sketchDimensionDialog || !sketchDimensionInput) return;
+    sketchDimensionDialog.hidden = true;
+    sketchDimensionDialog.setAttribute('aria-hidden', 'true');
+    sketchDimensionInput.value = '';
+    sketchDimensionRequest = null;
+    sketchSelectedAutoTraceSegment = null;
+    sketchRenderComposite();
+  }
+
+  function saveAutoTraceDimension() {
+    if (!sketchDimensionRequest || !sketchDimensionInput) return;
+    const detail = getAutoTraceDimensionTarget(sketchDimensionRequest);
+    if (!detail) return;
+    const raw = String(sketchDimensionInput.value || '').trim().replace(',', '.');
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value <= 0) {
+      setSketchStatus('Saisissez une cote en mm', true);
+      return;
+    }
+    const nextDimension = {
+      segmentIndex: sketchDimensionRequest.segmentIndex,
+      value,
+      unit: 'mm',
+      side: normalizeAutoTraceSide(sketchDimensionRequest.side, autoTraceDefaultSide(
+        sketchUnitToCanvasPoint(detail.p1.x, detail.p1.y),
+        sketchUnitToCanvasPoint(detail.p2.x, detail.p2.y)
+      )),
+    };
+    if (sketchDimensionRequest.source === 'draft') {
+      sketchAutoTraceDimensions = upsertDimension(sketchAutoTraceDimensions, nextDimension);
+      renderAutoTraceDraft();
+    } else {
+      const annotation = sketchAnnotations[sketchDimensionRequest.annotationIndex];
+      annotation.dimensions = upsertDimension(detail.dimensions, nextDimension);
+      sketchAnnotations[sketchDimensionRequest.annotationIndex] = normalizeSketchAnnotation(annotation);
+      dirty = true;
+      sketchPushHistory();
+      sketchRenderComposite();
+    }
+    dirty = true;
+    setSketchStatus('Cote enregistree');
+    closeAutoTraceDimensionDialog();
+  }
+
+  function changeAutoTraceDimensionSide() {
+    if (!sketchDimensionRequest) return;
+    const detail = getAutoTraceDimensionTarget(sketchDimensionRequest);
+    if (!detail) return;
+    const p1 = sketchUnitToCanvasPoint(detail.p1.x, detail.p1.y);
+    const p2 = sketchUnitToCanvasPoint(detail.p2.x, detail.p2.y);
+    sketchDimensionRequest.side = autoTraceToggleSide(p1, p2, sketchDimensionRequest.side);
+    updateDimensionSideLabel(sketchDimensionRequest.side);
+    sketchSelectedAutoTraceSegment = { ...sketchDimensionRequest };
+    sketchRenderComposite();
+  }
+
+  function deleteAutoTraceDimension() {
+    if (!sketchDimensionRequest) return;
+    const detail = getAutoTraceDimensionTarget(sketchDimensionRequest);
+    if (!detail) return;
+    if (sketchDimensionRequest.source === 'draft') {
+      sketchAutoTraceDimensions = removeDimension(sketchAutoTraceDimensions, sketchDimensionRequest.segmentIndex);
+      renderAutoTraceDraft();
+    } else {
+      const annotation = sketchAnnotations[sketchDimensionRequest.annotationIndex];
+      annotation.dimensions = removeDimension(detail.dimensions, sketchDimensionRequest.segmentIndex);
+      sketchAnnotations[sketchDimensionRequest.annotationIndex] = normalizeSketchAnnotation(annotation);
+      dirty = true;
+      sketchPushHistory();
+      sketchRenderComposite();
+    }
+    dirty = true;
+    setSketchStatus('Cote supprimee');
+    closeAutoTraceDimensionDialog();
   }
 
   function openSketchTextDialog(options) {
@@ -1923,6 +2282,16 @@
 
     if (sketchTool === 'auto_trace') {
       handleAutoTraceTap(point);
+      return;
+    }
+
+    if (sketchTool === 'auto_dimension') {
+      const target = findAutoTraceSegmentAtPoint(canvasPoint);
+      if (target) {
+        openAutoTraceDimensionDialog(target);
+      } else {
+        setSketchStatus('Touchez un segment de trace automatique', true);
+      }
       return;
     }
 
@@ -2135,9 +2504,12 @@
     closeSketchPhotoPicker();
     closeSketchSymbolPicker();
     closeSketchTextDialog();
+    closeAutoTraceDimensionDialog();
     sketchDraftAnnotation = null;
     sketchAutoTracePoints = [];
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDimensions = [];
+    sketchSelectedAutoTraceSegment = null;
     updateAutoTraceControls();
     document.body.classList.remove('sketch-open');
   }
@@ -2155,13 +2527,21 @@
   }
 
   function setSketchTool(nextTool) {
-    const normalizedTool = nextTool === 'eraser' || ANNOTATION_TOOLS.has(nextTool) ? nextTool : 'pen';
-    if (normalizedTool !== sketchTool && !confirmAutoTraceBeforeToolChange()) return;
+    const normalizedTool = nextTool === 'eraser' || SKETCH_TOOLS.has(nextTool) ? nextTool : 'pen';
+    const keepAutoTraceDraftForDimension =
+      sketchTool === 'auto_trace' &&
+      normalizedTool === 'auto_dimension' &&
+      sketchAutoTracePoints.length >= 2;
+    if (normalizedTool !== sketchTool && !keepAutoTraceDraftForDimension && !confirmAutoTraceBeforeToolChange()) return;
     sketchTool = normalizedTool;
-    sketchDraftAnnotation = null;
-    if (sketchTool !== 'auto_trace') {
+    if (!keepAutoTraceDraftForDimension) sketchDraftAnnotation = null;
+    if (sketchTool !== 'auto_trace' && !keepAutoTraceDraftForDimension) {
       sketchAutoTracePoints = [];
       sketchAutoTracePreviewPoint = null;
+      sketchAutoTraceDimensions = [];
+    }
+    if (sketchTool !== 'auto_dimension') {
+      sketchSelectedAutoTraceSegment = null;
     }
     if (toolPenBtn) {
       const active = sketchTool === 'pen';
@@ -2180,6 +2560,10 @@
     });
     updateAutoTraceControls();
     sketchApplyBrush();
+    if (sketchTool === 'auto_trace' && sketchAutoTracePoints.length) {
+      renderAutoTraceDraft();
+      return;
+    }
     sketchRenderComposite();
   }
 
@@ -2218,6 +2602,8 @@
     sketchDraftAnnotation = null;
     sketchAutoTracePoints = [];
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDimensions = [];
+    sketchSelectedAutoTraceSegment = null;
     sketchMarkerCounter = 0;
     updateAutoTraceControls();
     sketchPushHistory();
@@ -2567,6 +2953,8 @@
     sketchDraftAnnotation = null;
     sketchAutoTracePoints = [];
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDimensions = [];
+    sketchSelectedAutoTraceSegment = null;
     updateAutoTraceControls();
     setSelectedSketchAnnotation(-1);
     setSketchBackgroundUi();
@@ -2614,6 +3002,8 @@
     sketchDraftAnnotation = null;
     sketchAutoTracePoints = [];
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDimensions = [];
+    sketchSelectedAutoTraceSegment = null;
     updateAutoTraceControls();
     sketchMarkerCounter = 0;
     setSelectedSketchAnnotation(-1);
@@ -2962,6 +3352,28 @@
     });
   }
 
+  if (sketchDimensionSaveBtn) {
+    sketchDimensionSaveBtn.addEventListener('click', saveAutoTraceDimension);
+  }
+
+  if (sketchDimensionSideBtn) {
+    sketchDimensionSideBtn.addEventListener('click', changeAutoTraceDimensionSide);
+  }
+
+  if (sketchDimensionDeleteBtn) {
+    sketchDimensionDeleteBtn.addEventListener('click', deleteAutoTraceDimension);
+  }
+
+  if (sketchDimensionCancelBtn) {
+    sketchDimensionCancelBtn.addEventListener('click', closeAutoTraceDimensionDialog);
+  }
+
+  if (sketchDimensionInput) {
+    sketchDimensionInput.addEventListener('keydown', (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') saveAutoTraceDimension();
+    });
+  }
+
   if (sketchColorPalette) {
     sketchColorPalette.querySelectorAll('[data-sketch-color]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -2986,6 +3398,10 @@
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && sketchModal && !sketchModal.hidden) {
+      if (sketchDimensionDialog && !sketchDimensionDialog.hidden) {
+        closeAutoTraceDimensionDialog();
+        return;
+      }
       if (sketchTextDialog && !sketchTextDialog.hidden) {
         sketchDraftAnnotation = null;
         closeSketchTextDialog();

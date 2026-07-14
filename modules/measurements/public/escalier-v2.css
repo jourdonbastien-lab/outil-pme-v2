@@ -1369,10 +1369,44 @@ select {
   font-size: 16px;
 }
 
+.sketch-dimension-field {
+  display: grid;
+  gap: 6px;
+  color: #374151;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.sketch-dimension-field input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 16px;
+}
+
+.sketch-dimension-side-label {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .sketch-text-dialog-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.sketch-dimension-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sketch-dimension-actions button:first-child {
+  background: #111827;
+  color: #ffffff;
 }
 
 #sketchCanvas {
