@@ -1310,9 +1310,39 @@ select {
   font-weight: 900;
 }
 
-.sketch-auto-trace-controls button:first-child {
+.sketch-auto-trace-controls #scaleAutoTraceBtn,
+.sketch-auto-trace-controls #finishAutoTraceBtn {
   background: #111827;
   color: #ffffff;
+}
+
+.sketch-auto-scale-field {
+  display: grid;
+  gap: 3px;
+  min-width: 138px;
+  color: #475569;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.sketch-auto-scale-field select {
+  min-height: 38px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #111827;
+  padding: 0 30px 0 12px;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.sketch-auto-scale-label {
+  flex: 1 1 150px;
+  min-width: 120px;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-align: center;
 }
 
 .sketch-photo-choice img {

@@ -201,6 +201,19 @@
       <span id="sketchStatus" class="sketch-status">Prêt</span>
       <span id="sketchBgLabel" class="sketch-bg-label">Fond: aucun</span>
       <div id="sketchAutoTraceControls" class="sketch-auto-trace-controls" hidden aria-hidden="true">
+        <label class="sketch-auto-scale-field">
+          <span>Échelle visuelle</span>
+          <select id="autoTraceScaleSelect">
+            <option value="auto">Automatique</option>
+            <option value="10">1:10</option>
+            <option value="20">1:20</option>
+            <option value="25">1:25</option>
+            <option value="50">1:50</option>
+            <option value="100">1:100</option>
+          </select>
+        </label>
+        <button type="button" id="scaleAutoTraceBtn">Mettre à l’échelle</button>
+        <span id="autoTraceScaleLabel" class="sketch-auto-scale-label">Échelle visuelle : non appliquée</span>
         <button type="button" id="finishAutoTraceBtn">✓ Terminer le tracé</button>
         <button type="button" id="undoAutoTraceBtn">Annuler le dernier segment</button>
         <button type="button" id="cancelAutoTraceBtn">Annuler le tracé</button>
