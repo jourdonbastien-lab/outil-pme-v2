@@ -174,7 +174,9 @@
         <button type="button" id="toolPenBtn" class="is-active sketch-icon-btn sketch-tool-wide" aria-label="Main libre" title="Main libre" aria-pressed="true">Main libre</button>
         <button type="button" id="toolEraserBtn" class="sketch-icon-btn" aria-label="Gomme" title="Gomme" aria-pressed="false">⌫</button>
         <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="auto_trace" aria-label="Tracé automatique" title="Tracé automatique" aria-pressed="false">Tracé auto</button>
+        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="inclined_trace" aria-label="Trait incliné" title="Trait incliné" aria-pressed="false">Trait incliné</button>
         <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="auto_dimension" aria-label="Cotation" title="Cotation" aria-pressed="false">Cotation</button>
+        <button type="button" class="sketch-icon-btn sketch-tool-wide" data-sketch-tool="angle_dimension" aria-label="Cotation d’angle" title="Cotation d’angle" aria-pressed="false">Cotation d’angle</button>
         <button type="button" id="useSketchPhotoBtn" class="sketch-icon-btn" aria-label="Choisir une photo de fond" title="Choisir une photo de fond">▧</button>
         <button type="button" id="removeSketchPhotoBtn" class="sketch-icon-btn" aria-label="Retirer la photo de fond" title="Retirer la photo de fond">▨</button>
         <div class="sketch-toolbar-card">
@@ -265,6 +267,39 @@
             <button type="button" id="sketchDimensionSideBtn">Changer de côté</button>
             <button type="button" id="sketchDimensionDeleteBtn">Supprimer</button>
             <button type="button" id="sketchDimensionCancelBtn">Annuler</button>
+          </div>
+        </div>
+      </div>
+      <div id="sketchInclinedDialog" class="sketch-text-dialog" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sketchInclinedDialogTitle">
+        <div class="sketch-text-dialog-card">
+          <strong id="sketchInclinedDialogTitle">Trait incliné</strong>
+          <label class="sketch-dimension-field">
+            <span>Angle en degrés</span>
+            <input id="sketchInclinedAngleInput" type="number" inputmode="decimal" step="0.1" placeholder="32.5" />
+          </label>
+          <label class="sketch-dimension-field">
+            <span>Longueur réelle en mm</span>
+            <input id="sketchInclinedLengthInput" type="number" inputmode="decimal" min="0" step="1" placeholder="1250" />
+          </label>
+          <div class="sketch-text-dialog-actions sketch-dimension-actions">
+            <button type="button" id="sketchInclinedSaveBtn">Créer le trait</button>
+            <button type="button" id="sketchInclinedCancelBtn">Annuler</button>
+          </div>
+        </div>
+      </div>
+      <div id="sketchAngleDialog" class="sketch-text-dialog" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sketchAngleDialogTitle">
+        <div class="sketch-text-dialog-card">
+          <strong id="sketchAngleDialogTitle">Cotation d’angle</strong>
+          <p id="sketchAngleDialogValue" class="sketch-dimension-side-label">Angle : --</p>
+          <label class="sketch-dimension-field">
+            <span>Modifier l’angle en degrés</span>
+            <input id="sketchAngleInput" type="number" inputmode="decimal" min="0" max="360" step="0.1" placeholder="45" />
+          </label>
+          <div class="sketch-text-dialog-actions sketch-dimension-actions">
+            <button type="button" id="sketchAngleInvertBtn">Inverser l’angle</button>
+            <button type="button" id="sketchAngleApplyBtn">Modifier l’angle</button>
+            <button type="button" id="sketchAngleDeleteBtn">Supprimer</button>
+            <button type="button" id="sketchAngleCloseBtn">Fermer</button>
           </div>
         </div>
       </div>

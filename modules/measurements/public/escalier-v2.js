@@ -73,6 +73,18 @@
   const sketchDimensionSideBtn = document.getElementById('sketchDimensionSideBtn');
   const sketchDimensionDeleteBtn = document.getElementById('sketchDimensionDeleteBtn');
   const sketchDimensionCancelBtn = document.getElementById('sketchDimensionCancelBtn');
+  const sketchInclinedDialog = document.getElementById('sketchInclinedDialog');
+  const sketchInclinedAngleInput = document.getElementById('sketchInclinedAngleInput');
+  const sketchInclinedLengthInput = document.getElementById('sketchInclinedLengthInput');
+  const sketchInclinedSaveBtn = document.getElementById('sketchInclinedSaveBtn');
+  const sketchInclinedCancelBtn = document.getElementById('sketchInclinedCancelBtn');
+  const sketchAngleDialog = document.getElementById('sketchAngleDialog');
+  const sketchAngleDialogValue = document.getElementById('sketchAngleDialogValue');
+  const sketchAngleInput = document.getElementById('sketchAngleInput');
+  const sketchAngleInvertBtn = document.getElementById('sketchAngleInvertBtn');
+  const sketchAngleApplyBtn = document.getElementById('sketchAngleApplyBtn');
+  const sketchAngleDeleteBtn = document.getElementById('sketchAngleDeleteBtn');
+  const sketchAngleCloseBtn = document.getElementById('sketchAngleCloseBtn');
   const sketchAutoTraceControls = document.getElementById('sketchAutoTraceControls');
   const autoTraceScaleSelect = document.getElementById('autoTraceScaleSelect');
   const scaleAutoTraceBtn = document.getElementById('scaleAutoTraceBtn');
@@ -86,7 +98,7 @@
   const measurementsV2Checks = document.getElementById('measurementsV2Checks');
 
   const ANNOTATION_TOOLS = new Set(['line', 'arrow', 'rect', 'ellipse', 'text', 'marker', 'dimension', 'symbol', 'auto_trace']);
-  const SKETCH_TOOLS = new Set([...ANNOTATION_TOOLS, 'auto_dimension']);
+  const SKETCH_TOOLS = new Set([...ANNOTATION_TOOLS, 'auto_dimension', 'inclined_trace', 'angle_dimension']);
   const AUTO_TRACE_SCALE_OPTIONS = [10, 20, 25, 50, 100];
   const CSS_PIXELS_PER_MILLIMETER = 96 / 25.4;
   const SYMBOL_LIBRARY = [
@@ -225,12 +237,20 @@
   let sketchSelectedAnnotationIndex = -1;
   let sketchMoveState = null;
   let sketchAutoTracePoints = [];
+  let sketchAutoTraceId = '';
   let sketchAutoTracePreviewPoint = null;
+  let sketchAutoTraceDirections = [];
   let sketchAutoTraceDimensions = [];
+  let sketchAutoTraceAngleDimensions = [];
   let sketchAutoTraceScaleMode = 'auto';
   let sketchAutoTraceScale = null;
+  let sketchAutoTraceAnchor = null;
+  let sketchAutoTraceHoverAnchor = null;
   let sketchSelectedAutoTraceSegment = null;
   let sketchDimensionRequest = null;
+  let sketchInclinedRequest = null;
+  let sketchAngleRequest = null;
+  let sketchAngleFirstSegment = null;
   let measurementsV2State = null;
   let activeMeasurementKey = '';
 
@@ -960,7 +980,64 @@
   function normalizeAutoTraceDirection(value, p1, p2) {
     const direction = String(value || '').trim();
     if (['up', 'down', 'left', 'right'].includes(direction)) return direction;
+    if (direction.startsWith('angle:')) {
+      return `angle:${normalizeAngleDegrees(direction.slice(6))}`;
+    }
     return autoTraceDirectionFromPoints(p1, p2);
+  }
+
+  function normalizeAngleDegrees(value) {
+    const number = Number(String(value ?? '').replace(',', '.'));
+    if (!Number.isFinite(number)) return 0;
+    return ((number % 360) + 360) % 360;
+  }
+
+  function directionAngleDegrees(direction) {
+    const value = String(direction || '').trim();
+    if (value === 'right') return 0;
+    if (value === 'up') return 90;
+    if (value === 'left') return 180;
+    if (value === 'down') return 270;
+    if (value.startsWith('angle:')) return normalizeAngleDegrees(value.slice(6));
+    return 0;
+  }
+
+  function directionFromAngle(angle) {
+    return `angle:${normalizeAngleDegrees(angle)}`;
+  }
+
+  function normalizeAutoTraceAngleDimension(value, segmentCount) {
+    if (!value || typeof value !== 'object') return null;
+    const segmentA = Math.floor(Number(value.segmentA));
+    const segmentB = Math.floor(Number(value.segmentB));
+    if (!Number.isFinite(segmentA) || !Number.isFinite(segmentB) || segmentA < 0 || segmentB < 0 || segmentA >= segmentCount || segmentB >= segmentCount || segmentA === segmentB) return null;
+    return {
+      id: String(value.id || makeAutoTraceId()).trim(),
+      segmentA,
+      segmentB,
+      inverted: Boolean(value.inverted),
+      radius: Math.max(20, Math.min(120, Number(value.radius || 42))),
+    };
+  }
+
+  function makeAutoTraceId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return `trace-${window.crypto.randomUUID()}`;
+    }
+    return `trace-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function normalizeAutoTraceId(value) {
+    const id = String(value || '').trim();
+    return id || makeAutoTraceId();
+  }
+
+  function normalizeAutoTraceAnchor(value) {
+    if (!value || typeof value !== 'object') return null;
+    const traceId = String(value.traceId || '').trim();
+    const pointIndex = Math.floor(Number(value.pointIndex));
+    if (!traceId || !Number.isFinite(pointIndex) || pointIndex < 0) return null;
+    return { traceId, pointIndex };
   }
 
   function normalizeSketchAnnotation(annotation) {
@@ -1018,12 +1095,17 @@
       ));
       return {
         ...base,
+        id: normalizeAutoTraceId(annotation.id),
         points,
         directions,
+        anchor: normalizeAutoTraceAnchor(annotation.anchor),
         scaleMode: normalizeAutoTraceScaleMode(annotation.scaleMode),
         scale: normalizeAutoTraceScale(annotation.scale),
         dimensions: (Array.isArray(annotation.dimensions) ? annotation.dimensions : [])
           .map((dimension) => normalizeAutoTraceDimension(dimension, Math.max(0, points.length - 1)))
+          .filter(Boolean),
+        angleDimensions: (Array.isArray(annotation.angleDimensions) ? annotation.angleDimensions : [])
+          .map((dimension) => normalizeAutoTraceAngleDimension(dimension, Math.max(0, points.length - 1)))
           .filter(Boolean),
       };
     }
@@ -1038,9 +1120,19 @@
   }
 
   function normalizeSketchAnnotations(value) {
-    return (Array.isArray(value) ? value : [])
+    const annotations = (Array.isArray(value) ? value : [])
       .map(normalizeSketchAnnotation)
       .filter(Boolean);
+    const traces = new Map();
+    annotations.forEach((annotation) => {
+      if (annotation.type === 'auto_trace') traces.set(annotation.id, annotation);
+    });
+    annotations.forEach((annotation) => {
+      if (annotation.type !== 'auto_trace' || !annotation.anchor) return;
+      const parent = traces.get(annotation.anchor.traceId);
+      if (!parent || !parent.points[annotation.anchor.pointIndex]) annotation.anchor = null;
+    });
+    return annotations;
   }
 
   function sketchCanvasPointToUnit(point) {
@@ -1111,9 +1203,30 @@
   }
 
   function autoTraceDimensionGeometry(p1, p2, side, width) {
-    const horizontal = Math.abs(p2.x - p1.x) >= Math.abs(p2.y - p1.y);
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const horizontal = Math.abs(dy) < 0.5;
+    const vertical = Math.abs(dx) < 0.5;
     const offset = Math.max(18, width * 7);
     const attach = Math.max(9, width * 4);
+    if (!horizontal && !vertical) {
+      const length = Math.max(1, Math.hypot(dx, dy));
+      const nx = -dy / length;
+      const ny = dx / length;
+      const sign = side === 'bottom' || side === 'right' ? 1 : -1;
+      const ox = nx * offset * sign;
+      const oy = ny * offset * sign;
+      return {
+        horizontal: false,
+        a: { x: p1.x + ox, y: p1.y + oy },
+        b: { x: p2.x + ox, y: p2.y + oy },
+        ext1a: { x: p1.x, y: p1.y },
+        ext1b: { x: p1.x + ox + nx * attach * sign, y: p1.y + oy + ny * attach * sign },
+        ext2a: { x: p2.x, y: p2.y },
+        ext2b: { x: p2.x + ox + nx * attach * sign, y: p2.y + oy + ny * attach * sign },
+        text: { x: (p1.x + p2.x) / 2 + ox, y: (p1.y + p2.y) / 2 + oy - 4, baseline: 'bottom', align: 'center' },
+      };
+    }
     const sign = horizontal
       ? (side === 'bottom' ? 1 : -1)
       : (side === 'left' ? -1 : 1);
@@ -1168,6 +1281,66 @@
       ctx.textBaseline = geometry.text.baseline || 'bottom';
       ctx.fillText(label, geometry.text.x, geometry.text.y);
     }
+    ctx.restore();
+  }
+
+  function commonVertexForSegments(canvasPoints, segmentA, segmentB) {
+    const a1 = canvasPoints[segmentA];
+    const a2 = canvasPoints[segmentA + 1];
+    const b1 = canvasPoints[segmentB];
+    const b2 = canvasPoints[segmentB + 1];
+    if (!a1 || !a2 || !b1 || !b2) return null;
+    if (segmentA + 1 === segmentB) return { vertex: a2, pA: a1, pB: b2 };
+    if (segmentB + 1 === segmentA) return { vertex: a1, pA: a2, pB: b1 };
+    return null;
+  }
+
+  function angleBetweenVectors(v1, v2) {
+    const len1 = Math.max(1, Math.hypot(v1.x, v1.y));
+    const len2 = Math.max(1, Math.hypot(v2.x, v2.y));
+    const dot = (v1.x * v2.x + v1.y * v2.y) / (len1 * len2);
+    return (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
+  }
+
+  function formatAngleValue(value) {
+    const rounded = Math.round(Number(value) * 10) / 10;
+    return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}°`;
+  }
+
+  function drawAutoTraceAngleDimension(ctx, canvasPoints, angleDimension, color, width) {
+    const common = commonVertexForSegments(canvasPoints, angleDimension.segmentA, angleDimension.segmentB);
+    if (!common) return;
+    const radius = Math.max(22, Number(angleDimension.radius || 42));
+    const v1 = { x: common.pA.x - common.vertex.x, y: common.pA.y - common.vertex.y };
+    const v2 = { x: common.pB.x - common.vertex.x, y: common.pB.y - common.vertex.y };
+    let a1 = Math.atan2(v1.y, v1.x);
+    let a2 = Math.atan2(v2.y, v2.x);
+    let delta = a2 - a1;
+    while (delta <= -Math.PI) delta += Math.PI * 2;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    if (angleDimension.inverted) {
+      if (delta > 0) delta -= Math.PI * 2;
+      else delta += Math.PI * 2;
+    }
+    const mid = a1 + delta / 2;
+    const labelAngle = angleDimension.inverted ? 360 - angleBetweenVectors(v1, v2) : angleBetweenVectors(v1, v2);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = Math.max(1, width * 0.6);
+    ctx.beginPath();
+    ctx.arc(common.vertex.x, common.vertex.y, radius, a1, a1 + delta, delta < 0);
+    ctx.stroke();
+    const t1 = { x: common.vertex.x + Math.cos(a1) * radius, y: common.vertex.y + Math.sin(a1) * radius };
+    const t2 = { x: common.vertex.x + Math.cos(a1 + delta) * radius, y: common.vertex.y + Math.sin(a1 + delta) * radius };
+    ctx.beginPath();
+    ctx.arc(t1.x, t1.y, 2.5, 0, Math.PI * 2);
+    ctx.arc(t2.x, t2.y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = `700 ${Math.max(13, width * 4 + 8)}px Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(formatAngleValue(labelAngle), common.vertex.x + Math.cos(mid) * (radius + 18), common.vertex.y + Math.sin(mid) * (radius + 18));
     ctx.restore();
   }
 
@@ -1438,6 +1611,9 @@
         const b = canvasPoints[dimension.segmentIndex + 1];
         if (a && b) drawAutoTraceDimension(ctx, a, b, dimension, color, width);
       });
+      (item.angleDimensions || []).forEach((dimension) => {
+        drawAutoTraceAngleDimension(ctx, canvasPoints, dimension, color, width);
+      });
       canvasPoints.forEach((point) => {
         ctx.beginPath();
         ctx.arc(point.x, point.y, Math.max(4, width * 1.6), 0, Math.PI * 2);
@@ -1523,6 +1699,7 @@
     if (includeAnnotations) {
       sketchAnnotations.forEach((annotation, index) => drawSketchAnnotation(sketchCtx, annotation, index));
       if (sketchDraftAnnotation) drawSketchAnnotation(sketchCtx, sketchDraftAnnotation);
+      drawAutoTraceAnchorHalo(sketchCtx);
     }
   }
 
@@ -1757,10 +1934,15 @@
     sketchDraftAnnotation = null;
     sketchMoveState = null;
     sketchAutoTracePoints = [];
+    sketchAutoTraceId = '';
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDirections = [];
     sketchAutoTraceDimensions = [];
+    sketchAutoTraceAngleDimensions = [];
     sketchAutoTraceScaleMode = 'auto';
     sketchAutoTraceScale = null;
+    sketchAutoTraceAnchor = null;
+    sketchAutoTraceHoverAnchor = null;
     sketchSelectedAutoTraceSegment = null;
     updateAutoTraceControls();
     setSelectedSketchAnnotation(-1);
@@ -1862,9 +2044,12 @@
     const cleanPoints = Array.isArray(points) ? points : [];
     return normalizeSketchAnnotation({
       type: 'auto_trace',
+      id: options.id || makeAutoTraceId(),
       points: cleanPoints,
       directions: Array.isArray(options.directions) ? options.directions : autoTraceDirectionsFromPoints(cleanPoints),
+      anchor: options.anchor || null,
       dimensions: Array.isArray(dimensions) ? dimensions : [],
+      angleDimensions: Array.isArray(options.angleDimensions) ? options.angleDimensions : [],
       scaleMode: options.scaleMode || 'auto',
       scale: options.scale || null,
       color: sketchColor,
@@ -1905,6 +2090,14 @@
       if (direction === 'down') canvasPoints.push({ x: previous.x, y: previous.y + pixelLength });
       if (direction === 'left') canvasPoints.push({ x: previous.x - pixelLength, y: previous.y });
       if (direction === 'right') canvasPoints.push({ x: previous.x + pixelLength, y: previous.y });
+      if (String(direction).startsWith('angle:')) {
+        const angle = normalizeAngleDegrees(String(direction).slice(6));
+        const radians = (angle * Math.PI) / 180;
+        canvasPoints.push({
+          x: previous.x + pixelLength * Math.cos(radians),
+          y: previous.y - pixelLength * Math.sin(radians),
+        });
+      }
     }
     return canvasPoints;
   }
@@ -1993,18 +2186,47 @@
     return mode === 'auto' ? `Échelle automatique : 1:${scale}` : `Échelle visuelle : 1:${scale}`;
   }
 
-  function autoTraceCanvasPointsForItem(item) {
+  function findAutoTraceById(traceId) {
+    const id = String(traceId || '').trim();
+    if (!id) return null;
+    for (let index = 0; index < sketchAnnotations.length; index += 1) {
+      const item = normalizeSketchAnnotation(sketchAnnotations[index]);
+      if (item && item.type === 'auto_trace' && item.id === id) return { item, index };
+    }
+    const draft = sketchDraftAnnotation ? normalizeSketchAnnotation(sketchDraftAnnotation) : null;
+    if (draft && draft.type === 'auto_trace' && draft.id === id) return { item: draft, index: -1 };
+    return null;
+  }
+
+  function resolveAutoTraceAnchorCanvasPoint(anchor, visited = new Set()) {
+    const cleanAnchor = normalizeAutoTraceAnchor(anchor);
+    if (!cleanAnchor || visited.has(cleanAnchor.traceId)) return null;
+    const found = findAutoTraceById(cleanAnchor.traceId);
+    if (!found || !found.item) return null;
+    visited.add(cleanAnchor.traceId);
+    const points = autoTraceCanvasPointsForItem(found.item, visited);
+    return points[cleanAnchor.pointIndex] || null;
+  }
+
+  function autoTraceCanvasPointsForItem(item, visited = new Set()) {
     const fallback = (item.points || []).map((point) => sketchUnitToCanvasPoint(point.x, point.y));
-    if (!item || item.type !== 'auto_trace' || !item.scale) return fallback;
+    const withAnchor = (canvasPoints) => {
+      const anchorPoint = item && item.anchor ? resolveAutoTraceAnchorCanvasPoint(item.anchor, new Set(visited)) : null;
+      if (!anchorPoint || !canvasPoints.length) return canvasPoints;
+      const dx = anchorPoint.x - canvasPoints[0].x;
+      const dy = anchorPoint.y - canvasPoints[0].y;
+      return canvasPoints.map((point) => ({ x: point.x + dx, y: point.y + dy }));
+    };
+    if (!item || item.type !== 'auto_trace' || !item.scale) return withAnchor(fallback);
     const validation = validateAutoTraceDimensions(item.points, item.dimensions || []);
-    if (!validation.ok) return fallback;
+    if (!validation.ok) return withAnchor(fallback);
     const canvasPoints = autoTraceBuildCanvasPoints(
       item.points,
       item.dimensions || [],
       item.directions || autoTraceDirectionsFromPoints(item.points),
       item.scale
     );
-    return canvasPoints ? autoTraceCenterCanvasPoints(canvasPoints, 52) : fallback;
+    return withAnchor(canvasPoints ? autoTraceCenterCanvasPoints(canvasPoints, 52) : fallback);
   }
 
   function correctedAutoTracePoint(lastPoint, rawPoint) {
@@ -2018,7 +2240,7 @@
 
   function updateAutoTraceControls() {
     const selectedFinal = sketchSelectedAutoTraceSegment && sketchSelectedAutoTraceSegment.source === 'annotation';
-    const active = (['auto_trace', 'auto_dimension'].includes(sketchTool) && sketchAutoTracePoints.length > 0) || selectedFinal;
+    const active = (['auto_trace', 'auto_dimension', 'inclined_trace', 'angle_dimension'].includes(sketchTool) && sketchAutoTracePoints.length > 0) || selectedFinal;
     const target = getAutoTraceScaleTarget();
     const validation = target ? validateAutoTraceDimensions(target.points, target.dimensions) : { ok: false, message: '' };
     if (sketchAutoTraceControls) {
@@ -2045,6 +2267,12 @@
         ? [...sketchAutoTracePoints, sketchAutoTracePreviewPoint]
         : sketchAutoTracePoints;
       sketchDraftAnnotation = makeAutoTraceAnnotation(points, sketchAutoTraceDimensions, {
+        id: sketchAutoTraceId,
+        anchor: sketchAutoTraceAnchor,
+        directions: sketchAutoTracePreviewPoint
+          ? [...sketchAutoTraceDirections, autoTraceDirectionFromPoints(sketchAutoTracePoints[sketchAutoTracePoints.length - 1], sketchAutoTracePreviewPoint)]
+          : sketchAutoTraceDirections,
+        angleDimensions: sketchAutoTraceAngleDimensions,
         scaleMode: sketchAutoTraceScaleMode,
         scale: sketchAutoTraceScale,
       });
@@ -2053,11 +2281,29 @@
     sketchRenderComposite();
   }
 
-  function handleAutoTraceTap(point) {
+  function handleAutoTraceTap(point, canvasPoint) {
     if (!sketchAutoTracePoints.length) {
-      sketchAutoTracePoints = [{ x: normalizeUnit(point.x), y: normalizeUnit(point.y) }];
+      const anchorHit = canvasPoint ? findAutoTraceVertexAtPoint(canvasPoint) : null;
+      sketchAutoTraceId = makeAutoTraceId();
+      if (anchorHit) {
+        sketchAutoTracePoints = [{ x: anchorHit.point.x, y: anchorHit.point.y }];
+        sketchAutoTraceAnchor = {
+          traceId: anchorHit.traceId,
+          pointIndex: anchorHit.pointIndex,
+        };
+        sketchAutoTraceScaleMode = anchorHit.scaleMode || 'auto';
+        sketchAutoTraceScale = anchorHit.scale || null;
+        sketchAutoTraceHoverAnchor = anchorHit;
+        setSketchStatus('Départ accroché au point');
+      } else {
+        sketchAutoTracePoints = [{ x: normalizeUnit(point.x), y: normalizeUnit(point.y) }];
+        sketchAutoTraceAnchor = null;
+        sketchAutoTraceScaleMode = 'auto';
+        sketchAutoTraceScale = null;
+        sketchAutoTraceHoverAnchor = null;
+        setSketchStatus('Point de depart place');
+      }
       sketchAutoTracePreviewPoint = null;
-      setSketchStatus('Point de depart place');
       renderAutoTraceDraft();
       return;
     }
@@ -2071,7 +2317,9 @@
       return;
     }
     sketchAutoTracePoints.push(nextPoint);
+    sketchAutoTraceDirections.push(autoTraceDirectionFromPoints(last, nextPoint));
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceHoverAnchor = null;
     dirty = true;
     setSketchStatus(`${sketchAutoTracePoints.length - 1} segment${sketchAutoTracePoints.length > 2 ? 's' : ''}`);
     renderAutoTraceDraft();
@@ -2084,12 +2332,96 @@
     renderAutoTraceDraft();
   }
 
+  function angleFromPoints(start, end) {
+    const dx = Number(end.x || 0) - Number(start.x || 0);
+    const dy = Number(start.y || 0) - Number(end.y || 0);
+    return normalizeAngleDegrees((Math.atan2(dy, dx) * 180) / Math.PI);
+  }
+
+  function currentAutoTraceDrawingScale() {
+    if (sketchAutoTraceScale) return sketchAutoTraceScale;
+    const selected = autoTraceScaleSelect ? normalizeAutoTraceScaleMode(autoTraceScaleSelect.value) : 'auto';
+    if (selected !== 'auto') return Number(selected);
+    return 20;
+  }
+
+  function openInclinedTraceDialog(approxPoint) {
+    if (!sketchInclinedDialog || !sketchInclinedAngleInput || !sketchInclinedLengthInput || !sketchAutoTracePoints.length) return;
+    const last = sketchAutoTracePoints[sketchAutoTracePoints.length - 1];
+    const angle = angleFromPoints(last, approxPoint);
+    sketchInclinedRequest = { start: last, approxPoint };
+    sketchInclinedAngleInput.value = String(Math.round(angle * 10) / 10);
+    sketchInclinedLengthInput.value = '';
+    sketchInclinedDialog.hidden = false;
+    sketchInclinedDialog.setAttribute('aria-hidden', 'false');
+    window.setTimeout(() => sketchInclinedAngleInput.focus(), 30);
+  }
+
+  function closeInclinedTraceDialog() {
+    if (!sketchInclinedDialog) return;
+    sketchInclinedDialog.hidden = true;
+    sketchInclinedDialog.setAttribute('aria-hidden', 'true');
+    if (sketchInclinedAngleInput) sketchInclinedAngleInput.value = '';
+    if (sketchInclinedLengthInput) sketchInclinedLengthInput.value = '';
+    sketchInclinedRequest = null;
+  }
+
+  function handleInclinedTraceTap(point, canvasPoint) {
+    if (!sketchAutoTracePoints.length) {
+      handleAutoTraceTap(point, canvasPoint);
+      setSketchStatus(sketchAutoTraceAnchor ? 'Départ incliné accroché au point' : 'Point de départ incliné placé');
+      return;
+    }
+    openInclinedTraceDialog(point);
+  }
+
+  function saveInclinedTraceSegment() {
+    if (!sketchInclinedRequest || !sketchInclinedAngleInput || !sketchInclinedLengthInput || !sketchAutoTracePoints.length) return;
+    const angle = normalizeAngleDegrees(sketchInclinedAngleInput.value);
+    const lengthMm = Number(String(sketchInclinedLengthInput.value || '').replace(',', '.'));
+    if (!Number.isFinite(lengthMm) || lengthMm <= 0) {
+      setSketchStatus('Saisissez une longueur en mm', true);
+      return;
+    }
+    const scale = currentAutoTraceDrawingScale();
+    const pixelLength = (lengthMm / scale) * CSS_PIXELS_PER_MILLIMETER;
+    const size = sketchCssSize();
+    const startCanvas = sketchUnitToCanvasPoint(sketchAutoTracePoints[sketchAutoTracePoints.length - 1].x, sketchAutoTracePoints[sketchAutoTracePoints.length - 1].y);
+    const radians = (angle * Math.PI) / 180;
+    const endCanvas = {
+      x: startCanvas.x + pixelLength * Math.cos(radians),
+      y: startCanvas.y - pixelLength * Math.sin(radians),
+    };
+    const nextPoint = {
+      x: normalizeUnit(endCanvas.x / size.cssWidth),
+      y: normalizeUnit(endCanvas.y / size.cssHeight),
+    };
+    const segmentIndex = sketchAutoTracePoints.length - 1;
+    sketchAutoTracePoints.push(nextPoint);
+    sketchAutoTraceDirections.push(directionFromAngle(angle));
+    sketchAutoTraceDimensions = upsertDimension(sketchAutoTraceDimensions, {
+      segmentIndex,
+      value: lengthMm,
+      unit: 'mm',
+      side: 'top',
+    });
+    if (!sketchAutoTraceScale) sketchAutoTraceScale = scale;
+    dirty = true;
+    closeInclinedTraceDialog();
+    setSketchStatus(`Trait incliné ${formatAngleValue(angle)} ajouté`);
+    renderAutoTraceDraft();
+  }
+
   function finishAutoTrace() {
     if (sketchAutoTracePoints.length < 2) {
       setSketchStatus('Ajoutez au moins deux points pour terminer le trace', true);
       return false;
     }
     const annotation = makeAutoTraceAnnotation(sketchAutoTracePoints, sketchAutoTraceDimensions, {
+      id: sketchAutoTraceId,
+      anchor: sketchAutoTraceAnchor,
+      directions: sketchAutoTraceDirections,
+      angleDimensions: sketchAutoTraceAngleDimensions,
       scaleMode: sketchAutoTraceScaleMode,
       scale: sketchAutoTraceScale,
     });
@@ -2100,10 +2432,16 @@
       setSketchStatus('Trace automatique ajoute');
     }
     sketchAutoTracePoints = [];
+    sketchAutoTraceId = '';
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDirections = [];
     sketchAutoTraceDimensions = [];
+    sketchAutoTraceAngleDimensions = [];
+    sketchAutoTraceAngleDimensions = [];
     sketchAutoTraceScaleMode = 'auto';
     sketchAutoTraceScale = null;
+    sketchAutoTraceAnchor = null;
+    sketchAutoTraceHoverAnchor = null;
     sketchSelectedAutoTraceSegment = null;
     sketchDraftAnnotation = null;
     updateAutoTraceControls();
@@ -2114,8 +2452,10 @@
   function undoAutoTraceSegment() {
     if (sketchAutoTracePoints.length <= 1) return;
     sketchAutoTracePoints.pop();
+    sketchAutoTraceDirections.pop();
     const segmentCount = Math.max(0, sketchAutoTracePoints.length - 1);
     sketchAutoTraceDimensions = sketchAutoTraceDimensions.filter((dimension) => Number(dimension.segmentIndex) < segmentCount);
+    sketchAutoTraceAngleDimensions = sketchAutoTraceAngleDimensions.filter((dimension) => Number(dimension.segmentA) < segmentCount && Number(dimension.segmentB) < segmentCount);
     sketchAutoTraceScale = null;
     sketchAutoTracePreviewPoint = null;
     sketchSelectedAutoTraceSegment = null;
@@ -2125,10 +2465,16 @@
 
   function cancelAutoTrace() {
     sketchAutoTracePoints = [];
+    sketchAutoTraceId = '';
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDirections = [];
     sketchAutoTraceDimensions = [];
+    sketchAutoTraceAngleDimensions = [];
+    sketchAutoTraceAngleDimensions = [];
     sketchAutoTraceScaleMode = 'auto';
     sketchAutoTraceScale = null;
+    sketchAutoTraceAnchor = null;
+    sketchAutoTraceHoverAnchor = null;
     sketchSelectedAutoTraceSegment = null;
     sketchDraftAnnotation = null;
     updateAutoTraceControls();
@@ -2137,7 +2483,7 @@
   }
 
   function confirmAutoTraceBeforeToolChange() {
-    if (!sketchAutoTracePoints.length || !['auto_trace', 'auto_dimension'].includes(sketchTool)) return true;
+    if (!sketchAutoTracePoints.length || !['auto_trace', 'auto_dimension', 'inclined_trace', 'angle_dimension'].includes(sketchTool)) return true;
     if (sketchAutoTracePoints.length >= 2) {
       const shouldFinish = window.confirm('Terminer le trace automatique en cours avant de changer d outil ?');
       if (shouldFinish) return finishAutoTrace();
@@ -2161,6 +2507,49 @@
     const px = a.x + t * vx;
     const py = a.y + t * vy;
     return Math.hypot(point.x - px, point.y - py);
+  }
+
+  function findAutoTraceVertexAtPoint(canvasPoint) {
+    const tolerance = 22;
+    let best = null;
+    sketchAnnotations.forEach((annotation, annotationIndex) => {
+      const item = normalizeSketchAnnotation(annotation);
+      if (!item || item.type !== 'auto_trace' || !Array.isArray(item.points) || !item.points.length) return;
+      const canvasPoints = autoTraceCanvasPointsForItem(item);
+      canvasPoints.forEach((point, pointIndex) => {
+        const distance = Math.hypot(canvasPoint.x - point.x, canvasPoint.y - point.y);
+        if (distance <= tolerance && (!best || distance < best.distance)) {
+          best = {
+            annotationIndex,
+            traceId: item.id,
+            pointIndex,
+            point: {
+              x: normalizeUnit(point.x / sketchCssSize().cssWidth),
+              y: normalizeUnit(point.y / sketchCssSize().cssHeight),
+            },
+            canvasPoint: point,
+            scaleMode: item.scaleMode || 'auto',
+            scale: item.scale || null,
+            distance,
+          };
+        }
+      });
+    });
+    return best;
+  }
+
+  function drawAutoTraceAnchorHalo(ctx) {
+    if (!sketchAutoTraceHoverAnchor || !sketchAutoTraceHoverAnchor.canvasPoint) return;
+    const point = sketchAutoTraceHoverAnchor.canvasPoint;
+    ctx.save();
+    ctx.strokeStyle = '#f97316';
+    ctx.fillStyle = 'rgba(249, 115, 22, 0.16)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
   }
 
   function dimensionForSegment(dimensions, segmentIndex) {
@@ -2201,6 +2590,10 @@
 
     if (sketchAutoTracePoints.length > 1) {
       inspect('draft', makeAutoTraceAnnotation(sketchAutoTracePoints, sketchAutoTraceDimensions, {
+        id: sketchAutoTraceId,
+        anchor: sketchAutoTraceAnchor,
+        directions: sketchAutoTraceDirections,
+        angleDimensions: sketchAutoTraceAngleDimensions,
         scaleMode: sketchAutoTraceScaleMode,
         scale: sketchAutoTraceScale,
       }), -1);
@@ -2244,13 +2637,188 @@
     };
   }
 
+  function sameTraceTarget(a, b) {
+    if (!a || !b || a.source !== b.source) return false;
+    if (a.source === 'draft') return true;
+    return Number(a.annotationIndex) === Number(b.annotationIndex);
+  }
+
+  function connectedSegmentPair(a, b) {
+    if (!sameTraceTarget(a, b)) return false;
+    return Math.abs(Number(a.segmentIndex) - Number(b.segmentIndex)) === 1;
+  }
+
+  function existingAngleDimension(dimensions, a, b) {
+    return (Array.isArray(dimensions) ? dimensions : []).find((dimension) => (
+      (Number(dimension.segmentA) === Number(a) && Number(dimension.segmentB) === Number(b)) ||
+      (Number(dimension.segmentA) === Number(b) && Number(dimension.segmentB) === Number(a))
+    )) || null;
+  }
+
+  function upsertAngleDimension(dimensions, nextDimension) {
+    const list = (Array.isArray(dimensions) ? dimensions : []).filter((dimension) => String(dimension.id) !== String(nextDimension.id));
+    list.push(nextDimension);
+    return list.sort((a, b) => Math.min(a.segmentA, a.segmentB) - Math.min(b.segmentA, b.segmentB));
+  }
+
+  function removeAngleDimension(dimensions, dimensionId) {
+    return (Array.isArray(dimensions) ? dimensions : []).filter((dimension) => String(dimension.id) !== String(dimensionId));
+  }
+
+  function getAngleDimensionsForTarget(target) {
+    if (!target) return [];
+    if (target.source === 'draft') return sketchAutoTraceAngleDimensions;
+    const annotation = sketchAnnotations[target.annotationIndex];
+    const item = normalizeSketchAnnotation(annotation);
+    return item && item.type === 'auto_trace' ? (item.angleDimensions || []) : [];
+  }
+
+  function setAngleDimensionsForTarget(target, dimensions) {
+    if (!target) return;
+    if (target.source === 'draft') {
+      sketchAutoTraceAngleDimensions = dimensions;
+      renderAutoTraceDraft();
+      return;
+    }
+    const annotation = sketchAnnotations[target.annotationIndex];
+    annotation.angleDimensions = dimensions;
+    sketchAnnotations[target.annotationIndex] = normalizeSketchAnnotation(annotation);
+    dirty = true;
+    sketchPushHistory();
+    sketchRenderComposite();
+  }
+
+  function openAngleDimensionDialog(target, dimension) {
+    if (!sketchAngleDialog || !sketchAngleDialogValue || !sketchAngleInput) return;
+    sketchAngleRequest = { ...target, dimensionId: dimension.id };
+    const item = target.source === 'draft'
+      ? makeAutoTraceAnnotation(sketchAutoTracePoints, sketchAutoTraceDimensions, {
+        id: sketchAutoTraceId,
+        anchor: sketchAutoTraceAnchor,
+        directions: sketchAutoTraceDirections,
+        angleDimensions: sketchAutoTraceAngleDimensions,
+        scaleMode: sketchAutoTraceScaleMode,
+        scale: sketchAutoTraceScale,
+      })
+      : normalizeSketchAnnotation(sketchAnnotations[target.annotationIndex]);
+    const canvasPoints = autoTraceCanvasPointsForItem(item);
+    const common = commonVertexForSegments(canvasPoints, dimension.segmentA, dimension.segmentB);
+    const angle = common
+      ? angleBetweenVectors(
+        { x: common.pA.x - common.vertex.x, y: common.pA.y - common.vertex.y },
+        { x: common.pB.x - common.vertex.x, y: common.pB.y - common.vertex.y }
+      )
+      : 0;
+    const shownAngle = dimension.inverted ? 360 - angle : angle;
+    sketchAngleDialogValue.textContent = `Angle : ${formatAngleValue(shownAngle)}`;
+    sketchAngleInput.value = String(Math.round(shownAngle * 10) / 10);
+    sketchAngleDialog.hidden = false;
+    sketchAngleDialog.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeAngleDimensionDialog() {
+    if (!sketchAngleDialog) return;
+    sketchAngleDialog.hidden = true;
+    sketchAngleDialog.setAttribute('aria-hidden', 'true');
+    sketchAngleRequest = null;
+  }
+
+  function handleAngleDimensionTap(target) {
+    if (!target) {
+      setSketchStatus('Touchez un segment', true);
+      return;
+    }
+    if (!sketchAngleFirstSegment) {
+      sketchAngleFirstSegment = target;
+      sketchSelectedAutoTraceSegment = { ...target };
+      setSketchStatus('Premier segment sélectionné');
+      sketchRenderComposite();
+      return;
+    }
+    if (!connectedSegmentPair(sketchAngleFirstSegment, target)) {
+      sketchAngleFirstSegment = target;
+      sketchSelectedAutoTraceSegment = { ...target };
+      setSketchStatus('Choisissez un segment relié au premier', true);
+      sketchRenderComposite();
+      return;
+    }
+    const segmentA = Math.min(sketchAngleFirstSegment.segmentIndex, target.segmentIndex);
+    const segmentB = Math.max(sketchAngleFirstSegment.segmentIndex, target.segmentIndex);
+    const current = existingAngleDimension(getAngleDimensionsForTarget(target), segmentA, segmentB);
+    const dimension = current || {
+      id: makeAutoTraceId(),
+      segmentA,
+      segmentB,
+      inverted: false,
+      radius: 42,
+    };
+    setAngleDimensionsForTarget(target, upsertAngleDimension(getAngleDimensionsForTarget(target), dimension));
+    sketchAngleFirstSegment = null;
+    sketchSelectedAutoTraceSegment = { ...target, segmentIndex: segmentB };
+    setSketchStatus('Cotation d’angle ajoutée');
+    openAngleDimensionDialog(target, dimension);
+  }
+
+  function invertCurrentAngleDimension() {
+    if (!sketchAngleRequest) return;
+    const dimensions = getAngleDimensionsForTarget(sketchAngleRequest);
+    const current = dimensions.find((dimension) => String(dimension.id) === String(sketchAngleRequest.dimensionId));
+    if (!current) return;
+    current.inverted = !current.inverted;
+    setAngleDimensionsForTarget(sketchAngleRequest, upsertAngleDimension(dimensions, current));
+    openAngleDimensionDialog(sketchAngleRequest, current);
+  }
+
+  function deleteCurrentAngleDimension() {
+    if (!sketchAngleRequest) return;
+    setAngleDimensionsForTarget(sketchAngleRequest, removeAngleDimension(getAngleDimensionsForTarget(sketchAngleRequest), sketchAngleRequest.dimensionId));
+    setSketchStatus('Cote d’angle supprimée');
+    closeAngleDimensionDialog();
+  }
+
+  function applyCurrentAngleValue() {
+    if (!sketchAngleRequest || !sketchAngleInput) return;
+    const angle = normalizeAngleDegrees(sketchAngleInput.value);
+    if (sketchAngleRequest.source === 'draft') {
+      const dim = getAngleDimensionsForTarget(sketchAngleRequest).find((dimension) => String(dimension.id) === String(sketchAngleRequest.dimensionId));
+      if (!dim) return;
+      const baseDirection = directionAngleDegrees(sketchAutoTraceDirections[dim.segmentA]) + 180;
+      sketchAutoTraceDirections[dim.segmentB] = directionFromAngle(baseDirection + (dim.inverted ? -angle : angle));
+      applyAutoTraceScale();
+      openAngleDimensionDialog(sketchAngleRequest, dim);
+      return;
+    }
+    const annotation = sketchAnnotations[sketchAngleRequest.annotationIndex];
+    const item = normalizeSketchAnnotation(annotation);
+    const dim = (item.angleDimensions || []).find((dimension) => String(dimension.id) === String(sketchAngleRequest.dimensionId));
+    if (!item || !dim) return;
+    const directions = [...item.directions];
+    const baseDirection = directionAngleDegrees(directions[dim.segmentA]) + 180;
+    directions[dim.segmentB] = directionFromAngle(baseDirection + (dim.inverted ? -angle : angle));
+    annotation.directions = directions;
+    sketchAnnotations[sketchAngleRequest.annotationIndex] = normalizeSketchAnnotation(annotation);
+    sketchSelectedAutoTraceSegment = { source: 'annotation', annotationIndex: sketchAngleRequest.annotationIndex, segmentIndex: dim.segmentB };
+    if (!applyAutoTraceScale()) {
+      dirty = true;
+      sketchPushHistory();
+      sketchRenderComposite();
+    }
+    openAngleDimensionDialog(sketchAngleRequest, dim);
+  }
+
   function getAutoTraceScaleTarget() {
     if (sketchAutoTracePoints.length > 1) {
+      const anchorCanvasPoint = sketchAutoTraceAnchor ? resolveAutoTraceAnchorCanvasPoint(sketchAutoTraceAnchor) : null;
+      const startPoint = anchorCanvasPoint
+        ? { x: normalizeUnit(anchorCanvasPoint.x / sketchCssSize().cssWidth), y: normalizeUnit(anchorCanvasPoint.y / sketchCssSize().cssHeight) }
+        : sketchAutoTracePoints[0];
+      const points = [startPoint, ...sketchAutoTracePoints.slice(1)];
       return {
         source: 'draft',
-        points: sketchAutoTracePoints,
+        points,
         dimensions: sketchAutoTraceDimensions,
-        directions: autoTraceDirectionsFromPoints(sketchAutoTracePoints),
+        directions: sketchAutoTraceDirections,
+        anchor: sketchAutoTraceAnchor,
         scaleMode: sketchAutoTraceScaleMode,
         scale: sketchAutoTraceScale,
       };
@@ -2267,6 +2835,7 @@
         points: item.points,
         dimensions: item.dimensions || [],
         directions: item.directions || autoTraceDirectionsFromPoints(item.points),
+        anchor: item.anchor || null,
         scaleMode: item.scaleMode || 'auto',
         scale: item.scale || null,
       };
@@ -2591,7 +3160,12 @@
     const point = sketchCanvasPointToUnit(canvasPoint);
 
     if (sketchTool === 'auto_trace') {
-      handleAutoTraceTap(point);
+      handleAutoTraceTap(point, canvasPoint);
+      return;
+    }
+
+    if (sketchTool === 'inclined_trace') {
+      handleInclinedTraceTap(point, canvasPoint);
       return;
     }
 
@@ -2602,6 +3176,11 @@
       } else {
         setSketchStatus('Touchez un segment de trace automatique', true);
       }
+      return;
+    }
+
+    if (sketchTool === 'angle_dimension') {
+      handleAngleDimensionTap(findAutoTraceSegmentAtPoint(canvasPoint));
       return;
     }
 
@@ -2666,6 +3245,16 @@
       event.preventDefault();
       updateAutoTracePreview(sketchCanvasPointToUnit(sketchCanvasPoint(event)));
       return;
+    }
+    if (sketchTool === 'auto_trace' && !sketchAutoTracePoints.length) {
+      const nextHover = findAutoTraceVertexAtPoint(sketchCanvasPoint(event));
+      const changed =
+        (!nextHover && sketchAutoTraceHoverAnchor) ||
+        (nextHover && (!sketchAutoTraceHoverAnchor ||
+          nextHover.traceId !== sketchAutoTraceHoverAnchor.traceId ||
+          nextHover.pointIndex !== sketchAutoTraceHoverAnchor.pointIndex));
+      sketchAutoTraceHoverAnchor = nextHover;
+      if (changed) sketchRenderComposite();
     }
     if (!sketchDrawing || !sketchInkCtx) return;
     event.preventDefault();
@@ -2815,12 +3404,19 @@
     closeSketchSymbolPicker();
     closeSketchTextDialog();
     closeAutoTraceDimensionDialog();
+    closeInclinedTraceDialog();
+    closeAngleDimensionDialog();
     sketchDraftAnnotation = null;
     sketchAutoTracePoints = [];
+    sketchAutoTraceId = '';
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDirections = [];
     sketchAutoTraceDimensions = [];
+    sketchAutoTraceAngleDimensions = [];
     sketchAutoTraceScaleMode = 'auto';
     sketchAutoTraceScale = null;
+    sketchAutoTraceAnchor = null;
+    sketchAutoTraceHoverAnchor = null;
     sketchSelectedAutoTraceSegment = null;
     updateAutoTraceControls();
     document.body.classList.remove('sketch-open');
@@ -2842,20 +3438,28 @@
     const normalizedTool = nextTool === 'eraser' || SKETCH_TOOLS.has(nextTool) ? nextTool : 'pen';
     const keepAutoTraceDraftForDimension =
       sketchTool === 'auto_trace' &&
-      normalizedTool === 'auto_dimension' &&
+      ['auto_dimension', 'inclined_trace', 'angle_dimension'].includes(normalizedTool) &&
       sketchAutoTracePoints.length >= 2;
     if (normalizedTool !== sketchTool && !keepAutoTraceDraftForDimension && !confirmAutoTraceBeforeToolChange()) return;
     sketchTool = normalizedTool;
     if (!keepAutoTraceDraftForDimension) sketchDraftAnnotation = null;
     if (sketchTool !== 'auto_trace' && !keepAutoTraceDraftForDimension) {
       sketchAutoTracePoints = [];
+      sketchAutoTraceId = '';
       sketchAutoTracePreviewPoint = null;
+      sketchAutoTraceDirections = [];
       sketchAutoTraceDimensions = [];
+      sketchAutoTraceAngleDimensions = [];
       sketchAutoTraceScaleMode = 'auto';
       sketchAutoTraceScale = null;
+      sketchAutoTraceAnchor = null;
+      sketchAutoTraceHoverAnchor = null;
     }
     if (sketchTool !== 'auto_dimension') {
       sketchSelectedAutoTraceSegment = null;
+    }
+    if (sketchTool !== 'angle_dimension') {
+      sketchAngleFirstSegment = null;
     }
     if (toolPenBtn) {
       const active = sketchTool === 'pen';
@@ -2915,10 +3519,15 @@
     sketchAnnotations = [];
     sketchDraftAnnotation = null;
     sketchAutoTracePoints = [];
+    sketchAutoTraceId = '';
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDirections = [];
     sketchAutoTraceDimensions = [];
+    sketchAutoTraceAngleDimensions = [];
     sketchAutoTraceScaleMode = 'auto';
     sketchAutoTraceScale = null;
+    sketchAutoTraceAnchor = null;
+    sketchAutoTraceHoverAnchor = null;
     sketchSelectedAutoTraceSegment = null;
     sketchMarkerCounter = 0;
     updateAutoTraceControls();
@@ -3268,10 +3877,15 @@
     sketchBackgroundImage = null;
     sketchDraftAnnotation = null;
     sketchAutoTracePoints = [];
+    sketchAutoTraceId = '';
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDirections = [];
     sketchAutoTraceDimensions = [];
+    sketchAutoTraceAngleDimensions = [];
     sketchAutoTraceScaleMode = 'auto';
     sketchAutoTraceScale = null;
+    sketchAutoTraceAnchor = null;
+    sketchAutoTraceHoverAnchor = null;
     sketchSelectedAutoTraceSegment = null;
     updateAutoTraceControls();
     setSelectedSketchAnnotation(-1);
@@ -3319,10 +3933,15 @@
     sketchAnnotations = [];
     sketchDraftAnnotation = null;
     sketchAutoTracePoints = [];
+    sketchAutoTraceId = '';
     sketchAutoTracePreviewPoint = null;
+    sketchAutoTraceDirections = [];
     sketchAutoTraceDimensions = [];
+    sketchAutoTraceAngleDimensions = [];
     sketchAutoTraceScaleMode = 'auto';
     sketchAutoTraceScale = null;
+    sketchAutoTraceAnchor = null;
+    sketchAutoTraceHoverAnchor = null;
     sketchSelectedAutoTraceSegment = null;
     updateAutoTraceControls();
     sketchMarkerCounter = 0;
@@ -3709,6 +4328,30 @@
     });
   }
 
+  if (sketchInclinedSaveBtn) {
+    sketchInclinedSaveBtn.addEventListener('click', saveInclinedTraceSegment);
+  }
+
+  if (sketchInclinedCancelBtn) {
+    sketchInclinedCancelBtn.addEventListener('click', closeInclinedTraceDialog);
+  }
+
+  if (sketchAngleInvertBtn) {
+    sketchAngleInvertBtn.addEventListener('click', invertCurrentAngleDimension);
+  }
+
+  if (sketchAngleApplyBtn) {
+    sketchAngleApplyBtn.addEventListener('click', applyCurrentAngleValue);
+  }
+
+  if (sketchAngleDeleteBtn) {
+    sketchAngleDeleteBtn.addEventListener('click', deleteCurrentAngleDimension);
+  }
+
+  if (sketchAngleCloseBtn) {
+    sketchAngleCloseBtn.addEventListener('click', closeAngleDimensionDialog);
+  }
+
   if (sketchColorPalette) {
     sketchColorPalette.querySelectorAll('[data-sketch-color]').forEach((button) => {
       button.addEventListener('click', () => {
@@ -3735,6 +4378,14 @@
     if (event.key === 'Escape' && sketchModal && !sketchModal.hidden) {
       if (sketchDimensionDialog && !sketchDimensionDialog.hidden) {
         closeAutoTraceDimensionDialog();
+        return;
+      }
+      if (sketchInclinedDialog && !sketchInclinedDialog.hidden) {
+        closeInclinedTraceDialog();
+        return;
+      }
+      if (sketchAngleDialog && !sketchAngleDialog.hidden) {
+        closeAngleDimensionDialog();
         return;
       }
       if (sketchTextDialog && !sketchTextDialog.hidden) {
