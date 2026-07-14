@@ -1008,14 +1008,25 @@
 
   function normalizeAutoTraceAngleDimension(value, segmentCount) {
     if (!value || typeof value !== 'object') return null;
-    const segmentA = Math.floor(Number(value.segmentA));
+    const refTraceId = String(value.refTraceId || '').trim();
+    const refSegmentIndex = Math.floor(Number(value.refSegmentIndex));
+    const segmentA = refTraceId ? -1 : Math.floor(Number(value.segmentA));
     const segmentB = Math.floor(Number(value.segmentB));
-    if (!Number.isFinite(segmentA) || !Number.isFinite(segmentB) || segmentA < 0 || segmentB < 0 || segmentA >= segmentCount || segmentB >= segmentCount || segmentA === segmentB) return null;
+    if (!Number.isFinite(segmentB) || segmentB < 0 || segmentB >= segmentCount) return null;
+    if (refTraceId) {
+      if (!Number.isFinite(refSegmentIndex) || refSegmentIndex < 0) return null;
+    } else if (!Number.isFinite(segmentA) || segmentA < 0 || segmentA >= segmentCount || segmentA === segmentB) {
+      return null;
+    }
     return {
       id: String(value.id || makeAutoTraceId()).trim(),
       segmentA,
       segmentB,
+      refTraceId,
+      refSegmentIndex: refTraceId ? refSegmentIndex : null,
       inverted: Boolean(value.inverted),
+      auto: Boolean(value.auto),
+      hidden: Boolean(value.hidden),
       radius: Math.max(20, Math.min(120, Number(value.radius || 42))),
     };
   }
@@ -1131,6 +1142,9 @@
       if (annotation.type !== 'auto_trace' || !annotation.anchor) return;
       const parent = traces.get(annotation.anchor.traceId);
       if (!parent || !parent.points[annotation.anchor.pointIndex]) annotation.anchor = null;
+    });
+    annotations.forEach((annotation) => {
+      if (annotation.type === 'auto_trace') ensureAutoAngleDimensions(annotation, traces);
     });
     return annotations;
   }
@@ -1295,6 +1309,25 @@
     return null;
   }
 
+  function commonVertexForAngleDimension(canvasPoints, angleDimension) {
+    if (angleDimension.refTraceId) {
+      const found = findAutoTraceById(angleDimension.refTraceId);
+      if (!found || !found.item) return null;
+      const parentPoints = autoTraceCanvasPointsForItem(found.item);
+      const parentA = parentPoints[angleDimension.refSegmentIndex];
+      const parentB = parentPoints[angleDimension.refSegmentIndex + 1];
+      const branchA = canvasPoints[angleDimension.segmentB];
+      const branchB = canvasPoints[angleDimension.segmentB + 1];
+      if (!parentA || !parentB || !branchA || !branchB) return null;
+      const anchorPoint = branchA;
+      const pA = Math.hypot(parentA.x - anchorPoint.x, parentA.y - anchorPoint.y) <= Math.hypot(parentB.x - anchorPoint.x, parentB.y - anchorPoint.y)
+        ? parentB
+        : parentA;
+      return { vertex: anchorPoint, pA, pB: branchB };
+    }
+    return commonVertexForSegments(canvasPoints, angleDimension.segmentA, angleDimension.segmentB);
+  }
+
   function angleBetweenVectors(v1, v2) {
     const len1 = Math.max(1, Math.hypot(v1.x, v1.y));
     const len2 = Math.max(1, Math.hypot(v2.x, v2.y));
@@ -1302,13 +1335,81 @@
     return (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
   }
 
+  function isStraightAngle(value) {
+    const angle = Math.abs(normalizeAngleDegrees(value));
+    return angle < 0.5 || Math.abs(angle - 180) < 0.5 || Math.abs(angle - 360) < 0.5;
+  }
+
   function formatAngleValue(value) {
     const rounded = Math.round(Number(value) * 10) / 10;
     return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}°`;
   }
 
+  function angleDimensionKey(traceId, segmentA, segmentB) {
+    return `${String(traceId || 'trace')}-angle-${Math.min(segmentA, segmentB)}-${Math.max(segmentA, segmentB)}`;
+  }
+
+  function parentSegmentIndexForAnchor(anchor, traceMap) {
+    const parent = traceMap && anchor ? traceMap.get(anchor.traceId) : ((anchor && anchor.traceId ? findAutoTraceById(anchor.traceId) : null) || {}).item;
+    if (!parent || parent.type !== 'auto_trace') return null;
+    const pointIndex = Number(anchor.pointIndex);
+    const candidates = [];
+    if (pointIndex > 0) candidates.push(pointIndex - 1);
+    if (pointIndex < parent.points.length - 1) candidates.push(pointIndex);
+    return candidates.length === 1 ? candidates[0] : null;
+  }
+
+  function ensureAutoAngleDimensions(annotation, traceMap) {
+    if (!annotation || annotation.type !== 'auto_trace') return annotation;
+    const segmentCount = Math.max(0, (annotation.points || []).length - 1);
+    if (segmentCount < 1) return annotation;
+    const list = Array.isArray(annotation.angleDimensions) ? [...annotation.angleDimensions] : [];
+    if (annotation.anchor && segmentCount >= 1) {
+      const parentSegmentIndex = parentSegmentIndexForAnchor(annotation.anchor, traceMap);
+      const exists = list.some((dimension) => dimension.refTraceId === annotation.anchor.traceId && Number(dimension.refSegmentIndex) === Number(parentSegmentIndex) && Number(dimension.segmentB) === 0);
+      if (parentSegmentIndex !== null && !exists) {
+        list.push({
+          id: `${annotation.id}-angle-parent-${annotation.anchor.traceId}-${parentSegmentIndex}-0`,
+          refTraceId: annotation.anchor.traceId,
+          refSegmentIndex: parentSegmentIndex,
+          segmentA: -1,
+          segmentB: 0,
+          inverted: false,
+          auto: true,
+          hidden: false,
+          radius: 42,
+        });
+      }
+    }
+    if (segmentCount < 2) {
+      annotation.angleDimensions = list;
+      return annotation;
+    }
+    for (let index = 1; index < segmentCount; index += 1) {
+      const segmentA = index - 1;
+      const segmentB = index;
+      if (existingAngleDimension(list, segmentA, segmentB)) continue;
+      const a = directionAngleDegrees((annotation.directions || [])[segmentA]) + 180;
+      const b = directionAngleDegrees((annotation.directions || [])[segmentB]);
+      let delta = Math.abs(normalizeAngleDegrees(b - a));
+      if (delta > 180) delta = 360 - delta;
+      if (isStraightAngle(delta)) continue;
+      list.push({
+        id: angleDimensionKey(annotation.id, segmentA, segmentB),
+      segmentA,
+      segmentB,
+      inverted: false,
+      auto: true,
+      hidden: false,
+      radius: 42,
+    });
+    }
+    annotation.angleDimensions = list;
+    return annotation;
+  }
+
   function drawAutoTraceAngleDimension(ctx, canvasPoints, angleDimension, color, width) {
-    const common = commonVertexForSegments(canvasPoints, angleDimension.segmentA, angleDimension.segmentB);
+    const common = commonVertexForAngleDimension(canvasPoints, angleDimension);
     if (!common) return;
     const radius = Math.max(22, Number(angleDimension.radius || 42));
     const v1 = { x: common.pA.x - common.vertex.x, y: common.pA.y - common.vertex.y };
@@ -1342,6 +1443,73 @@
     ctx.textBaseline = 'middle';
     ctx.fillText(formatAngleValue(labelAngle), common.vertex.x + Math.cos(mid) * (radius + 18), common.vertex.y + Math.sin(mid) * (radius + 18));
     ctx.restore();
+  }
+
+  function angleDimensionHitInfo(canvasPoints, angleDimension) {
+    const common = commonVertexForAngleDimension(canvasPoints, angleDimension);
+    if (!common) return null;
+    const radius = Math.max(22, Number(angleDimension.radius || 42));
+    const v1 = { x: common.pA.x - common.vertex.x, y: common.pA.y - common.vertex.y };
+    const v2 = { x: common.pB.x - common.vertex.x, y: common.pB.y - common.vertex.y };
+    let a1 = Math.atan2(v1.y, v1.x);
+    let a2 = Math.atan2(v2.y, v2.x);
+    let delta = a2 - a1;
+    while (delta <= -Math.PI) delta += Math.PI * 2;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    if (angleDimension.inverted) {
+      if (delta > 0) delta -= Math.PI * 2;
+      else delta += Math.PI * 2;
+    }
+    const mid = a1 + delta / 2;
+    return {
+      vertex: common.vertex,
+      radius,
+      label: {
+        x: common.vertex.x + Math.cos(mid) * (radius + 18),
+        y: common.vertex.y + Math.sin(mid) * (radius + 18),
+      },
+    };
+  }
+
+  function findAutoTraceAngleAtPoint(canvasPoint) {
+    const inspect = (source, item, annotationIndex) => {
+      const canvasPoints = autoTraceCanvasPointsForItem(item);
+      for (const dimension of (item.angleDimensions || [])) {
+        if (dimension.hidden) continue;
+        const hit = angleDimensionHitInfo(canvasPoints, dimension);
+        if (!hit) continue;
+        const radialDistance = Math.abs(Math.hypot(canvasPoint.x - hit.vertex.x, canvasPoint.y - hit.vertex.y) - hit.radius);
+        const labelDistance = Math.hypot(canvasPoint.x - hit.label.x, canvasPoint.y - hit.label.y);
+        if (radialDistance <= 18 || labelDistance <= 26) {
+          return {
+            source,
+            annotationIndex,
+            segmentIndex: dimension.segmentB,
+            dimension,
+          };
+        }
+      }
+      return null;
+    };
+    if (sketchAutoTracePoints.length > 1) {
+      const draft = makeAutoTraceAnnotation(sketchAutoTracePoints, sketchAutoTraceDimensions, {
+        id: sketchAutoTraceId,
+        anchor: sketchAutoTraceAnchor,
+        directions: sketchAutoTraceDirections,
+        angleDimensions: sketchAutoTraceAngleDimensions,
+        scaleMode: sketchAutoTraceScaleMode,
+        scale: sketchAutoTraceScale,
+      });
+      const hit = inspect('draft', draft, -1);
+      if (hit) return hit;
+    }
+    for (let index = sketchAnnotations.length - 1; index >= 0; index -= 1) {
+      const item = normalizeSketchAnnotation(sketchAnnotations[index]);
+      if (!item || item.type !== 'auto_trace') continue;
+      const hit = inspect('annotation', item, index);
+      if (hit) return hit;
+    }
+    return null;
   }
 
   function drawSymbolShape(ctx, symbol, width, height) {
@@ -1612,6 +1780,7 @@
         if (a && b) drawAutoTraceDimension(ctx, a, b, dimension, color, width);
       });
       (item.angleDimensions || []).forEach((dimension) => {
+        if (dimension.hidden) return;
         drawAutoTraceAngleDimension(ctx, canvasPoints, dimension, color, width);
       });
       canvasPoints.forEach((point) => {
@@ -2042,7 +2211,7 @@
 
   function makeAutoTraceAnnotation(points, dimensions, options = {}) {
     const cleanPoints = Array.isArray(points) ? points : [];
-    return normalizeSketchAnnotation({
+    return ensureAutoAngleDimensions(normalizeSketchAnnotation({
       type: 'auto_trace',
       id: options.id || makeAutoTraceId(),
       points: cleanPoints,
@@ -2054,7 +2223,7 @@
       scale: options.scale || null,
       color: sketchColor,
       width: Math.max(1, sketchSize * 2),
-    });
+    }));
   }
 
   function autoTraceDimensionValueMm(dimension) {
@@ -2144,6 +2313,29 @@
       x: normalizeUnit(point.x / size.cssWidth),
       y: normalizeUnit(point.y / size.cssHeight),
     }));
+  }
+
+  function rebuildAutoTracePointsFromDirections(points, dimensions, directions, scale) {
+    if (!Array.isArray(points) || points.length < 2) return points || [];
+    const currentCanvasPoints = points.map((point) => sketchUnitToCanvasPoint(point.x, point.y));
+    const nextCanvasPoints = [currentCanvasPoints[0]];
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const previous = nextCanvasPoints[nextCanvasPoints.length - 1];
+      const dimension = dimensionForSegment(dimensions, index);
+      const realLength = scale ? autoTraceDimensionValueMm(dimension) : null;
+      const currentLength = Math.max(1, Math.hypot(
+        currentCanvasPoints[index + 1].x - currentCanvasPoints[index].x,
+        currentCanvasPoints[index + 1].y - currentCanvasPoints[index].y
+      ));
+      const pixelLength = realLength !== null ? (realLength / scale) * CSS_PIXELS_PER_MILLIMETER : currentLength;
+      const angle = directionAngleDegrees((directions || [])[index]);
+      const radians = (angle * Math.PI) / 180;
+      nextCanvasPoints.push({
+        x: previous.x + pixelLength * Math.cos(radians),
+        y: previous.y - pixelLength * Math.sin(radians),
+      });
+    }
+    return autoTraceCanvasPointsToUnit(nextCanvasPoints);
   }
 
   function resolveAutoTraceScale(points, dimensions, directions, mode) {
@@ -2266,6 +2458,17 @@
       const points = sketchAutoTracePreviewPoint
         ? [...sketchAutoTracePoints, sketchAutoTracePreviewPoint]
         : sketchAutoTracePoints;
+      if (!sketchAutoTracePreviewPoint && points.length > 2) {
+        const draftWithAngles = ensureAutoAngleDimensions(makeAutoTraceAnnotation(points, sketchAutoTraceDimensions, {
+          id: sketchAutoTraceId,
+          anchor: sketchAutoTraceAnchor,
+          directions: sketchAutoTraceDirections,
+          angleDimensions: sketchAutoTraceAngleDimensions,
+          scaleMode: sketchAutoTraceScaleMode,
+          scale: sketchAutoTraceScale,
+        }));
+        sketchAutoTraceAngleDimensions = draftWithAngles.angleDimensions || [];
+      }
       sketchDraftAnnotation = makeAutoTraceAnnotation(points, sketchAutoTraceDimensions, {
         id: sketchAutoTraceId,
         anchor: sketchAutoTraceAnchor,
@@ -2702,7 +2905,7 @@
       })
       : normalizeSketchAnnotation(sketchAnnotations[target.annotationIndex]);
     const canvasPoints = autoTraceCanvasPointsForItem(item);
-    const common = commonVertexForSegments(canvasPoints, dimension.segmentA, dimension.segmentB);
+    const common = commonVertexForAngleDimension(canvasPoints, dimension);
     const angle = common
       ? angleBetweenVectors(
         { x: common.pA.x - common.vertex.x, y: common.pA.y - common.vertex.y },
@@ -2745,11 +2948,13 @@
     const segmentA = Math.min(sketchAngleFirstSegment.segmentIndex, target.segmentIndex);
     const segmentB = Math.max(sketchAngleFirstSegment.segmentIndex, target.segmentIndex);
     const current = existingAngleDimension(getAngleDimensionsForTarget(target), segmentA, segmentB);
-    const dimension = current || {
+    const dimension = current ? { ...current, hidden: false, auto: false } : {
       id: makeAutoTraceId(),
       segmentA,
       segmentB,
       inverted: false,
+      auto: false,
+      hidden: false,
       radius: 42,
     };
     setAngleDimensionsForTarget(target, upsertAngleDimension(getAngleDimensionsForTarget(target), dimension));
@@ -2771,20 +2976,51 @@
 
   function deleteCurrentAngleDimension() {
     if (!sketchAngleRequest) return;
-    setAngleDimensionsForTarget(sketchAngleRequest, removeAngleDimension(getAngleDimensionsForTarget(sketchAngleRequest), sketchAngleRequest.dimensionId));
+    const dimensions = getAngleDimensionsForTarget(sketchAngleRequest);
+    const current = dimensions.find((dimension) => String(dimension.id) === String(sketchAngleRequest.dimensionId));
+    if (current && current.auto) {
+      current.hidden = true;
+      setAngleDimensionsForTarget(sketchAngleRequest, upsertAngleDimension(dimensions, current));
+    } else {
+      setAngleDimensionsForTarget(sketchAngleRequest, removeAngleDimension(dimensions, sketchAngleRequest.dimensionId));
+    }
     setSketchStatus('Cote d’angle supprimée');
     closeAngleDimensionDialog();
   }
 
   function applyCurrentAngleValue() {
     if (!sketchAngleRequest || !sketchAngleInput) return;
-    const angle = normalizeAngleDegrees(sketchAngleInput.value);
+    const rawAngle = String(sketchAngleInput.value || '').trim().replace(',', '.');
+    const parsedAngle = Number(rawAngle);
+    if (!Number.isFinite(parsedAngle)) {
+      setSketchStatus('Saisissez un angle valide', true);
+      return;
+    }
+    const angle = normalizeAngleDegrees(parsedAngle);
     if (sketchAngleRequest.source === 'draft') {
       const dim = getAngleDimensionsForTarget(sketchAngleRequest).find((dimension) => String(dimension.id) === String(sketchAngleRequest.dimensionId));
       if (!dim) return;
-      const baseDirection = directionAngleDegrees(sketchAutoTraceDirections[dim.segmentA]) + 180;
-      sketchAutoTraceDirections[dim.segmentB] = directionFromAngle(baseDirection + (dim.inverted ? -angle : angle));
-      applyAutoTraceScale();
+      const draftItem = makeAutoTraceAnnotation(sketchAutoTracePoints, sketchAutoTraceDimensions, {
+        id: sketchAutoTraceId,
+        anchor: sketchAutoTraceAnchor,
+        directions: sketchAutoTraceDirections,
+        angleDimensions: sketchAutoTraceAngleDimensions,
+        scaleMode: sketchAutoTraceScaleMode,
+        scale: sketchAutoTraceScale,
+      });
+      const common = commonVertexForAngleDimension(autoTraceCanvasPointsForItem(draftItem), dim);
+      const firstHeading = common
+        ? normalizeAngleDegrees((Math.atan2(common.vertex.y - common.pA.y, common.pA.x - common.vertex.x) * 180) / Math.PI)
+        : directionAngleDegrees(sketchAutoTraceDirections[dim.segmentA]) + 180;
+      sketchAutoTraceDirections[dim.segmentB] = directionFromAngle(firstHeading + (dim.inverted ? -angle : angle));
+      sketchAutoTracePoints = rebuildAutoTracePointsFromDirections(
+        sketchAutoTracePoints,
+        sketchAutoTraceDimensions,
+        sketchAutoTraceDirections,
+        sketchAutoTraceScale
+      );
+      dirty = true;
+      renderAutoTraceDraft();
       openAngleDimensionDialog(sketchAngleRequest, dim);
       return;
     }
@@ -2793,16 +3029,18 @@
     const dim = (item.angleDimensions || []).find((dimension) => String(dimension.id) === String(sketchAngleRequest.dimensionId));
     if (!item || !dim) return;
     const directions = [...item.directions];
-    const baseDirection = directionAngleDegrees(directions[dim.segmentA]) + 180;
-    directions[dim.segmentB] = directionFromAngle(baseDirection + (dim.inverted ? -angle : angle));
+    const common = commonVertexForAngleDimension(autoTraceCanvasPointsForItem(item), dim);
+    const firstHeading = common
+      ? normalizeAngleDegrees((Math.atan2(common.vertex.y - common.pA.y, common.pA.x - common.vertex.x) * 180) / Math.PI)
+      : directionAngleDegrees(directions[dim.segmentA]) + 180;
+    directions[dim.segmentB] = directionFromAngle(firstHeading + (dim.inverted ? -angle : angle));
     annotation.directions = directions;
+    annotation.points = rebuildAutoTracePointsFromDirections(item.points, item.dimensions || [], directions, item.scale);
     sketchAnnotations[sketchAngleRequest.annotationIndex] = normalizeSketchAnnotation(annotation);
     sketchSelectedAutoTraceSegment = { source: 'annotation', annotationIndex: sketchAngleRequest.annotationIndex, segmentIndex: dim.segmentB };
-    if (!applyAutoTraceScale()) {
-      dirty = true;
-      sketchPushHistory();
-      sketchRenderComposite();
-    }
+    dirty = true;
+    sketchPushHistory();
+    sketchRenderComposite();
     openAngleDimensionDialog(sketchAngleRequest, dim);
   }
 
@@ -3158,6 +3396,18 @@
     event.preventDefault();
     const canvasPoint = sketchCanvasPoint(event);
     const point = sketchCanvasPointToUnit(canvasPoint);
+
+    const angleHit = findAutoTraceAngleAtPoint(canvasPoint);
+    if (angleHit) {
+      sketchSelectedAutoTraceSegment = {
+        source: angleHit.source,
+        annotationIndex: angleHit.annotationIndex,
+        segmentIndex: angleHit.segmentIndex,
+      };
+      openAngleDimensionDialog(angleHit, angleHit.dimension);
+      sketchRenderComposite();
+      return;
+    }
 
     if (sketchTool === 'auto_trace') {
       handleAutoTraceTap(point, canvasPoint);
