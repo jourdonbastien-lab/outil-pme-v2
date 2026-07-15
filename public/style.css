@@ -9646,7 +9646,7 @@ body.sketchpad-drawing{
   }
 }
 
-@media (max-width: 768px){
+@media (max-width: 768px), (pointer: coarse) and (max-width: 1200px){
   html,
   body{
     width:100%;

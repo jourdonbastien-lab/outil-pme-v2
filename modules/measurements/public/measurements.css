@@ -1490,6 +1490,27 @@ textarea:focus {
 
 }
 
+@media (pointer: coarse) and (min-width: 761px) and (max-width: 1200px) {
+  .block-toggle,
+  .photo-remove,
+  .sheet-actions button,
+  .hero-actions button {
+    min-height: 46px;
+  }
+
+  .block-toggle {
+    touch-action: manipulation;
+  }
+
+  .block {
+    overflow: visible;
+  }
+
+  .block-panel[hidden] {
+    display: none !important;
+  }
+}
+
 /* Croquis / notes manuscrites */
 .sketchpad-card {
   overflow: hidden;
