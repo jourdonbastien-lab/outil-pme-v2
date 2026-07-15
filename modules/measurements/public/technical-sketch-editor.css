@@ -1,0 +1,211 @@
+.technical-sketch-card {
+  overflow: hidden;
+}
+
+.technical-sketch-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.technical-sketch-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.technical-sketch-head h3 {
+  margin: 0 0 4px;
+}
+
+.technical-sketch-head p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.technical-sketch-count {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(239, 110, 59, 0.12);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.technical-sketch-layout {
+  display: grid;
+  grid-template-columns: minmax(170px, 220px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.technical-sketch-list,
+.technical-sketch-stage {
+  min-width: 0;
+}
+
+.technical-sketch-list {
+  display: grid;
+  gap: 10px;
+}
+
+.technical-sketch-list-items {
+  display: grid;
+  gap: 8px;
+}
+
+.technical-sketch-tab {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  font-weight: 800;
+}
+
+.technical-sketch-tab span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.technical-sketch-tab small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.technical-sketch-tab.is-active {
+  border-color: rgba(239, 110, 59, 0.42);
+  background: rgba(239, 110, 59, 0.1);
+}
+
+.technical-sketch-toolbar,
+.technical-sketch-objectbar,
+.technical-sketch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.technical-sketch-toolbar button,
+.technical-sketch-actions button,
+.technical-sketch-objectbar button,
+.technical-sketch-objectbar select,
+.technical-sketch-objectbar input {
+  min-height: 38px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.technical-sketch-objectbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.technical-sketch-objectbar select,
+.technical-sketch-objectbar input {
+  width: auto;
+}
+
+.technical-sketch-objectbar input[type="color"] {
+  width: 46px;
+  padding: 4px;
+}
+
+.technical-sketch-tool.is-active {
+  border-color: var(--accent);
+  background: rgba(239, 110, 59, 0.12);
+  color: var(--accent);
+}
+
+.technical-sketch-canvas-wrap {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 18px;
+  background:
+    linear-gradient(rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.045) 1px, transparent 1px),
+    #fff;
+  background-size: 28px 28px;
+}
+
+.technical-sketch-canvas {
+  display: block;
+  width: 100%;
+  height: clamp(330px, 46vw, 560px);
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.technical-sketch-canvas.is-moving {
+  cursor: move;
+}
+
+.technical-sketch-legacy {
+  display: none;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed rgba(15, 23, 42, 0.18);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.technical-sketch-legacy.is-visible {
+  display: grid;
+}
+
+.technical-sketch-legacy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.technical-sketch-legacy img {
+  display: block;
+  max-width: 100%;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.technical-sketch-status {
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 780px) {
+  .technical-sketch-head,
+  .technical-sketch-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .technical-sketch-count {
+    justify-self: start;
+  }
+
+  .technical-sketch-canvas {
+    height: min(68vh, 520px);
+  }
+}

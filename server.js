@@ -389,6 +389,8 @@ const MEASUREMENT_SHEETS = {
 };
 const MEASUREMENTS_ASSETS = new Set([
   'measurements.css',
+  'technical-sketch-editor.css',
+  'technical-sketch-editor.js',
   'measurements.js',
   'module-sheet.js',
   'sketchpad.js',

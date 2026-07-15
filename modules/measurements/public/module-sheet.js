@@ -192,49 +192,25 @@ function createModuleSheet() {
     if (!sketchRoot || !currentServerId) return;
     sketchRoot.dataset.sketchId = String(currentServerId);
     sketchRoot.dataset.sketchImageUrl = `/sketches/measurements/${currentServerId}.png`;
+    if (typeof sketchRoot.technicalSketchSetLegacyUrl === 'function') {
+      sketchRoot.technicalSketchSetLegacyUrl(`/sketches/measurements/${currentServerId}.png`);
+    }
   }
 
   function initHandwrittenSketch() {
-    if (!window.initSketchPad || document.getElementById('measurementSketchpad')) return;
+    if (!window.initTechnicalSketchEditor || document.getElementById('measurementSketchpad')) return;
 
     const section = document.createElement('section');
     section.id = 'measurementSketchpad';
-    section.className = 'block sketchpad-card measurement-sketchpad-card';
-    section.dataset.sketchpad = '';
-    section.dataset.sketchScope = 'measurements';
-    section.innerHTML = [
-      '<div class="block-title">',
-      '<h3>Croquis / notes manuscrites</h3>',
-      '<p>Dessinez au doigt, au stylet ou à la souris.</p>',
-      '</div>',
-      '<div class="sketchpad-surface">',
-      '<canvas class="sketchpad-canvas" width="1100" height="420" aria-label="Zone de dessin manuscrit"></canvas>',
-      '</div>',
-      '<div class="sketchpad-actions">',
-      '<button type="button" class="secondary" data-sketch-clear>Effacer</button>',
-      '<button type="button" class="primary" data-sketch-save>Enregistrer</button>',
-      '<span class="sketchpad-status" data-sketch-status></span>',
-      '</div>'
-    ].join('');
+    section.className = 'block technical-sketch-card measurement-sketchpad-card';
 
     form.appendChild(section);
     sketchRoot = section;
 
-    window.initSketchPad({
+    window.initTechnicalSketchEditor({
       root: sketchRoot,
-      beforeSave: async function () {
-        if (!currentServerId) await saveRecord();
-        updateSketchOwner();
-        if (!currentServerId) throw new Error('Fiche non enregistrée');
-      },
-      getSaveUrl: function () {
-        updateSketchOwner();
-        return currentServerId ? `/api/measurements/${currentServerId}/sketch` : '';
-      },
-      getImageUrl: function () {
-        updateSketchOwner();
-        return currentServerId ? `/sketches/measurements/${currentServerId}.png` : '';
-      }
+      sheetType: moduleLabel,
+      onChange: () => setDirty(true)
     });
   }
 
@@ -264,6 +240,10 @@ function createModuleSheet() {
     getCheckboxGroupNames().forEach((name) => {
       checkboxGroups[name] = getCheckboxValues(name);
     });
+
+    if (sketchRoot && typeof sketchRoot.technicalSketchSerialize === 'function') {
+      fields.technical_sketches = sketchRoot.technicalSketchSerialize();
+    }
 
     return {
       server_id: currentServerId,
@@ -297,7 +277,9 @@ function createModuleSheet() {
     photos = Array.isArray(record.photos) ? record.photos.slice() : [];
     renderPhotos();
     updateSketchOwner();
-    if (sketchRoot && typeof sketchRoot.sketchpadLoad === 'function') sketchRoot.sketchpadLoad();
+    if (sketchRoot && typeof sketchRoot.technicalSketchLoad === 'function') {
+      sketchRoot.technicalSketchLoad(fields.technical_sketches || []);
+    }
 
     currentRecordName = record.recordName || '';
     saveStatus.textContent = record.updatedAt
@@ -389,7 +371,8 @@ function createModuleSheet() {
     if (sketchRoot) {
       delete sketchRoot.dataset.sketchId;
       delete sketchRoot.dataset.sketchImageUrl;
-      if (typeof sketchRoot.sketchpadClear === 'function') sketchRoot.sketchpadClear();
+      if (typeof sketchRoot.technicalSketchLoad === 'function') sketchRoot.technicalSketchLoad([]);
+      if (typeof sketchRoot.technicalSketchSetLegacyUrl === 'function') sketchRoot.technicalSketchSetLegacyUrl('');
     }
     saveStatus.textContent = 'Nouvelle fiche prête';
     setDefaultValues();
