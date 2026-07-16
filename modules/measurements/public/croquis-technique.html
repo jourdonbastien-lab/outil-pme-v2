@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Croquis technique</title>
+  <link rel="stylesheet" href="/outils/prises-cotes/measurements.css" />
+  <link rel="stylesheet" href="/outils/prises-cotes/technical-drawing/technical-drawing-editor.css" />
+  <link rel="stylesheet" href="/outils/prises-cotes/escalier-v2.css" />
+  <link rel="stylesheet" href="/outils/prises-cotes/croquis-technique.css" />
+</head>
+<body>
+  <div class="page-shell technical-sketch-page">
+    <header class="hero technical-sketch-hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Prise de cotes</p>
+        <h1>Croquis technique</h1>
+        <p id="technicalSketchContext" class="hero-text">Chargement du croquis…</p>
+      </div>
+      <div class="hero-actions">
+        <a id="technicalSketchBackLink" class="back-link" href="/outils/prises-cotes">Retour fiche</a>
+        <button id="technicalSketchSaveTop" type="button" class="primary">Enregistrer</button>
+      </div>
+    </header>
+
+    <main class="technical-sketch-main">
+      <div id="technicalSketchEditor"></div>
+      <p id="technicalSketchStatus" class="technical-sketch-status">Prêt</p>
+    </main>
+  </div>
+
+  <script src="/outils/prises-cotes/technical-drawing/technical-drawing-symbols.js"></script>
+  <script src="/outils/prises-cotes/technical-drawing/technical-drawing-core.js"></script>
+  <script src="/outils/prises-cotes/technical-drawing/technical-drawing-template.js"></script>
+  <script src="/outils/prises-cotes/technical-drawing/technical-drawing-editor.js"></script>
+  <script src="/outils/prises-cotes/croquis-technique.js"></script>
+</body>
+</html>

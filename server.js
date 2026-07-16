@@ -389,13 +389,20 @@ const MEASUREMENT_SHEETS = {
 };
 const MEASUREMENTS_ASSETS = new Set([
   'measurements.css',
-  'technical-sketch-editor.css',
-  'technical-sketch-editor.js',
   'measurements.js',
   'module-sheet.js',
   'sketchpad.js',
   'escalier-v2.css',
   'escalier-v2.js',
+  'croquis-technique.css',
+  'croquis-technique.js',
+]);
+const TECHNICAL_DRAWING_ASSETS = new Set([
+  'technical-drawing-editor.css',
+  'technical-drawing-core.js',
+  'technical-drawing-editor.js',
+  'technical-drawing-template.js',
+  'technical-drawing-symbols.js',
 ]);
 const CHANTIER_STATUSES = ['À préparer', 'En fabrication', 'En pose', 'En attente', 'Terminé', 'Facturé'];
 const QUOTE_STATUSES = ['Brouillon', 'Envoyé', 'Accepté', 'Refusé', 'Facturé'];
@@ -1967,6 +1974,66 @@ function buildEscalierV2PhotoPublicSlots(measurementId, slots) {
       url: `/api/measurements/escalier-v2/${measurementId}/photos/${encodeURIComponent(photo.id)}/file`,
     })),
   }));
+}
+
+function makeTechnicalSketchId() {
+  return `sketch-${crypto.randomUUID()}`;
+}
+
+function normalizeTechnicalSketches(value) {
+  const list = Array.isArray(value) ? value : [];
+  return list
+    .filter((item) => item && typeof item === 'object')
+    .map((item, index) => ({
+      id: String(item.id || makeTechnicalSketchId()).trim(),
+      title: String(item.title || `Croquis ${index + 1}`).trim(),
+      data: item.data && typeof item.data === 'object' ? item.data : item,
+      preview: typeof item.preview === 'string' ? item.preview : '',
+      updatedAt: String(item.updatedAt || new Date().toISOString()),
+    }));
+}
+
+function readMeasurementForSketches(measurementId) {
+  const id = parseOptionalId(measurementId);
+  if (!id) return null;
+  const row = db.prepare('SELECT * FROM measurements WHERE id = ?').get(id);
+  if (!row) return null;
+  const payload = parseMeasurementData(row.data);
+  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
+  return { id, row, payload, fields, sketches: normalizeTechnicalSketches(fields.technical_drawing_sketches) };
+}
+
+function saveMeasurementTechnicalSketches(entry, sketches) {
+  const nextSketches = normalizeTechnicalSketches(sketches);
+  entry.payload.fields = {
+    ...(entry.fields || {}),
+    technical_drawing_sketches: nextSketches,
+    technical_drawing_version: 2,
+  };
+  db.prepare('UPDATE measurements SET data = ?, updated_at = ? WHERE id = ?')
+    .run(JSON.stringify(entry.payload), new Date().toISOString(), entry.id);
+  return nextSketches;
+}
+
+function preserveTechnicalSketchesInMeasurementPayload(nextBody, existingId) {
+  const body = nextBody && typeof nextBody === 'object' ? nextBody : {};
+  const fields = body.fields && typeof body.fields === 'object' ? body.fields : {};
+  if (Object.prototype.hasOwnProperty.call(fields, 'technical_drawing_sketches')) return body;
+  const existing = parseOptionalId(existingId)
+    ? db.prepare('SELECT data FROM measurements WHERE id = ?').get(existingId)
+    : null;
+  if (!existing) return body;
+  const previousPayload = parseMeasurementData(existing.data);
+  const previousFields = previousPayload.fields && typeof previousPayload.fields === 'object' ? previousPayload.fields : {};
+  if (!Array.isArray(previousFields.technical_drawing_sketches)) return body;
+  return {
+    ...body,
+    fields: {
+      ...fields,
+      technical_drawing_sketches: previousFields.technical_drawing_sketches,
+      technical_drawing_version: previousFields.technical_drawing_version || 2,
+    },
+  };
 }
 
 function updateEscalierV2PhotoSlots(measurementId, updater) {
@@ -4587,7 +4654,7 @@ app.get('/api/measurements/escalier-v2/:id/photos/:photoId/file', requireLogin, 
 });
 
 app.post('/api/measurements', requireLogin, (req, res) => {
-  const body = req.body || {};
+  let body = req.body || {};
   const fields = body.fields && typeof body.fields === 'object' ? body.fields : {};
   const { quoteId, orderId } = normalizeMeasurementLink(body.quote_id ?? fields.quote_id, body.client_order_id ?? fields.client_order_id);
   const id = parseOptionalId(body.server_id || body.id);
@@ -4597,11 +4664,12 @@ app.post('/api/measurements', requireLogin, (req, res) => {
   const chantier = String(fields.chantier || '').trim() || null;
   const measureDate = String(fields.date || '').trim() || null;
   const now = new Date().toISOString();
-  const data = JSON.stringify(body);
 
   if (id) {
     const existing = db.prepare('SELECT id FROM measurements WHERE id = ?').get(id);
     if (existing) {
+      body = preserveTechnicalSketchesInMeasurementPayload(body, id);
+      const data = JSON.stringify(body);
       db.prepare(`
         UPDATE measurements
         SET module = ?, record_name = ?, client = ?, chantier = ?, measure_date = ?,
@@ -4614,6 +4682,8 @@ app.post('/api/measurements', requireLogin, (req, res) => {
 
   const byName = db.prepare('SELECT id FROM measurements WHERE module = ? AND record_name = ?').get(moduleName, recordName);
   if (byName) {
+    body = preserveTechnicalSketchesInMeasurementPayload(body, byName.id);
+    const data = JSON.stringify(body);
     db.prepare(`
       UPDATE measurements
       SET client = ?, chantier = ?, measure_date = ?, quote_id = ?, client_order_id = ?, data = ?, updated_at = ?
@@ -4622,6 +4692,7 @@ app.post('/api/measurements', requireLogin, (req, res) => {
     return res.json({ ok: true, id: byName.id });
   }
 
+  const data = JSON.stringify(body);
   const info = db.prepare(`
     INSERT INTO measurements
       (module, record_name, client, chantier, measure_date, quote_id, client_order_id, data, created_at, updated_at)
@@ -4647,6 +4718,117 @@ app.delete('/api/measurements/:id', requireLogin, (req, res) => {
     console.error('Erreur suppression prise de cote:', error);
     return res.status(500).json({ ok: false, error: 'Erreur suppression prise de cote' });
   }
+});
+
+app.get('/api/measurements/:id/croquis', requireLogin, (req, res) => {
+  const entry = readMeasurementForSketches(req.params.id);
+  if (!entry) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
+  return res.json({
+    ok: true,
+    measurement: {
+      id: entry.row.id,
+      module: entry.row.module,
+      recordName: entry.row.record_name,
+    },
+    sketches: entry.sketches.map((sketch, index) => ({
+      id: sketch.id,
+      title: sketch.title || `Croquis ${index + 1}`,
+      preview: sketch.preview || '',
+      updatedAt: sketch.updatedAt || null,
+      url: `/outils/prises-cotes/${entry.id}/croquis/${encodeURIComponent(sketch.id)}`,
+    })),
+  });
+});
+
+app.post('/api/measurements/:id/croquis', requireLogin, (req, res) => {
+  const entry = readMeasurementForSketches(req.params.id);
+  if (!entry) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
+  const title = String(req.body?.title || '').trim() || `Croquis ${entry.sketches.length + 1}`;
+  const sketch = {
+    id: makeTechnicalSketchId(),
+    title,
+    data: {
+      id: makeTechnicalSketchId(),
+      title,
+      strokes: [],
+      annotations: [],
+      backgroundImage: '',
+      updatedAt: new Date().toISOString(),
+    },
+    preview: '',
+    updatedAt: new Date().toISOString(),
+  };
+  const sketches = saveMeasurementTechnicalSketches(entry, entry.sketches.concat(sketch));
+  const saved = sketches.find((item) => item.id === sketch.id) || sketch;
+  return res.json({
+    ok: true,
+    sketch: saved,
+    url: `/outils/prises-cotes/${entry.id}/croquis/${encodeURIComponent(saved.id)}`,
+  });
+});
+
+app.get('/api/measurements/:id/croquis/:sketchId', requireLogin, (req, res) => {
+  const entry = readMeasurementForSketches(req.params.id);
+  if (!entry) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
+  const sketchId = String(req.params.sketchId || '').trim();
+  const sketch = entry.sketches.find((item) => item.id === sketchId);
+  if (!sketch) return res.status(404).json({ ok: false, error: 'Croquis introuvable' });
+  const availablePhotos = String(entry.row.module || '') === 'Escalier V2'
+    ? buildEscalierV2PhotoPublicSlots(entry.id, entry.fields.photo_slots)
+    : [{
+      category: 'Photos',
+      count: Array.isArray(entry.payload.photos) ? entry.payload.photos.length : 0,
+      photos: (Array.isArray(entry.payload.photos) ? entry.payload.photos : []).map((photo, index) => ({
+        id: String(photo.id || photo.name || `photo-${index}`),
+        fileName: String(photo.name || `Photo ${index + 1}`),
+        caption: String(photo.caption || photo.name || `Photo ${index + 1}`),
+        url: String(photo.dataUrl || photo.url || ''),
+      })).filter((photo) => photo.url),
+    }];
+  return res.json({
+    ok: true,
+    measurement: {
+      id: entry.row.id,
+      module: entry.row.module,
+      recordName: entry.row.record_name,
+    },
+    sketch,
+    availablePhotos,
+    returnUrl: `/outils/prises-cotes/${String(entry.row.module || '').toLowerCase().replace(/\s+/g, '-')}`,
+  });
+});
+
+app.post('/api/measurements/:id/croquis/:sketchId', requireLogin, (req, res) => {
+  const entry = readMeasurementForSketches(req.params.id);
+  if (!entry) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
+  const sketchId = String(req.params.sketchId || '').trim();
+  const index = entry.sketches.findIndex((item) => item.id === sketchId);
+  if (index < 0) return res.status(404).json({ ok: false, error: 'Croquis introuvable' });
+
+  const title = String(req.body?.title || entry.sketches[index].title || '').trim() || `Croquis ${index + 1}`;
+  const data = req.body?.data && typeof req.body.data === 'object' ? req.body.data : {};
+  const preview = typeof req.body?.preview === 'string' ? req.body.preview : entry.sketches[index].preview;
+  const sketches = entry.sketches.slice();
+  sketches[index] = {
+    id: sketchId,
+    title,
+    data,
+    preview,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const saved = saveMeasurementTechnicalSketches(entry, sketches)[index];
+  return res.json({ ok: true, sketch: saved });
+});
+
+app.delete('/api/measurements/:id/croquis/:sketchId', requireLogin, (req, res) => {
+  const entry = readMeasurementForSketches(req.params.id);
+  if (!entry) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
+  const sketchId = String(req.params.sketchId || '').trim();
+  const sketches = entry.sketches.filter((item) => item.id !== sketchId);
+  if (sketches.length === entry.sketches.length) return res.status(404).json({ ok: false, error: 'Croquis introuvable' });
+  saveMeasurementTechnicalSketches(entry, sketches);
+  return res.json({ ok: true, deletedId: sketchId });
 });
 
 app.get('/sketches/measurements/:id.png', requireLogin, (req, res) => {
@@ -4731,11 +4913,26 @@ app.get('/outils/prises-cotes/:module', requireLogin, (req, res, next) => {
   return res.sendFile(filePath);
 });
 
+app.get('/outils/prises-cotes/:measurementId/croquis/:sketchId', requireLogin, (req, res, next) => {
+  const measurementId = parseOptionalId(req.params.measurementId);
+  const sketchId = String(req.params.sketchId || '').trim();
+  if (!measurementId || !sketchId) return next();
+  return res.sendFile(path.join(MEASUREMENTS_PUBLIC_DIR, 'croquis-technique.html'));
+});
+
 app.get('/outils/prises-cotes/:asset', requireLogin, (req, res, next) => {
   const asset = String(req.params.asset || '').trim();
   if (!MEASUREMENTS_ASSETS.has(asset)) return next();
 
   const filePath = path.join(MEASUREMENTS_PUBLIC_DIR, asset);
+  return res.sendFile(filePath);
+});
+
+app.get('/outils/prises-cotes/technical-drawing/:asset', requireLogin, (req, res, next) => {
+  const asset = String(req.params.asset || '').trim();
+  if (!TECHNICAL_DRAWING_ASSETS.has(asset)) return next();
+
+  const filePath = safeResolveInside(MEASUREMENTS_PUBLIC_DIR, 'technical-drawing', asset);
   return res.sendFile(filePath);
 });
 

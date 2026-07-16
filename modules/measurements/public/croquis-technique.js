@@ -1,0 +1,107 @@
+(function () {
+  const pathMatch = window.location.pathname.match(/\/outils\/prises-cotes\/(\d+)\/croquis\/([^/]+)$/);
+  const measurementId = pathMatch ? Number(pathMatch[1]) : 0;
+  const sketchId = pathMatch ? decodeURIComponent(pathMatch[2]) : '';
+  const editorHost = document.getElementById('technicalSketchEditor');
+  const contextLabel = document.getElementById('technicalSketchContext');
+  const status = document.getElementById('technicalSketchStatus');
+  const backLink = document.getElementById('technicalSketchBackLink');
+  const saveTop = document.getElementById('technicalSketchSaveTop');
+  let currentSketch = null;
+
+  function setStatus(message, state) {
+    if (!status) return;
+    status.textContent = message;
+    status.dataset.state = state || '';
+  }
+
+  function moduleRoute(moduleName) {
+    const normalized = String(moduleName || '').toLowerCase();
+    if (normalized.includes('clôture') || normalized.includes('cloture')) return '/outils/prises-cotes/cloture';
+    if (normalized.includes('portail')) return '/outils/prises-cotes/portail';
+    if (normalized.includes('garde')) return '/outils/prises-cotes/garde-corps';
+    if (normalized.includes('pergola')) return '/outils/prises-cotes/pergola';
+    if (normalized.includes('verrière') || normalized.includes('verriere')) return '/outils/prises-cotes/verriere';
+    if (normalized.includes('autres')) return '/outils/prises-cotes/autres';
+    if (normalized.includes('escalier v2')) return '/outils/prises-cotes/escalier-v2';
+    return '/outils/prises-cotes/escalier';
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.body.appendChild(script);
+    });
+  }
+
+  async function saveSketchFromEscalierEngine(sketchData, preview) {
+    if (!currentSketch) return;
+    setStatus('Enregistrement du croquis…', 'saving');
+    const response = await fetch(`/api/measurements/${measurementId}/croquis/${encodeURIComponent(sketchId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: currentSketch.title,
+        data: sketchData || {},
+        preview: preview || '',
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Erreur enregistrement croquis');
+    currentSketch = result.sketch;
+    setStatus('Croquis enregistré', 'saved');
+  }
+
+  async function init() {
+    if (!measurementId || !sketchId || !editorHost || typeof window.getTechnicalDrawingTemplate !== 'function') {
+      setStatus('Croquis indisponible', 'error');
+      return;
+    }
+
+    const response = await fetch(`/api/measurements/${measurementId}/croquis/${encodeURIComponent(sketchId)}`);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) {
+      setStatus(result.error || 'Croquis introuvable', 'error');
+      return;
+    }
+
+    currentSketch = result.sketch;
+    const measurement = result.measurement || {};
+    if (contextLabel) {
+      contextLabel.textContent = `${measurement.module || 'Prise de cotes'} · ${measurement.recordName || `Fiche #${measurementId}`} · ${currentSketch.title || 'Croquis'}`;
+    }
+    if (backLink) backLink.href = moduleRoute(measurement.module);
+    editorHost.innerHTML = window.getTechnicalDrawingTemplate({ title: currentSketch.title || 'Croquis technique' });
+
+    window.TECHNICAL_DRAWING_CONTEXT = {
+      mode: 'croquis-technique',
+      measurementId,
+      sketchId,
+      measurementType: measurement.module || 'Prise de cotes',
+      returnUrl: backLink ? backLink.href : moduleRoute(measurement.module),
+      initialSketchData: currentSketch.data || {},
+      availablePhotos: result.availablePhotos || [],
+      saveCallback: saveSketchFromEscalierEngine,
+      onDirtyChange(isDirty) {
+        if (isDirty) setStatus('Modifications non enregistrées', 'dirty');
+      },
+      onStatus(message, state) {
+        setStatus(message, state);
+      },
+    };
+
+    await loadScript('/outils/prises-cotes/escalier-v2.js');
+
+    if (saveTop) saveTop.addEventListener('click', () => {
+      if (window.TECHNICAL_DRAWING_API && typeof window.TECHNICAL_DRAWING_API.save === 'function') {
+        window.TECHNICAL_DRAWING_API.save().catch((error) => setStatus(error.message || 'Erreur enregistrement', 'error'));
+      }
+    });
+    setStatus('Croquis chargé', 'saved');
+  }
+
+  init().catch((error) => setStatus(error.message || 'Erreur chargement croquis', 'error'));
+})();

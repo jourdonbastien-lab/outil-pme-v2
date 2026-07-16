@@ -1,5 +1,7 @@
 (function () {
   const MODULE_NAME = 'Escalier V2';
+  const technicalDrawingRuntimeContext = window.TECHNICAL_DRAWING_CONTEXT || { mode: 'escalier' };
+  const isCroquisTechniqueMode = technicalDrawingRuntimeContext.mode === 'croquis-technique';
   const PHOTO_CATEGORIES = [
     'Vue generale',
     'Depart',
@@ -45,6 +47,7 @@
   const redoSketchBtn = document.getElementById('redoSketchBtn');
   const clearSketchBtn = document.getElementById('clearSketchBtn');
   const sketchToolbarToggle = document.getElementById('sketchToolbarToggle');
+  const sketchToolbar = document.getElementById('sketchToolbarLeft');
   const sketchColorPalette = document.getElementById('sketchColorPalette');
   const sketchSizePalette = document.getElementById('sketchSizePalette');
   const useSketchPhotoBtn = document.getElementById('useSketchPhotoBtn');
@@ -104,32 +107,31 @@
   const measurementsV2Fields = document.getElementById('measurementsV2Fields');
   const measurementsV2Checks = document.getElementById('measurementsV2Checks');
 
-  const ANNOTATION_TOOLS = new Set(['line', 'arrow', 'rect', 'ellipse', 'text', 'marker', 'dimension', 'symbol', 'auto_trace']);
-  const SKETCH_TOOLS = new Set([...ANNOTATION_TOOLS, 'auto_dimension', 'inclined_trace', 'angle_dimension', 'pan']);
-  const AUTO_TRACE_SCALE_OPTIONS = [10, 20, 25, 50, 100];
-  const CSS_PIXELS_PER_MILLIMETER = 96 / 25.4;
-  const SYMBOL_LIBRARY = [
-    { key: 'prise_electrique', label: 'Prise électrique', icon: 'P' },
-    { key: 'interrupteur', label: 'Interrupteur', icon: 'I' },
-    { key: 'radiateur', label: 'Radiateur', icon: 'R' },
-    { key: 'poutre', label: 'Poutre', icon: '━' },
-    { key: 'ipn', label: 'IPN', icon: 'H' },
-    { key: 'poteau', label: 'Poteau', icon: '●' },
-    { key: 'fenetre', label: 'Fenêtre', icon: '▦' },
-    { key: 'porte', label: 'Porte', icon: '⌜' },
-    { key: 'mur_beton', label: 'Mur béton', icon: '▤' },
-    { key: 'mur_pierre', label: 'Mur pierre', icon: '▥' },
-    { key: 'cloison', label: 'Cloison', icon: '│' },
-    { key: 'niveau', label: 'Niveau', icon: '⌁' },
-    { key: 'sens_montee', label: 'Sens de montée', icon: '↗' },
-    { key: 'depart', label: 'Départ', icon: 'D' },
-    { key: 'arrivee', label: 'Arrivée', icon: 'A' },
-    { key: 'obstacle', label: 'Obstacle', icon: '!' },
-    { key: 'gaine_technique', label: 'Gaine technique', icon: 'G' },
-    { key: 'tremie', label: 'Trémie', icon: '□' },
-    { key: 'dalle', label: 'Dalle', icon: '▭' },
-    { key: 'point_fixation', label: 'Point de fixation', icon: '⊕' },
-  ];
+  const technicalDrawingCore = window.createTechnicalDrawingCore();
+  const {
+    ANNOTATION_TOOLS,
+    SKETCH_TOOLS,
+    AUTO_TRACE_SCALE_OPTIONS,
+    CSS_PIXELS_PER_MILLIMETER,
+    SYMBOL_LIBRARY,
+    cloneSketchAnnotations,
+    normalizeUnit,
+    normalizeAutoTraceSide,
+    normalizeAutoTraceDimension,
+    normalizeAutoTraceScaleMode,
+    normalizeAutoTraceScale,
+    autoTraceDirectionFromPoints,
+    normalizeAutoTraceDirection,
+    normalizeAngleDegrees,
+    directionAngleDegrees,
+    directionFromAngle,
+    normalizeAutoTraceAngleDimension,
+    makeAutoTraceId,
+    normalizeAutoTraceId,
+    normalizeAutoTraceAnchor,
+    angleBetweenVectors,
+    angleDimensionKey,
+  } = technicalDrawingCore;
   const MEASURE_BASE_VALUES = {
     totalHeight: '',
     totalRun: '',
@@ -266,12 +268,36 @@
   let activeMeasurementKey = '';
   let photosPanelOpen = false;
 
+  const sketchContext = {
+    state: {
+      get annotations() { return sketchAnnotations; },
+      set annotations(value) { sketchAnnotations = value; },
+      get viewport() { return sketchViewport; },
+      set viewport(value) { sketchViewport = value; },
+      get tool() { return sketchTool; },
+      set tool(value) { sketchTool = value; },
+    },
+    elements: {
+      modal: sketchModal,
+      canvas: sketchCanvas,
+      toolbar: sketchToolbar,
+      photoPicker: sketchPhotoPicker,
+    },
+    callbacks: {},
+    helpers: technicalDrawingCore,
+    configuration: {
+      measurementType: 'escalier-v2',
+      annotationField: 'sketch_annotations',
+    },
+  };
+
   function normalizeId(value) {
     const num = Number(value || 0);
     return Number.isInteger(num) && num > 0 ? num : null;
   }
 
   function setIndicator(state, text) {
+    if (!saveIndicator) return;
     saveIndicator.dataset.state = state;
     saveIndicator.textContent = text;
   }
@@ -943,6 +969,9 @@
     if (sketchStatusInline) sketchStatusInline.textContent = message;
     if (sketchStatus) sketchStatus.style.color = isError ? '#991b1b' : '';
     if (sketchStatusInline) sketchStatusInline.style.color = isError ? '#991b1b' : '';
+    if (isCroquisTechniqueMode && typeof technicalDrawingRuntimeContext.onStatus === 'function') {
+      technicalDrawingRuntimeContext.onStatus(message, isError ? 'error' : '');
+    }
   }
 
   function sketchCssSize() {
@@ -1062,132 +1091,6 @@
     });
   }
 
-  function cloneSketchAnnotations(value) {
-    try {
-      return JSON.parse(JSON.stringify(Array.isArray(value) ? value : []));
-    } catch {
-      return [];
-    }
-  }
-
-  function normalizeUnit(value) {
-    const num = Number(value);
-    if (!Number.isFinite(num)) return 0;
-    return Math.min(1, Math.max(0, num));
-  }
-
-  function normalizeAutoTraceSide(value, fallback = 'right') {
-    const side = String(value || '').trim();
-    return ['top', 'bottom', 'left', 'right'].includes(side) ? side : fallback;
-  }
-
-  function normalizeAutoTraceDimension(value, segmentCount) {
-    if (!value || typeof value !== 'object') return null;
-    const segmentIndex = Math.floor(Number(value.segmentIndex));
-    if (!Number.isFinite(segmentIndex) || segmentIndex < 0 || segmentIndex >= segmentCount) return null;
-    const rawValue = String(value.value ?? '').trim();
-    if (!rawValue) return null;
-    const numberValue = Number(String(rawValue).replace(',', '.'));
-    return {
-      segmentIndex,
-      value: Number.isFinite(numberValue) ? numberValue : rawValue.slice(0, 40),
-      unit: String(value.unit || 'mm').trim() || 'mm',
-      side: normalizeAutoTraceSide(value.side),
-    };
-  }
-
-  function normalizeAutoTraceScaleMode(value) {
-    const mode = String(value || 'auto').trim();
-    if (mode === 'auto') return 'auto';
-    return AUTO_TRACE_SCALE_OPTIONS.includes(Number(mode)) ? String(Number(mode)) : 'auto';
-  }
-
-  function normalizeAutoTraceScale(value) {
-    const scale = Number(value);
-    return Number.isFinite(scale) && scale > 0 ? scale : null;
-  }
-
-  function autoTraceDirectionFromPoints(p1, p2) {
-    const dx = Number(p2 && p2.x) - Number(p1 && p1.x);
-    const dy = Number(p2 && p2.y) - Number(p1 && p1.y);
-    if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
-    return dy >= 0 ? 'down' : 'up';
-  }
-
-  function normalizeAutoTraceDirection(value, p1, p2) {
-    const direction = String(value || '').trim();
-    if (['up', 'down', 'left', 'right'].includes(direction)) return direction;
-    if (direction.startsWith('angle:')) {
-      return `angle:${normalizeAngleDegrees(direction.slice(6))}`;
-    }
-    return autoTraceDirectionFromPoints(p1, p2);
-  }
-
-  function normalizeAngleDegrees(value) {
-    const number = Number(String(value ?? '').replace(',', '.'));
-    if (!Number.isFinite(number)) return 0;
-    return ((number % 360) + 360) % 360;
-  }
-
-  function directionAngleDegrees(direction) {
-    const value = String(direction || '').trim();
-    if (value === 'right') return 0;
-    if (value === 'up') return 90;
-    if (value === 'left') return 180;
-    if (value === 'down') return 270;
-    if (value.startsWith('angle:')) return normalizeAngleDegrees(value.slice(6));
-    return 0;
-  }
-
-  function directionFromAngle(angle) {
-    return `angle:${normalizeAngleDegrees(angle)}`;
-  }
-
-  function normalizeAutoTraceAngleDimension(value, segmentCount) {
-    if (!value || typeof value !== 'object') return null;
-    const refTraceId = String(value.refTraceId || '').trim();
-    const refSegmentIndex = Math.floor(Number(value.refSegmentIndex));
-    const segmentA = refTraceId ? -1 : Math.floor(Number(value.segmentA));
-    const segmentB = Math.floor(Number(value.segmentB));
-    if (!Number.isFinite(segmentB) || segmentB < 0 || segmentB >= segmentCount) return null;
-    if (refTraceId) {
-      if (!Number.isFinite(refSegmentIndex) || refSegmentIndex < 0) return null;
-    } else if (!Number.isFinite(segmentA) || segmentA < 0 || segmentA >= segmentCount || segmentA === segmentB) {
-      return null;
-    }
-    return {
-      id: String(value.id || makeAutoTraceId()).trim(),
-      segmentA,
-      segmentB,
-      refTraceId,
-      refSegmentIndex: refTraceId ? refSegmentIndex : null,
-      inverted: Boolean(value.inverted),
-      auto: Boolean(value.auto),
-      hidden: Boolean(value.hidden),
-      radius: Math.max(20, Math.min(120, Number(value.radius || 42))),
-    };
-  }
-
-  function makeAutoTraceId() {
-    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
-      return `trace-${window.crypto.randomUUID()}`;
-    }
-    return `trace-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  }
-
-  function normalizeAutoTraceId(value) {
-    const id = String(value || '').trim();
-    return id || makeAutoTraceId();
-  }
-
-  function normalizeAutoTraceAnchor(value) {
-    if (!value || typeof value !== 'object') return null;
-    const traceId = String(value.traceId || '').trim();
-    const pointIndex = Math.floor(Number(value.pointIndex));
-    if (!traceId || !Number.isFinite(pointIndex) || pointIndex < 0) return null;
-    return { traceId, pointIndex };
-  }
-
   function normalizeSketchAnnotation(annotation) {
     if (!annotation || typeof annotation !== 'object') return null;
     const type = String(annotation.type || '').trim();
@@ -1284,6 +1187,66 @@
       if (annotation.type === 'auto_trace') ensureAutoAngleDimensions(annotation, traces);
     });
     return annotations;
+  }
+
+  function loadSketchFromEscalierFields(fields) {
+    const source = fields && typeof fields === 'object' ? fields : {};
+    sketchUpdatedAt = String(source.sketch_updated_at || '').trim();
+    sketchBackgroundPhotoId = String(source.sketch_background_photo_id || '').trim();
+    sketchAnnotations = normalizeSketchAnnotations(source.sketch_annotations || []);
+    sketchMarkerCounter = Math.max(0, Number(source.sketch_marker_counter || 0));
+    if (source.sketch_viewport && typeof source.sketch_viewport === 'object') {
+      sketchViewport = {
+        scale: Math.max(0.5, Math.min(5, Number(source.sketch_viewport.scale || 1))),
+        offsetX: Number(source.sketch_viewport.offsetX || 0),
+        offsetY: Number(source.sketch_viewport.offsetY || 0),
+      };
+    }
+  }
+
+  function saveSketchToEscalierFields(data, fields) {
+    const target = fields && typeof fields === 'object' ? fields : {};
+    return {
+      ...target,
+      sketch_updated_at: data.sketch_updated_at || null,
+      sketch_background_photo_id: data.sketch_background_photo_id || null,
+      sketch_annotations: cloneSketchAnnotations(data.sketch_annotations),
+      sketch_marker_counter: data.sketch_marker_counter || 0,
+      sketch_version: data.sketch_version || 2,
+      sketch_viewport: data.sketch_viewport || null,
+    };
+  }
+
+  function loadSketchFromMeasurementSketch(record) {
+    const source = record && typeof record === 'object' ? record : {};
+    const data = source.data && typeof source.data === 'object' ? source.data : source;
+    loadSketchFromEscalierFields({
+      sketch_updated_at: data.sketch_updated_at || source.updatedAt || '',
+      sketch_background_photo_id: data.sketch_background_photo_id || data.background_photo || data.backgroundPhotoId || '',
+      sketch_annotations: data.sketch_annotations || data.annotations || [],
+      sketch_marker_counter: data.sketch_marker_counter || data.markerCounter || 0,
+      sketch_version: data.sketch_version || 2,
+      sketch_viewport: data.sketch_viewport || data.viewport || null,
+    });
+  }
+
+  function serializeCurrentSketchEngineData() {
+    return {
+      sketch_updated_at: new Date().toISOString(),
+      sketch_background_photo_id: sketchBackgroundPhotoId || null,
+      sketch_annotations: cloneSketchAnnotations(sketchAnnotations),
+      sketch_marker_counter: sketchMarkerCounter,
+      sketch_version: 2,
+      sketch_viewport: { ...sketchViewport },
+    };
+  }
+
+  function saveSketchToMeasurementSketch(data, record) {
+    const target = record && typeof record === 'object' ? record : {};
+    return {
+      ...target,
+      ...saveSketchToEscalierFields(data, target),
+    };
   }
 
   function sketchCanvasPointToUnit(point) {
@@ -1465,13 +1428,6 @@
     return commonVertexForSegments(canvasPoints, angleDimension.segmentA, angleDimension.segmentB);
   }
 
-  function angleBetweenVectors(v1, v2) {
-    const len1 = Math.max(1, Math.hypot(v1.x, v1.y));
-    const len2 = Math.max(1, Math.hypot(v2.x, v2.y));
-    const dot = (v1.x * v2.x + v1.y * v2.y) / (len1 * len2);
-    return (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
-  }
-
   function isStraightAngle(value) {
     const angle = Math.abs(normalizeAngleDegrees(value));
     return angle < 0.5 || Math.abs(angle - 180) < 0.5 || Math.abs(angle - 360) < 0.5;
@@ -1480,10 +1436,6 @@
   function formatAngleValue(value) {
     const rounded = Math.round(Number(value) * 10) / 10;
     return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}°`;
-  }
-
-  function angleDimensionKey(traceId, segmentA, segmentB) {
-    return `${String(traceId || 'trace')}-angle-${Math.min(segmentA, segmentB)}-${Math.max(segmentA, segmentB)}`;
   }
 
   function parentSegmentIndexForAnchor(anchor, traceMap) {
@@ -3912,7 +3864,9 @@
   }
 
   async function openSketchModal() {
-    const recordId = await ensureCurrentRecordId();
+    const recordId = isCroquisTechniqueMode
+      ? normalizeId(technicalDrawingRuntimeContext.measurementId)
+      : await ensureCurrentRecordId();
     if (!recordId) {
       setSketchStatus('Enregistrez la fiche avant croquis', true);
       return;
@@ -3928,8 +3882,14 @@
     sketchActivePointerId = null;
     setSketchViewport({ scale: 1, offsetX: 0, offsetY: 0 });
     closeSketchPhotoPicker();
-    await refreshPhotoSlots();
     await resizeSketchCanvas();
+    if (isCroquisTechniqueMode) {
+      await applyStoredSketchBackground();
+      sketchReplaceHistoryWithCurrent();
+      setSketchStatus(sketchUpdatedAt ? 'Croquis charge' : 'Pret');
+      return;
+    }
+    await refreshPhotoSlots();
     await applyStoredSketchBackground();
     await loadSketchFromServer();
   }
@@ -4079,6 +4039,35 @@
   }
 
   async function saveSketchToServer() {
+    if (isCroquisTechniqueMode) {
+      if (!sketchCanvas || typeof technicalDrawingRuntimeContext.saveCallback !== 'function') {
+        setSketchStatus('Sauvegarde indisponible', true);
+        return;
+      }
+
+      setSketchStatus('Enregistrement...');
+      const previousViewport = { ...sketchViewport };
+      try {
+        sketchViewport = { scale: 1, offsetX: 0, offsetY: 0 };
+        sketchRenderComposite(false);
+        const preview = sketchCanvas.toDataURL('image/png');
+        sketchViewport = previousViewport;
+        updateSketchZoomLabel();
+        const payload = saveSketchToMeasurementSketch(serializeCurrentSketchEngineData(), technicalDrawingRuntimeContext.initialSketchData || {});
+        await technicalDrawingRuntimeContext.saveCallback(payload, preview);
+        sketchUpdatedAt = payload.sketch_updated_at || new Date().toISOString();
+        sketchRenderComposite();
+        setSketchStatus('Enregistre');
+        if (typeof technicalDrawingRuntimeContext.onDirtyChange === 'function') technicalDrawingRuntimeContext.onDirtyChange(false);
+      } catch {
+        sketchViewport = previousViewport;
+        updateSketchZoomLabel();
+        sketchRenderComposite();
+        setSketchStatus('Erreur enregistrement', true);
+      }
+      return;
+    }
+
     const recordId = await ensureCurrentRecordId();
     if (!recordId || !sketchCanvas) {
       setSketchStatus('Fiche introuvable', true);
@@ -4431,10 +4420,7 @@
     currentId = normalizeId(item.id);
     applyFieldValues(item.fields || {});
     measurementsV2State = normalizeMeasurementsV2(item.fields?.measurements_v2, getValue('type_escalier'));
-    sketchUpdatedAt = String(item.fields?.sketch_updated_at || '').trim();
-    sketchBackgroundPhotoId = String(item.fields?.sketch_background_photo_id || '').trim();
-    sketchAnnotations = normalizeSketchAnnotations(item.fields?.sketch_annotations || []);
-    sketchMarkerCounter = Math.max(0, Number(item.fields?.sketch_marker_counter || 0));
+    loadSketchFromEscalierFields(item.fields || {});
     sketchBackgroundUrl = '';
     sketchBackgroundImage = null;
     sketchDraftAnnotation = null;
@@ -4770,268 +4756,197 @@
     photoViewer.setAttribute('aria-hidden', 'true');
   }
 
-  if (sketchModal) {
-    sketchModal.hidden = true;
-    sketchModal.setAttribute('aria-hidden', 'true');
-  }
-
   if (photoViewer) {
     photoViewer.addEventListener('click', (event) => {
       if (event.target === photoViewer) closeViewer();
     });
   }
 
-  if (openSketchBtn) {
-    openSketchBtn.addEventListener('click', openSketchModal);
+  if (isCroquisTechniqueMode) {
+    currentId = normalizeId(technicalDrawingRuntimeContext.measurementId);
+    photoSlots = normalizePhotoSlots(technicalDrawingRuntimeContext.availablePhotos || []);
+    loadSketchFromMeasurementSketch(technicalDrawingRuntimeContext.initialSketchData || {});
+
+    const technicalDrawingEditor = window.initTechnicalDrawingEditor
+      ? window.initTechnicalDrawingEditor({
+        measurementType: 'croquis-technique',
+        callbacks: {
+          open: openSketchModal,
+          close: closeSketchModal,
+          save: saveSketchToServer,
+          zoomBy: zoomSketchBy,
+          fit: fitSketchViewport,
+          setTool: setSketchTool,
+          undo: sketchUndo,
+          redo: sketchRedo,
+          finishAutoTrace,
+          undoAutoTraceSegment,
+          cancelAutoTrace,
+          applyAutoTraceScale,
+          clear: clearSketchWithConfirm,
+          openPhotoPicker: openSketchPhotoPicker,
+          closePhotoPicker: closeSketchPhotoPicker,
+          removeBackground: removeSketchBackground,
+          openSymbolPicker: openSketchSymbolPicker,
+          closeSymbolPicker: closeSketchSymbolPicker,
+          resizeSymbol: resizeSelectedSketchSymbol,
+          deleteSymbol: deleteSelectedSketchSymbol,
+          cancelText: () => {
+            sketchDraftAnnotation = null;
+            closeSketchTextDialog();
+            sketchRenderComposite();
+          },
+          confirmText: confirmSketchTextDialog,
+          saveDimension: saveAutoTraceDimension,
+          changeDimensionSide: changeAutoTraceDimensionSide,
+          deleteDimension: deleteAutoTraceDimension,
+          closeDimensionDialog: closeAutoTraceDimensionDialog,
+          saveInclinedSegment: saveInclinedTraceSegment,
+          closeInclinedDialog: closeInclinedTraceDialog,
+          invertAngle: invertCurrentAngleDimension,
+          applyAngle: applyCurrentAngleValue,
+          deleteAngle: deleteCurrentAngleDimension,
+          closeAngleDialog: closeAngleDimensionDialog,
+          setColor: setSketchColor,
+          setSize: setSketchSize,
+          setToolbarCollapsed: setSketchToolbarCollapsed,
+          setBackgroundUi: setSketchBackgroundUi,
+          setStatus: setSketchStatus,
+          changeAutoTraceScale: () => {
+            const target = getAutoTraceScaleTarget();
+            if (target && target.source === 'draft') {
+              sketchAutoTraceScaleMode = normalizeAutoTraceScaleMode(autoTraceScaleSelect.value);
+              sketchAutoTraceScale = null;
+            }
+            updateAutoTraceControls();
+          },
+          handleEscape: (event) => {
+            if (event.key === 'Escape' && sketchModal && !sketchModal.hidden) {
+              if (sketchDimensionDialog && !sketchDimensionDialog.hidden) return closeAutoTraceDimensionDialog();
+              if (sketchInclinedDialog && !sketchInclinedDialog.hidden) return closeInclinedTraceDialog();
+              if (sketchAngleDialog && !sketchAngleDialog.hidden) return closeAngleDimensionDialog();
+              if (sketchTextDialog && !sketchTextDialog.hidden) {
+                sketchDraftAnnotation = null;
+                closeSketchTextDialog();
+                sketchRenderComposite();
+                return;
+              }
+              if (sketchPhotoPicker && !sketchPhotoPicker.hidden) return closeSketchPhotoPicker();
+              if (sketchSymbolPicker && !sketchSymbolPicker.hidden) return closeSketchSymbolPicker();
+              closeSketchModal();
+            }
+          },
+          handleResize: () => {
+            if (sketchModal && !sketchModal.hidden) resizeSketchCanvas();
+          },
+        },
+      })
+      : null;
+
+    if (technicalDrawingEditor) technicalDrawingEditor.setInitialState();
+    setSketchStatus(sketchUpdatedAt ? 'Croquis existant' : 'Pret');
+    window.TECHNICAL_DRAWING_API = {
+      save: saveSketchToServer,
+      open: openSketchModal,
+      close: closeSketchModal,
+      getData: serializeCurrentSketchEngineData,
+    };
+    openSketchModal();
+    return;
   }
 
-  if (sketchCloseBtn) {
-    sketchCloseBtn.addEventListener('click', closeSketchModal);
-  }
-
-  if (sketchSaveBtn) {
-    sketchSaveBtn.addEventListener('click', saveSketchToServer);
-  }
-
-  if (sketchZoomOutBtn) {
-    sketchZoomOutBtn.addEventListener('click', () => zoomSketchBy(0.85));
-  }
-
-  if (sketchZoomInBtn) {
-    sketchZoomInBtn.addEventListener('click', () => zoomSketchBy(1.18));
-  }
-
-  if (sketchFitBtn) {
-    sketchFitBtn.addEventListener('click', fitSketchViewport);
-  }
-
-  if (toolPenBtn) {
-    toolPenBtn.addEventListener('click', () => setSketchTool('pen'));
-  }
-
-  if (toolEraserBtn) {
-    toolEraserBtn.addEventListener('click', () => setSketchTool('eraser'));
-  }
-
-  sketchToolButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      setSketchTool(String(button.getAttribute('data-sketch-tool') || 'pen'));
-    });
-  });
-
-  if (undoSketchBtn) {
-    undoSketchBtn.addEventListener('click', sketchUndo);
-  }
-
-  if (redoSketchBtn) {
-    redoSketchBtn.addEventListener('click', sketchRedo);
-  }
-
-  if (finishAutoTraceBtn) {
-    finishAutoTraceBtn.addEventListener('click', finishAutoTrace);
-  }
-
-  if (undoAutoTraceBtn) {
-    undoAutoTraceBtn.addEventListener('click', undoAutoTraceSegment);
-  }
-
-  if (cancelAutoTraceBtn) {
-    cancelAutoTraceBtn.addEventListener('click', cancelAutoTrace);
-  }
-
-  if (scaleAutoTraceBtn) {
-    scaleAutoTraceBtn.addEventListener('click', applyAutoTraceScale);
-  }
-
-  if (autoTraceScaleSelect) {
-    autoTraceScaleSelect.addEventListener('change', () => {
-      const target = getAutoTraceScaleTarget();
-      if (target && target.source === 'draft') {
-        sketchAutoTraceScaleMode = normalizeAutoTraceScaleMode(autoTraceScaleSelect.value);
-        sketchAutoTraceScale = null;
-      }
-      updateAutoTraceControls();
-    });
-  }
-
-  if (clearSketchBtn) {
-    clearSketchBtn.addEventListener('click', clearSketchWithConfirm);
-  }
-
-  if (useSketchPhotoBtn) {
-    useSketchPhotoBtn.addEventListener('click', openSketchPhotoPicker);
-  }
-
-  if (removeSketchPhotoBtn) {
-    removeSketchPhotoBtn.addEventListener('click', removeSketchBackground);
-  }
-
-  if (openSketchSymbolBtn) {
-    openSketchSymbolBtn.addEventListener('click', openSketchSymbolPicker);
-  }
-
-  if (sketchToolbarToggle) {
-    sketchToolbarToggle.addEventListener('click', () => {
-      const collapsed = Boolean(sketchModalContent && sketchModalContent.classList.contains('sketch-tools-collapsed'));
-      setSketchToolbarCollapsed(!collapsed);
-    });
-  }
-
-  if (closeSketchPhotoPickerBtn) {
-    closeSketchPhotoPickerBtn.addEventListener('click', closeSketchPhotoPicker);
-  }
-
-  if (sketchPhotoPickerBackdrop) {
-    sketchPhotoPickerBackdrop.addEventListener('click', closeSketchPhotoPicker);
-  }
-
-  if (closeSketchSymbolPickerBtn) {
-    closeSketchSymbolPickerBtn.addEventListener('click', closeSketchSymbolPicker);
-  }
-
-  if (sketchSymbolPickerBackdrop) {
-    sketchSymbolPickerBackdrop.addEventListener('click', closeSketchSymbolPicker);
-  }
-
-  if (sketchSymbolSmallerBtn) {
-    sketchSymbolSmallerBtn.addEventListener('click', () => resizeSelectedSketchSymbol(0.86));
-  }
-
-  if (sketchSymbolLargerBtn) {
-    sketchSymbolLargerBtn.addEventListener('click', () => resizeSelectedSketchSymbol(1.16));
-  }
-
-  if (sketchSymbolDeleteBtn) {
-    sketchSymbolDeleteBtn.addEventListener('click', deleteSelectedSketchSymbol);
-  }
-
-  if (sketchTextCancelBtn) {
-    sketchTextCancelBtn.addEventListener('click', () => {
-      sketchDraftAnnotation = null;
-      closeSketchTextDialog();
-      sketchRenderComposite();
-    });
-  }
-
-  if (sketchTextConfirmBtn) {
-    sketchTextConfirmBtn.addEventListener('click', confirmSketchTextDialog);
-  }
-
-  if (sketchTextInput) {
-    sketchTextInput.addEventListener('keydown', (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') confirmSketchTextDialog();
-    });
-  }
-
-  if (sketchDimensionSaveBtn) {
-    sketchDimensionSaveBtn.addEventListener('click', saveAutoTraceDimension);
-  }
-
-  if (sketchDimensionSideBtn) {
-    sketchDimensionSideBtn.addEventListener('click', changeAutoTraceDimensionSide);
-  }
-
-  if (sketchDimensionDeleteBtn) {
-    sketchDimensionDeleteBtn.addEventListener('click', deleteAutoTraceDimension);
-  }
-
-  if (sketchDimensionCancelBtn) {
-    sketchDimensionCancelBtn.addEventListener('click', closeAutoTraceDimensionDialog);
-  }
-
-  if (sketchDimensionInput) {
-    sketchDimensionInput.addEventListener('keydown', (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') saveAutoTraceDimension();
-    });
-  }
-
-  if (sketchInclinedSaveBtn) {
-    sketchInclinedSaveBtn.addEventListener('click', saveInclinedTraceSegment);
-  }
-
-  if (sketchInclinedCancelBtn) {
-    sketchInclinedCancelBtn.addEventListener('click', closeInclinedTraceDialog);
-  }
-
-  if (sketchAngleInvertBtn) {
-    sketchAngleInvertBtn.addEventListener('click', invertCurrentAngleDimension);
-  }
-
-  if (sketchAngleApplyBtn) {
-    sketchAngleApplyBtn.addEventListener('click', applyCurrentAngleValue);
-  }
-
-  if (sketchAngleDeleteBtn) {
-    sketchAngleDeleteBtn.addEventListener('click', deleteCurrentAngleDimension);
-  }
-
-  if (sketchAngleCloseBtn) {
-    sketchAngleCloseBtn.addEventListener('click', closeAngleDimensionDialog);
-  }
-
-  if (sketchColorPalette) {
-    sketchColorPalette.querySelectorAll('[data-sketch-color]').forEach((button) => {
-      button.addEventListener('click', () => {
-        setSketchColor(String(button.getAttribute('data-sketch-color') || ''));
-      });
-    });
-  }
-
-  if (sketchSizePalette) {
-    sketchSizePalette.querySelectorAll('[data-sketch-size]').forEach((button) => {
-      button.addEventListener('click', () => {
-        setSketchSize(button.getAttribute('data-sketch-size'));
-      });
-    });
-  }
-
-  if (sketchModal) {
-    sketchModal.addEventListener('click', (event) => {
-      if (event.target === sketchModal) closeSketchModal();
-    });
-  }
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && sketchModal && !sketchModal.hidden) {
-      if (sketchDimensionDialog && !sketchDimensionDialog.hidden) {
-        closeAutoTraceDimensionDialog();
-        return;
-      }
-      if (sketchInclinedDialog && !sketchInclinedDialog.hidden) {
-        closeInclinedTraceDialog();
-        return;
-      }
-      if (sketchAngleDialog && !sketchAngleDialog.hidden) {
-        closeAngleDimensionDialog();
-        return;
-      }
-      if (sketchTextDialog && !sketchTextDialog.hidden) {
-        sketchDraftAnnotation = null;
-        closeSketchTextDialog();
-        sketchRenderComposite();
-        return;
-      }
-      if (sketchPhotoPicker && !sketchPhotoPicker.hidden) {
-        closeSketchPhotoPicker();
-        return;
-      }
-      if (sketchSymbolPicker && !sketchSymbolPicker.hidden) {
-        closeSketchSymbolPicker();
-        return;
-      }
-      closeSketchModal();
-      return;
-    }
-    if (event.key === 'Escape' && photoViewer && !photoViewer.hidden) closeViewer();
-  });
-
-  window.addEventListener('resize', () => {
-    if (sketchModal && !sketchModal.hidden) resizeSketchCanvas();
-  });
-
-  window.addEventListener('orientationchange', () => {
-    if (sketchModal && !sketchModal.hidden) resizeSketchCanvas();
-  });
+  const technicalDrawingEditor = window.initTechnicalDrawingEditor
+    ? window.initTechnicalDrawingEditor({
+      measurementType: 'escalier',
+      callbacks: {
+        open: openSketchModal,
+        close: closeSketchModal,
+        save: saveSketchToServer,
+        zoomBy: zoomSketchBy,
+        fit: fitSketchViewport,
+        setTool: setSketchTool,
+        undo: sketchUndo,
+        redo: sketchRedo,
+        finishAutoTrace,
+        undoAutoTraceSegment,
+        cancelAutoTrace,
+        applyAutoTraceScale,
+        clear: clearSketchWithConfirm,
+        openPhotoPicker: openSketchPhotoPicker,
+        closePhotoPicker: closeSketchPhotoPicker,
+        removeBackground: removeSketchBackground,
+        openSymbolPicker: openSketchSymbolPicker,
+        closeSymbolPicker: closeSketchSymbolPicker,
+        resizeSymbol: resizeSelectedSketchSymbol,
+        deleteSymbol: deleteSelectedSketchSymbol,
+        cancelText: () => {
+          sketchDraftAnnotation = null;
+          closeSketchTextDialog();
+          sketchRenderComposite();
+        },
+        confirmText: confirmSketchTextDialog,
+        saveDimension: saveAutoTraceDimension,
+        changeDimensionSide: changeAutoTraceDimensionSide,
+        deleteDimension: deleteAutoTraceDimension,
+        closeDimensionDialog: closeAutoTraceDimensionDialog,
+        saveInclinedSegment: saveInclinedTraceSegment,
+        closeInclinedDialog: closeInclinedTraceDialog,
+        invertAngle: invertCurrentAngleDimension,
+        applyAngle: applyCurrentAngleValue,
+        deleteAngle: deleteCurrentAngleDimension,
+        closeAngleDialog: closeAngleDimensionDialog,
+        setColor: setSketchColor,
+        setSize: setSketchSize,
+        setToolbarCollapsed: setSketchToolbarCollapsed,
+        setBackgroundUi: setSketchBackgroundUi,
+        setStatus: setSketchStatus,
+        changeAutoTraceScale: () => {
+          const target = getAutoTraceScaleTarget();
+          if (target && target.source === 'draft') {
+            sketchAutoTraceScaleMode = normalizeAutoTraceScaleMode(autoTraceScaleSelect.value);
+            sketchAutoTraceScale = null;
+          }
+          updateAutoTraceControls();
+        },
+        handleEscape: (event) => {
+          if (event.key === 'Escape' && sketchModal && !sketchModal.hidden) {
+            if (sketchDimensionDialog && !sketchDimensionDialog.hidden) {
+              closeAutoTraceDimensionDialog();
+              return;
+            }
+            if (sketchInclinedDialog && !sketchInclinedDialog.hidden) {
+              closeInclinedTraceDialog();
+              return;
+            }
+            if (sketchAngleDialog && !sketchAngleDialog.hidden) {
+              closeAngleDimensionDialog();
+              return;
+            }
+            if (sketchTextDialog && !sketchTextDialog.hidden) {
+              sketchDraftAnnotation = null;
+              closeSketchTextDialog();
+              sketchRenderComposite();
+              return;
+            }
+            if (sketchPhotoPicker && !sketchPhotoPicker.hidden) {
+              closeSketchPhotoPicker();
+              return;
+            }
+            if (sketchSymbolPicker && !sketchSymbolPicker.hidden) {
+              closeSketchSymbolPicker();
+              return;
+            }
+            closeSketchModal();
+            return;
+          }
+          if (event.key === 'Escape' && photoViewer && !photoViewer.hidden) closeViewer();
+        },
+        handleResize: () => {
+          if (sketchModal && !sketchModal.hidden) resizeSketchCanvas();
+        },
+      },
+    })
+    : null;
 
   tabList.addEventListener('click', switchToListWithAutosave);
   newBtn.addEventListener('click', async () => {
@@ -5049,11 +4964,15 @@
 
   setTodayIfEmpty();
   updateRecordDeleteUi();
-  setSketchTool('pen');
-  setSketchSize(2);
-  setSketchBackgroundUi();
-  closeSketchPhotoPicker();
-  setSketchStatus('Pret');
+  if (technicalDrawingEditor) {
+    technicalDrawingEditor.setInitialState();
+  } else {
+    setSketchTool('pen');
+    setSketchSize(2);
+    setSketchBackgroundUi();
+    closeSketchPhotoPicker();
+    setSketchStatus('Pret');
+  }
   photoSlots = makeEmptyPhotoSlots();
   renderPhotoSlots();
   measurementsV2State = createMeasurementsV2State(normalizeStairTypeKey(getValue('type_escalier')));

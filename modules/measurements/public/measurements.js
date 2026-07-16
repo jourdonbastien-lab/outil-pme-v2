@@ -27,6 +27,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   let currentSolutions = [];
   let currentSelectedSolution = null;
   let sketchRoot = null;
+  let technicalSketches = [];
 
   function setDefaultValues() {
     const dateField = form.elements.date;
@@ -1644,9 +1645,6 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       if (!field.name || field.type === 'checkbox' || field.type === 'file' || field.tagName === 'BUTTON') return;
       fields[field.name] = field.value;
     });
-    if (sketchRoot && typeof sketchRoot.technicalSketchSerialize === 'function') {
-      fields.technical_sketches = sketchRoot.technicalSketchSerialize();
-    }
     return {
       server_id: currentServerId,
       module: 'Escalier',
@@ -1679,14 +1677,14 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     setCheckboxValues('pose', record.pose);
     form.elements.observations.value = record.observations || '';
     photos = Array.isArray(record.photos) ? record.photos.slice() : [];
+    technicalSketches = Array.isArray(fields.technical_drawing_sketches) ? fields.technical_drawing_sketches.slice() : [];
     renderPhotos();
     syncTremieGroups();
     syncConfiguratorFromForm();
     renderPlans();
     updateSketchOwner();
-    if (sketchRoot && typeof sketchRoot.technicalSketchLoad === 'function') {
-      sketchRoot.technicalSketchLoad(fields.technical_sketches || []);
-    }
+    renderTechnicalSketches();
+    refreshTechnicalSketchesFromServer();
     currentRecordName = record.recordName || '';
     saveStatus.textContent = record.updatedAt
       ? `Fiche chargée - dernière sauvegarde le ${new Date(record.updatedAt).toLocaleString('fr-FR')}`
@@ -1751,28 +1749,112 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     if (!sketchRoot || !currentServerId) return;
     sketchRoot.dataset.sketchId = String(currentServerId);
     sketchRoot.dataset.sketchImageUrl = `/sketches/measurements/${currentServerId}.png`;
-    if (typeof sketchRoot.technicalSketchSetLegacyUrl === 'function') {
-      sketchRoot.technicalSketchSetLegacyUrl(`/sketches/measurements/${currentServerId}.png`);
+  }
+
+  function escapeText(value) {
+    return String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+  }
+
+  function renderTechnicalSketches() {
+    if (!sketchRoot) return;
+    const list = sketchRoot.querySelector('[data-technical-sketch-list]');
+    const legacy = sketchRoot.querySelector('[data-legacy-sketch]');
+    if (legacy) {
+      legacy.hidden = !currentServerId;
+      if (currentServerId) {
+        const img = legacy.querySelector('img');
+        if (img) {
+          legacy.hidden = false;
+          img.onload = () => { legacy.hidden = false; };
+          img.onerror = () => { legacy.hidden = true; };
+          img.src = `/sketches/measurements/${currentServerId}.png?t=${Date.now()}`;
+        }
+      }
     }
+    if (!list) return;
+    if (!technicalSketches.length) {
+      list.innerHTML = '<p class="technical-sketch-empty">Aucun croquis technique pour cette fiche.</p>';
+      return;
+    }
+    list.innerHTML = technicalSketches.map((sketch, index) => {
+      const title = sketch.title || `Croquis ${index + 1}`;
+      const updated = sketch.updatedAt ? new Date(sketch.updatedAt).toLocaleString('fr-FR') : 'Non enregistré';
+      return `
+        <article class="technical-sketch-row">
+          <div>
+            <strong>${escapeText(title)}</strong>
+            <span>Mis à jour : ${escapeText(updated)}</span>
+          </div>
+          <button type="button" data-open-technical-sketch="${escapeText(sketch.id)}">Ouvrir</button>
+        </article>
+      `;
+    }).join('');
+    list.querySelectorAll('[data-open-technical-sketch]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        if (!currentServerId) await saveRecord();
+        const sketchId = String(button.getAttribute('data-open-technical-sketch') || '').trim();
+        if (currentServerId && sketchId) window.location.href = `/outils/prises-cotes/${currentServerId}/croquis/${encodeURIComponent(sketchId)}`;
+      });
+    });
+  }
+
+  async function refreshTechnicalSketchesFromServer() {
+    if (!currentServerId) {
+      renderTechnicalSketches();
+      return;
+    }
+    try {
+      const response = await fetch(`/api/measurements/${currentServerId}/croquis`);
+      if (!response.ok) return;
+      const data = await response.json();
+      technicalSketches = Array.isArray(data.sketches) ? data.sketches : technicalSketches;
+      renderTechnicalSketches();
+    } catch {}
   }
 
   function initHandwrittenSketch() {
-    if (!window.initTechnicalSketchEditor || document.getElementById('measurementSketchpad')) return;
+    if (document.getElementById('measurementSketchpad')) return;
 
     const section = document.createElement('section');
     section.id = 'measurementSketchpad';
-    section.className = 'block technical-sketch-card measurement-sketchpad-card';
+    section.className = 'block measurement-sketchpad-card technical-sketch-card';
+    section.innerHTML = [
+      '<div class="block-title">',
+      '<h3>Croquis techniques</h3>',
+      '<p>Créez plusieurs croquis avancés avec texte, symboles, cotations et photo de fond.</p>',
+      '</div>',
+      '<div class="technical-sketch-actions">',
+      '<button type="button" class="primary" data-new-technical-sketch>Nouveau croquis</button>',
+      '<span class="technical-sketch-hint">La fiche est enregistrée avant ouverture du croquis.</span>',
+      '</div>',
+      '<div data-technical-sketch-list class="technical-sketch-list"></div>',
+      '<figure data-legacy-sketch class="legacy-sketch-preview" hidden>',
+      '<figcaption>Ancien croquis PNG conservé</figcaption>',
+      '<img alt="Ancien croquis enregistré" />',
+      '</figure>'
+    ].join('');
 
     form.appendChild(section);
     sketchRoot = section;
-
-    window.initTechnicalSketchEditor({
-      root: sketchRoot,
-      sheetType: 'Escalier',
-      onChange: () => {
-        saveStatus.textContent = 'Modifications non enregistrées';
+    section.querySelector('[data-new-technical-sketch]').addEventListener('click', async () => {
+      const id = await saveRecord();
+      if (!id) {
+        saveStatus.textContent = 'Impossible d’enregistrer la fiche avant le croquis';
+        return;
       }
+      const response = await fetch(`/api/measurements/${id}/croquis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: `Croquis ${technicalSketches.length + 1}` }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok || !data.url) {
+        saveStatus.textContent = data.error || 'Impossible de créer le croquis';
+        return;
+      }
+      window.location.href = data.url;
     });
+    renderTechnicalSketches();
   }
 
   async function saveRecord() {
@@ -1809,6 +1891,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       if (refreshedIndex >= 0) refreshed[refreshedIndex] = payload;
       saveStoredRecords(refreshed);
       saveStatus.textContent = `Enregistré - ${new Date(payload.updatedAt).toLocaleString('fr-FR')}`;
+      refreshTechnicalSketchesFromServer();
       return currentServerId;
     } catch {
       saveStatus.textContent = 'Enregistré localement - serveur indisponible';
@@ -1858,8 +1941,8 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     if (sketchRoot) {
       delete sketchRoot.dataset.sketchId;
       delete sketchRoot.dataset.sketchImageUrl;
-      if (typeof sketchRoot.technicalSketchLoad === 'function') sketchRoot.technicalSketchLoad([]);
-      if (typeof sketchRoot.technicalSketchSetLegacyUrl === 'function') sketchRoot.technicalSketchSetLegacyUrl('');
+      technicalSketches = [];
+      renderTechnicalSketches();
     }
     saveStatus.textContent = 'Nouvelle fiche prête';
     setDefaultValues();

@@ -1,0 +1,32 @@
+.technical-sketch-page {
+  padding-bottom: 32px;
+}
+
+.technical-sketch-hero {
+  margin-bottom: 18px;
+}
+
+.technical-sketch-main {
+  display: grid;
+  gap: 12px;
+}
+
+.technical-sketch-status {
+  color: #64748b;
+  font-size: 0.95rem;
+  margin: 0 4px;
+}
+
+.technical-sketch-page .technical-drawing-card {
+  margin: 0;
+}
+
+@media (max-width: 700px) {
+  .technical-sketch-page {
+    padding: 12px;
+  }
+
+  .technical-sketch-hero {
+    gap: 12px;
+  }
+}
