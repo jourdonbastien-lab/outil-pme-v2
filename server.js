@@ -10,7 +10,7 @@ const { google } = require('googleapis');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
 const { readDatabaseConfig } = require('./lib/databaseConfig');
-const { parseEbpQuoteText } = require('./lib/ebpQuoteParser');
+const { parseEbpQuoteText, parseEbpInvoiceText } = require('./lib/ebpQuoteParser');
 const googleSync = require('./lib/googleCalendarSync');
 const app = express();
 
@@ -170,6 +170,15 @@ function parseDecimalInput(value, fallback = 0) {
   if (!normalized) return fallback;
   const n = Number(normalized);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function hasDecimalInput(value) {
+  return String(value ?? '').trim() !== '';
+}
+
+function invoiceTotalsAreConsistent(amountHt, vatAmount, amountTtc) {
+  const expectedTtc = round2(Number(amountHt || 0) + Number(vatAmount || 0));
+  return Math.abs(expectedTtc - Number(amountTtc || 0)) <= 0.05;
 }
 
 function isoDate(d = new Date()) {
@@ -764,6 +773,70 @@ function extractEbpFieldsFromText(text) {
   };
 }
 
+function extractEbpInvoiceFieldsFromText(text) {
+  const parsed = parseEbpInvoiceText(text);
+  const raw = String(text || '');
+
+  let invoiceNumber = parsed.invoice_number || '';
+  if (!invoiceNumber) {
+    const match = raw.match(/\b(?:facture|avoir)\s*(?:n[Â°o]|numero|num)?\s*[:#\-â€“â€”]?\s*([A-Z0-9][A-Z0-9\-\/_]*)/i);
+    if (match) invoiceNumber = match[1].trim().toUpperCase();
+  }
+
+  let invoiceDate = parsed.invoice_date || '';
+  if (invoiceDate && /^\d{2}\/\d{2}\/\d{4}$/.test(invoiceDate)) {
+    const [day, month, year] = invoiceDate.split('/');
+    invoiceDate = `${year}-${month}-${day}`;
+  }
+
+  return {
+    ...parsed,
+    invoice_number: invoiceNumber,
+    invoice_date: invoiceDate,
+    client_name: parsed.client_name || guessClientFromLines(raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)),
+    amount_ht: parsed.amount_ht,
+    vat_amount: parsed.vat_amount,
+    amount_ttc: parsed.amount_ttc,
+  };
+}
+
+function fileSha256(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function clientOrderFolderPath(order) {
+  const clientFolder = safeName(order.name);
+  const orderFolder = clientOrderFolderName(order);
+  return safeResolveInside(safeResolveInside(CLIENT_PC_DIR, clientFolder), orderFolder);
+}
+
+function clientOrderInvoicesDir(order) {
+  const orderDir = clientOrderFolderPath(order);
+  ensureStandardSubfolders(orderDir);
+  const invoicesDir = safeResolveInside(orderDir, 'Factures');
+  ensureDir(invoicesDir);
+  return invoicesDir;
+}
+
+function invoiceTotalsByOrderId() {
+  const map = new Map();
+  db.prepare(`
+    SELECT client_order_id, COALESCE(SUM(amount_ht), 0) AS total_ht
+    FROM client_order_invoices
+    GROUP BY client_order_id
+  `).all().forEach((row) => {
+    map.set(Number(row.client_order_id), Number(row.total_ht || 0));
+  });
+  return map;
+}
+
+function orderInvoiceSummary(order, totalsMap) {
+  const amountHt = Number(order.price || 0);
+  const invoicedHt = Number(totalsMap.get(Number(order.id)) || 0);
+  const remainingHt = Math.max(0, round2(amountHt - invoicedHt));
+  return { amountHt, invoicedHt: round2(invoicedHt), remainingHt };
+}
+
 async function extractTextFromPdfBuffer(buffer) {
   if (!pdfParse) return { text: '', wordCount: 0, warning: 'pdf-parse indisponible: extraction PDF désactivée.' };
   try {
@@ -1101,6 +1174,23 @@ function createSqliteTables(database) {
       status TEXT DEFAULT 'À commander',
       created_at TEXT,
       updated_at TEXT
+    )
+  `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS client_order_invoices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_order_id INTEGER NOT NULL,
+      invoice_number TEXT,
+      invoice_date TEXT,
+      client_name TEXT,
+      amount_ht REAL DEFAULT 0,
+      vat_amount REAL DEFAULT 0,
+      amount_ttc REAL DEFAULT 0,
+      stored_file_name TEXT,
+      original_file_name TEXT,
+      file_hash TEXT,
+      created_at TEXT
     )
   `).run();
 
@@ -5776,7 +5866,8 @@ app.get('/orders/clients', requireLogin, (req, res) => {
     )
     .all();
 
-  const totalAmount = orders.reduce((sum, o) => sum + (o.price || 0), 0);
+  const invoiceTotals = invoiceTotalsByOrderId();
+  const totalAmount = orders.reduce((sum, o) => sum + orderInvoiceSummary(o, invoiceTotals).remainingHt, 0);
   const chantierHoursByOrderId = new Map();
   const legacyChantierHoursTotals = new Map();
   db
@@ -5873,6 +5964,7 @@ app.get('/orders/clients', requireLogin, (req, res) => {
 
             const dateLabel = (o.date || '').slice(0, 10);
             const chantierPrice = Number(o.price || 0);
+            const invoiceSummary = orderInvoiceSummary(o, invoiceTotals);
             const chantierVatRate = parseOptionalVatRate(o.vat_rate);
             const chantierPriceTtc = chantierVatRate !== null ? round2(chantierPrice * (1 + chantierVatRate / 100)) : null;
             const chantierPriceLabel = chantierPrice > 0 ? `${formatEuroFr(chantierPrice)} HT` : 'Non renseigné';
@@ -5928,7 +6020,9 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                 <div class="modern-client-order-info-list">
                   <div><span>Date commande</span><strong>${escHtml(dateLabel || 'Non renseignée')}</strong></div>
                   ${!isAtelier ? `
-                  <div><span>Prix HT</span><strong>${escHtml(chantierPriceLabel)}</strong></div>
+                  <div><span>Montant commande HT</span><strong>${escHtml(chantierPriceLabel)}</strong></div>
+                  <div><span>Deja facture HT</span><strong>${escHtml(formatEuroFr(invoiceSummary.invoicedHt))}</strong></div>
+                  <div><span>Reste a facturer HT</span><strong>${escHtml(formatEuroFr(invoiceSummary.remainingHt))}</strong></div>
                   <div><span>TVA</span><strong>${escHtml(chantierVatLabel)}</strong></div>
                   <div><span>Prix TTC</span><strong>${escHtml(chantierPriceTtcLabel)}</strong></div>
                   ` : ''}
@@ -6119,7 +6213,7 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
             ${clientPageIcon('folder', 'clients-title-icon')}
             <div>
               <h1>Commandes clients</h1>
-              <span>${orders.length} commande${orders.length > 1 ? 's' : ''} en cours${!isAtelier ? ` · ${totalAmount.toFixed(2)} €` : ''}</span>
+              <span>${orders.length} commande${orders.length > 1 ? 's' : ''} en cours${!isAtelier ? ` · Reste total a facturer HT : ${formatEuroFr(totalAmount)}` : ''}</span>
             </div>
           </div>
         </section>
@@ -6493,6 +6587,92 @@ async function renderEbpScanValidationPage(req, res, options) {
                 Créer la commande (validation manuelle)
               </button>
               <a class="modern-cancel-link" href="/orders/clients/scan-ebp">Recommencer</a>
+            </div>
+          </form>
+        </section>
+      </div>
+      `
+    )
+  );
+}
+
+async function renderEbpInvoiceValidationPage(req, res, options) {
+  const orderId = Number(options.orderId || 0);
+  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
+  if (!order) return res.status(404).send('Commande introuvable');
+
+  const scanFileName = path.basename(String(options.scanFileName || ''));
+  const scanOriginalName = path.basename(String(options.scanOriginalName || scanFileName));
+  const mimeType = String(options.mimeType || 'application/pdf').trim();
+  const scanPath = safeResolveInside(EBP_SCAN_DIR, scanFileName);
+  const analysis = await analyzeEbpFile(scanPath, mimeType);
+  const extractedText = String(analysis.text || '').trim();
+  const fields = extractEbpInvoiceFieldsFromText(extractedText);
+  const amountHt = fields.amount_ht !== null ? String(fields.amount_ht) : '';
+  const vatAmount = fields.vat_amount !== null ? String(fields.vat_amount) : '';
+  const amountTtc = fields.amount_ttc !== null ? String(fields.amount_ttc) : '';
+  const totalsMismatch = fields.amount_ht !== null
+    && fields.vat_amount !== null
+    && fields.amount_ttc !== null
+    && !invoiceTotalsAreConsistent(fields.amount_ht, fields.vat_amount, fields.amount_ttc);
+  const warning = analysis.warning
+    || (totalsMismatch ? 'Montants detectes incoherents: corrigez HT, TVA ou TTC avant validation.' : '')
+    || (fields.amount_ht === null || fields.amount_ttc === null ? 'Montants non detectes automatiquement. Renseignez au minimum le montant HT avant validation.' : '')
+    || (!extractedText ? 'Analyse incertaine: verifiez et corrigez les champs.' : '');
+
+  return res.send(
+    pageTemplate(
+      req,
+      'Validation facture EBP',
+      `
+      <div class="modern-page modern-client-orders-page">
+        <section class="modern-list-head modern-client-orders-head">
+          <div class="clients-create-head">
+            ${clientPageIcon('quotes', 'clients-title-icon')}
+            <div>
+              <h1>Validation facture EBP</h1>
+              <span>Commande cible : ${escHtml(order.description || `Commande #${order.id}`)} - ${escHtml(order.name || '')}</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="clients-create-card modern-form-card modern-client-order-form">
+          ${warning ? `<p class="info">${escHtml(warning)}</p>` : ''}
+          <form method="POST" action="/orders/client/${order.id}/invoices/create" class="modern-client-order-add-form">
+            <input type="hidden" name="scan_file" value="${escHtml(scanFileName)}" />
+            <input type="hidden" name="scan_original_name" value="${escHtml(scanOriginalName || scanFileName)}" />
+            <div class="modern-form-grid">
+              <label class="clients-field">
+                <span>Numero facture</span>
+                <div class="clients-input-shell">${clientPageIcon('quotes')}<input name="invoice_number" value="${escHtml(fields.invoice_number || '')}" /></div>
+              </label>
+              <label class="clients-field">
+                <span>Date facture</span>
+                <div class="clients-input-shell">${clientPageIcon('calendar')}<input type="date" name="invoice_date" value="${escHtml(fields.invoice_date || isoDate())}" /></div>
+              </label>
+              <label class="clients-field">
+                <span>Client detecte</span>
+                <div class="clients-input-shell">${clientPageIcon('user')}<input name="client_name" value="${escHtml(fields.client_name || order.name || '')}" /></div>
+              </label>
+              <label class="clients-field">
+                <span>Montant HT</span>
+                <div class="clients-input-shell">${clientPageIcon('postal')}<input name="amount_ht" type="number" step="0.01" value="${escHtml(amountHt)}" required /></div>
+              </label>
+              <label class="clients-field">
+                <span>TVA</span>
+                <div class="clients-input-shell">${clientPageIcon('postal')}<input name="vat_amount" type="number" step="0.01" value="${escHtml(vatAmount)}" /></div>
+              </label>
+              <label class="clients-field">
+                <span>Montant TTC</span>
+                <div class="clients-input-shell">${clientPageIcon('postal')}<input name="amount_ttc" type="number" step="0.01" value="${escHtml(amountTtc)}" /></div>
+              </label>
+            </div>
+            <div class="modern-form-actions">
+              <button type="submit" class="clients-submit-btn">
+                <span>${clientPageIcon('check', 'clients-submit-icon')}</span>
+                Valider la facture
+              </button>
+              <a class="modern-cancel-link" href="${getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures')}">Annuler</a>
             </div>
           </form>
         </section>
@@ -7869,6 +8049,74 @@ const list = files.length
         `;
       })()
     : '';
+
+  const invoicesBlock = type === 'Factures'
+    ? (() => {
+        if (!orderDb) {
+          return `
+            <section class="pc-modern-panel">
+              <div class="modern-section-title">
+                ${pcFolderIcon('Factures', 'clients-title-icon')}
+                <div>
+                  <h2>Factures EBP</h2>
+                  <p>Commande non retrouvÃ©e en base, scan indisponible.</p>
+                </div>
+              </div>
+            </section>
+          `;
+        }
+
+        const invoices = db
+          .prepare('SELECT * FROM client_order_invoices WHERE client_order_id = ? ORDER BY invoice_date DESC, id DESC')
+          .all(orderDb.id);
+        const totalInvoiced = invoices.reduce((sum, invoice) => sum + Number(invoice.amount_ht || 0), 0);
+        const remaining = Math.max(0, round2(Number(orderDb.price || 0) - totalInvoiced));
+        const invoiceCards = invoices.length
+          ? invoices.map((invoice) => {
+              const openUrl = `/pc-file/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}/${encodeURIComponent(invoice.stored_file_name || '')}`;
+              return `
+                <article class="order-purchase-card">
+                  <div class="order-purchase-main">
+                    <div>
+                      <h3>${escHtml(invoice.invoice_number || 'Facture sans numero')}</h3>
+                      <p>
+                        <span>${escHtml(invoice.invoice_date || 'Date inconnue')}</span>
+                        <span>${escHtml(formatEuroFr(invoice.amount_ht || 0))} HT</span>
+                        <span>${escHtml(formatEuroFr(invoice.vat_amount || 0))} TVA</span>
+                        <span>${escHtml(formatEuroFr(invoice.amount_ttc || 0))} TTC</span>
+                      </p>
+                      <small>${escHtml(invoice.original_file_name || invoice.stored_file_name || '')}</small>
+                    </div>
+                  </div>
+                  ${invoice.stored_file_name ? `<a class="modern-cancel-link" href="${openUrl}" target="_blank">Consulter</a>` : ''}
+                  <form method="POST" action="/orders/client/${orderDb.id}/invoices/${invoice.id}/delete" class="order-purchase-delete" onsubmit="return confirm('Supprimer cette facture ? Le reste a facturer sera recalcule.');">
+                    <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
+                  </form>
+                </article>
+              `;
+            }).join('')
+          : '<div class="empty-state">Aucune facture EBP validÃ©e pour cette commande.</div>';
+
+        return `
+          <section class="pc-modern-panel">
+            <div class="modern-section-title">
+              ${pcFolderIcon('Factures', 'clients-title-icon')}
+              <div>
+                <h2>Factures EBP</h2>
+                <p>Commande HT : ${escHtml(formatEuroFr(orderDb.price || 0))} Â· DÃ©jÃ  facturÃ© : ${escHtml(formatEuroFr(totalInvoiced))} Â· Reste : ${escHtml(formatEuroFr(remaining))}</p>
+              </div>
+            </div>
+            <form method="POST" action="/orders/client/${orderDb.id}/invoices/analyze" enctype="multipart/form-data" class="pc-modern-upload-form">
+              <input type="file" name="invoice_file" accept="image/*,.pdf,application/pdf" required />
+              <button class="clients-submit-btn" type="submit">Scanner une facture EBP</button>
+            </form>
+            <div class="order-purchase-list">
+              ${invoiceCards}
+            </div>
+          </section>
+        `;
+      })()
+    : '';
     
 
   const content = `
@@ -7912,10 +8160,136 @@ const list = files.length
       </section>
 
       ${purchasesBlock}
+      ${invoicesBlock}
     </div>
   `;
 
   res.send(pageTemplate(req, `${type} - ${order}`, content));
+});
+
+app.post('/orders/client/:id/invoices/analyze', requireLogin, (req, res) => {
+  const orderId = Number(req.params.id || 0);
+  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
+  if (!order) return res.status(404).send('Commande introuvable');
+
+  ebpScanUpload.single('invoice_file')(req, res, async (err) => {
+    const fallbackUrl = getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures');
+    if (err) {
+      return res.redirect(`${fallbackUrl}?error=${encodeURIComponent(err.message || 'Upload facture impossible')}`);
+    }
+    if (!req.file) {
+      return res.redirect(`${fallbackUrl}?error=Aucun+fichier+recu`);
+    }
+
+    try {
+      return await renderEbpInvoiceValidationPage(req, res, {
+        orderId,
+        scanFileName: req.file.filename,
+        scanOriginalName: req.file.originalname || req.file.filename,
+        mimeType: req.file.mimetype,
+      });
+    } catch (e) {
+      return res.redirect(`${fallbackUrl}?error=${encodeURIComponent(e.message || 'Analyse facture impossible')}`);
+    }
+  });
+});
+
+app.post('/orders/client/:id/invoices/create', requireLogin, (req, res) => {
+  const orderId = Number(req.params.id || 0);
+  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
+  if (!order) return res.status(404).send('Commande introuvable');
+
+  const redirectUrl = getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures');
+  try {
+    const scanFileName = path.basename(String(req.body.scan_file || ''));
+    const originalFileName = path.basename(String(req.body.scan_original_name || scanFileName));
+    if (!scanFileName) return res.status(400).send('Fichier facture manquant');
+
+    const scanPath = safeResolveInside(EBP_SCAN_DIR, scanFileName);
+    if (!fs.existsSync(scanPath)) return res.status(400).send('Fichier facture introuvable. Relancez le scan.');
+
+    const invoiceNumber = String(req.body.invoice_number || '').trim();
+    const invoiceDate = String(req.body.invoice_date || '').trim() || isoDate();
+    const clientName = String(req.body.client_name || '').trim() || order.name || '';
+    const amountHt = parseDecimalInput(req.body.amount_ht, 0);
+    const vatAmount = parseDecimalInput(req.body.vat_amount, 0);
+    const amountTtc = hasDecimalInput(req.body.amount_ttc)
+      ? parseDecimalInput(req.body.amount_ttc, 0)
+      : round2(amountHt + vatAmount);
+    if (amountHt <= 0) return res.status(400).send('Montant HT facture positif requis');
+    if (vatAmount < 0) return res.status(400).send('Montant TVA negatif impossible');
+    if (amountTtc <= 0) return res.status(400).send('Montant TTC facture positif requis');
+    if (!invoiceTotalsAreConsistent(amountHt, vatAmount, amountTtc)) {
+      return res.status(400).send('Les montants ne correspondent pas: HT + TVA doit etre proche du TTC. Corrigez les champs puis validez.');
+    }
+
+    const hash = fileSha256(scanPath);
+    const duplicate = db.prepare(`
+      SELECT id
+      FROM client_order_invoices
+      WHERE client_order_id = ?
+        AND (
+          (invoice_number IS NOT NULL AND invoice_number != '' AND lower(invoice_number) = lower(?))
+          OR file_hash = ?
+        )
+      LIMIT 1
+    `).get(orderId, invoiceNumber, hash);
+    if (duplicate) return res.status(409).send('Facture deja enregistree pour cette commande.');
+
+    const invoicesDir = clientOrderInvoicesDir(order);
+    const destinationPath = uniqueFilePath(invoicesDir, originalFileName || scanFileName);
+    fs.copyFileSync(scanPath, destinationPath);
+    const storedFileName = path.basename(destinationPath);
+
+    db.prepare(`
+      INSERT INTO client_order_invoices
+        (client_order_id, invoice_number, invoice_date, client_name, amount_ht, vat_amount, amount_ttc, stored_file_name, original_file_name, file_hash, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      orderId,
+      invoiceNumber || null,
+      invoiceDate,
+      clientName,
+      amountHt,
+      vatAmount,
+      amountTtc,
+      storedFileName,
+      originalFileName,
+      hash,
+      new Date().toISOString()
+    );
+
+    try {
+      fs.unlinkSync(scanPath);
+    } catch {}
+
+    return res.redirect(redirectUrl);
+  } catch (e) {
+    return res.status(500).send(`Erreur creation facture EBP: ${escHtml(e.message || 'inconnue')}`);
+  }
+});
+
+app.post('/orders/client/:id/invoices/:invoiceId/delete', requireLogin, (req, res) => {
+  const orderId = Number(req.params.id || 0);
+  const invoiceId = Number(req.params.invoiceId || 0);
+  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
+  if (!order) return res.status(404).send('Commande introuvable');
+
+  const invoice = db.prepare('SELECT * FROM client_order_invoices WHERE id = ? AND client_order_id = ?').get(invoiceId, orderId);
+  if (!invoice) return res.status(404).send('Facture introuvable');
+
+  db.prepare('DELETE FROM client_order_invoices WHERE id = ? AND client_order_id = ?').run(invoiceId, orderId);
+
+  if (invoice.stored_file_name) {
+    try {
+      const filePath = safeResolveInside(clientOrderInvoicesDir(order), path.basename(invoice.stored_file_name));
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch (e) {
+      console.warn('Suppression fichier facture impossible:', e.message);
+    }
+  }
+
+  return res.redirect(getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures'));
 });
 
 app.post('/orders/client/:id/purchases', requireLogin, (req, res) => {
