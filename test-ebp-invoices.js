@@ -53,6 +53,39 @@ assert.strictEqual(parsed.vat_amount, 200);
 assert.strictEqual(parsed.amount_ttc, 1200);
 assert.strictEqual(parsed.pageCount, 2);
 
+const fa001037ExtractedText = [
+  '1 sur 1',
+  'SARL A2 METAL',
+  'SCI CSQUI',
+  'Facture',
+  'Numero',
+  'FA001037',
+  'Date',
+  '29/05/2026',
+  'SIRET 000 000 000 00000',
+  'N TVA intracommunautaire FR00 000000000',
+  'IBAN FR76 0000 0000 0000 0000 0000 000',
+  'Description Qte P.U. HT TVA Montant HT',
+  'Situation chantier 1 4 917,59 20,00 4 917,59',
+  'Base HT 4 917,59 Taux TVA 20,00',
+  'Total HT Net',
+  'Total TVA',
+  'Total TTC',
+  'Net à payer',
+  '4\u202f917,59 €',
+  '983,52 €',
+  '5\u00a0901,11 €',
+  '5 901,11 €'
+].join('\n');
+
+const parsedFa001037 = parseEbpInvoiceText(fa001037ExtractedText);
+assert.strictEqual(parsedFa001037.invoice_number, 'FA001037');
+assert.strictEqual(parsedFa001037.invoice_date, '29/05/2026');
+assert.strictEqual(parsedFa001037.client_name, 'SCI CSQUI');
+assert.strictEqual(parsedFa001037.amount_ht, 4917.59);
+assert.strictEqual(parsedFa001037.vat_amount, 983.52);
+assert.strictEqual(parsedFa001037.amount_ttc, 5901.11);
+
 const invoices = [
   { client_order_id: 10, invoice_number: 'FA1', amount_ht: 400, original_file_name: 'fa1.pdf', file_hash: 'h1' },
   { client_order_id: 10, invoice_number: 'FA2', amount_ht: 350, original_file_name: 'fa2.pdf', file_hash: 'h2' },
