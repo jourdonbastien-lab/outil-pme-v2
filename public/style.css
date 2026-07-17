@@ -960,6 +960,33 @@ button {
   text-decoration:none;
 }
 
+.pc-modern-file-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+  min-width:0;
+}
+
+.pc-modern-inline-form{
+  margin:0;
+}
+
+.pc-modern-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:32px;
+  padding:0 10px;
+  border-radius:999px;
+  background:#dcfce7;
+  color:#166534;
+  font-size:12px;
+  font-weight:900;
+  white-space:nowrap;
+}
+
 .pc-modern-panel{
   padding:18px;
 }
@@ -9396,6 +9423,18 @@ body.sketchpad-drawing{
   .pc-modern-open{
     min-height:36px;
     padding:0 11px;
+  }
+
+  .pc-modern-file-actions{
+    grid-column:1 / -1;
+    justify-content:stretch;
+  }
+
+  .pc-modern-file-actions .pc-modern-open,
+  .pc-modern-file-actions .pc-modern-inline-form,
+  .pc-modern-file-actions .pc-modern-inline-form .pc-modern-open,
+  .pc-modern-file-actions .pc-modern-badge{
+    width:100%;
   }
 
   .pc-modern-panel{

@@ -82,4 +82,18 @@ assert.strictEqual(invoiceTotalsAreConsistent(1000, 200, 1200), true);
 assert.strictEqual(invoiceTotalsAreConsistent(1000, 200, 1200.04), true);
 assert.strictEqual(invoiceTotalsAreConsistent(1000, 200, 1198), false);
 
+function shouldDeletePhysicalInvoiceFile(invoice) {
+  return Boolean(invoice.stored_file_name && invoice.source_type !== 'existing');
+}
+
+function storedFileNameForValidation(sourceType, existingFileName, copiedFileName) {
+  return sourceType === 'existing' ? existingFileName : copiedFileName;
+}
+
+assert.strictEqual(storedFileNameForValidation('existing', 'facture.pdf', 'facture-1.pdf'), 'facture.pdf');
+assert.strictEqual(storedFileNameForValidation('upload', 'facture.pdf', 'facture-1.pdf'), 'facture-1.pdf');
+assert.strictEqual(shouldDeletePhysicalInvoiceFile({ source_type: 'existing', stored_file_name: 'facture.pdf' }), false);
+assert.strictEqual(shouldDeletePhysicalInvoiceFile({ source_type: 'upload', stored_file_name: 'facture.pdf' }), true);
+assert.strictEqual(shouldDeletePhysicalInvoiceFile({ source_type: null, stored_file_name: 'facture.pdf' }), true);
+
 console.log('ebp invoice tests ok');
