@@ -1556,6 +1556,33 @@ body.sketchpad-drawing {
   overflow: visible;
 }
 
+.technical-sketch-card .block-toggle {
+  align-items: flex-start;
+  height: auto;
+  min-height: 0;
+  white-space: normal;
+}
+
+.technical-sketch-card .block-toggle h3,
+.technical-sketch-card .block-toggle p {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.25;
+}
+
+.technical-sketch-card .block-toggle h3 {
+  margin-bottom: 6px;
+}
+
+.technical-sketch-card .block-toggle .block-chevron {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
 .technical-sketch-actions {
   display: flex;
   align-items: center;
@@ -1654,5 +1681,10 @@ body.sketchpad-drawing {
 
   .technical-sketch-row button {
     width: 100%;
+  }
+
+  .technical-sketch-card .block-toggle {
+    padding: 14px 16px;
+    gap: 10px;
   }
 }

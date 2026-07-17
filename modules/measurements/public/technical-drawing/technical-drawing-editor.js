@@ -19,7 +19,7 @@
 
   function initTechnicalDrawingEditor(options) {
     if (options && options.container && !options.callbacks) {
-      return initStandaloneTechnicalDrawingEditor(options);
+      throw new Error('L’ancien éditeur autonome est désactivé. Utiliser initEscalierDrawingEngine avec le moteur Escalier V2.');
     }
 
     const callbacks = options && options.callbacks ? options.callbacks : {};

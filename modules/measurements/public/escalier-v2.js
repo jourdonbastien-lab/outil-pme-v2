@@ -2,6 +2,7 @@
   const MODULE_NAME = 'Escalier V2';
   const technicalDrawingRuntimeContext = window.TECHNICAL_DRAWING_CONTEXT || { mode: 'escalier' };
   const isCroquisTechniqueMode = technicalDrawingRuntimeContext.mode === 'croquis-technique';
+  let croquisTechniqueEngineStarted = false;
   const PHOTO_CATEGORIES = [
     'Vue generale',
     'Depart',
@@ -4053,7 +4054,12 @@
         const preview = sketchCanvas.toDataURL('image/png');
         sketchViewport = previousViewport;
         updateSketchZoomLabel();
-        const payload = saveSketchToMeasurementSketch(serializeCurrentSketchEngineData(), technicalDrawingRuntimeContext.initialSketchData || {});
+        const payload = saveSketchToMeasurementSketch(
+          serializeCurrentSketchEngineData(),
+          technicalDrawingRuntimeContext.drawingData || technicalDrawingRuntimeContext.initialSketchData || {}
+        );
+        technicalDrawingRuntimeContext.drawingData = payload;
+        technicalDrawingRuntimeContext.initialSketchData = payload;
         await technicalDrawingRuntimeContext.saveCallback(payload, preview);
         sketchUpdatedAt = payload.sketch_updated_at || new Date().toISOString();
         sketchRenderComposite();
@@ -4762,10 +4768,15 @@
     });
   }
 
-  if (isCroquisTechniqueMode) {
-    currentId = normalizeId(technicalDrawingRuntimeContext.measurementId);
-    photoSlots = normalizePhotoSlots(technicalDrawingRuntimeContext.availablePhotos || []);
-    loadSketchFromMeasurementSketch(technicalDrawingRuntimeContext.initialSketchData || {});
+  async function startCroquisTechniqueDrawingEngine(runtimeContext) {
+    if (croquisTechniqueEngineStarted && window.TECHNICAL_DRAWING_API) return window.TECHNICAL_DRAWING_API;
+    if (runtimeContext && runtimeContext !== technicalDrawingRuntimeContext && typeof Object.assign === 'function') {
+      Object.assign(technicalDrawingRuntimeContext, runtimeContext);
+    }
+
+    currentId = normalizeId(technicalDrawingRuntimeContext.sheetId || technicalDrawingRuntimeContext.measurementId);
+    photoSlots = normalizePhotoSlots(technicalDrawingRuntimeContext.photos || technicalDrawingRuntimeContext.availablePhotos || []);
+    loadSketchFromMeasurementSketch(technicalDrawingRuntimeContext.drawingData || technicalDrawingRuntimeContext.initialSketchData || {});
 
     const technicalDrawingEditor = window.initTechnicalDrawingEditor
       ? window.initTechnicalDrawingEditor({
@@ -4851,9 +4862,20 @@
       close: closeSketchModal,
       getData: serializeCurrentSketchEngineData,
     };
-    openSketchModal();
-    return;
+    croquisTechniqueEngineStarted = true;
+    await openSketchModal();
+    return window.TECHNICAL_DRAWING_API;
   }
+
+  window.initEscalierDrawingEngine = async function initEscalierDrawingEngine(options = {}) {
+    const mode = options.mode || (options.context && options.context.mode) || technicalDrawingRuntimeContext.mode || 'escalier';
+    if (mode === 'croquis-technique') {
+      return startCroquisTechniqueDrawingEngine(options.context || technicalDrawingRuntimeContext);
+    }
+    return null;
+  };
+
+  if (isCroquisTechniqueMode) return;
 
   const technicalDrawingEditor = window.initTechnicalDrawingEditor
     ? window.initTechnicalDrawingEditor({

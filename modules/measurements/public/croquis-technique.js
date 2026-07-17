@@ -29,18 +29,50 @@
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
+      const existing = Array.from(document.scripts).find((script) => script.src && script.src.endsWith(src));
+      if (existing && existing.dataset.loaded === 'true') {
+        resolve();
+        return;
+      }
       const script = document.createElement('script');
       script.src = src;
-      script.onload = resolve;
-      script.onerror = reject;
+      script.onload = () => {
+        script.dataset.loaded = 'true';
+        resolve();
+      };
+      script.onerror = () => reject(new Error(`Impossible de charger le script ${src}`));
       document.body.appendChild(script);
     });
+  }
+
+  function assertEditorDomReady() {
+    const requiredIds = [
+      'openSketchBtn',
+      'sketchModal',
+      'sketchCanvas',
+      'sketchSaveBtn',
+      'sketchCloseBtn',
+      'sketchToolbarLeft',
+      'sketchPhotoPicker',
+      'sketchSymbolPicker',
+      'sketchTextDialog',
+      'sketchDimensionDialog',
+      'sketchInclinedDialog',
+      'sketchAngleDialog',
+    ];
+    const missing = requiredIds.filter((id) => !document.getElementById(id));
+    if (missing.length) {
+      throw new Error(`Editeur incomplet, IDs manquants: ${missing.join(', ')}`);
+    }
   }
 
   async function saveSketchFromEscalierEngine(sketchData, preview) {
     if (!currentSketch) return;
     setStatus('Enregistrement du croquis…', 'saving');
-    const response = await fetch(`/api/measurements/${measurementId}/croquis/${encodeURIComponent(sketchId)}`, {
+    const saveUrl = window.TECHNICAL_DRAWING_CONTEXT && window.TECHNICAL_DRAWING_CONTEXT.saveUrl
+      ? window.TECHNICAL_DRAWING_CONTEXT.saveUrl
+      : `/api/measurements/${measurementId}/croquis/${encodeURIComponent(sketchId)}`;
+    const response = await fetch(saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -76,13 +108,19 @@
     if (backLink) backLink.href = moduleRoute(measurement.module);
     editorHost.innerHTML = window.getTechnicalDrawingTemplate({ title: currentSketch.title || 'Croquis technique' });
 
+    const saveUrl = `/api/measurements/${measurementId}/croquis/${encodeURIComponent(sketchId)}`;
     window.TECHNICAL_DRAWING_CONTEXT = {
       mode: 'croquis-technique',
+      sheetId: measurementId,
       measurementId,
       sketchId,
+      sketchName: currentSketch.title || 'Croquis technique',
       measurementType: measurement.module || 'Prise de cotes',
       returnUrl: backLink ? backLink.href : moduleRoute(measurement.module),
+      saveUrl,
+      drawingData: currentSketch.data || {},
       initialSketchData: currentSketch.data || {},
+      photos: result.availablePhotos || [],
       availablePhotos: result.availablePhotos || [],
       saveCallback: saveSketchFromEscalierEngine,
       onDirtyChange(isDirty) {
@@ -93,15 +131,25 @@
       },
     };
 
+    assertEditorDomReady();
     await loadScript('/outils/prises-cotes/escalier-v2.js');
+    if (typeof window.initEscalierDrawingEngine !== 'function') {
+      throw new Error('Moteur de croquis Escalier V2 indisponible');
+    }
+    await window.initEscalierDrawingEngine({
+      mode: 'croquis-technique',
+      context: window.TECHNICAL_DRAWING_CONTEXT,
+    });
 
     if (saveTop) saveTop.addEventListener('click', () => {
       if (window.TECHNICAL_DRAWING_API && typeof window.TECHNICAL_DRAWING_API.save === 'function') {
         window.TECHNICAL_DRAWING_API.save().catch((error) => setStatus(error.message || 'Erreur enregistrement', 'error'));
       }
     });
-    setStatus('Croquis chargé', 'saved');
   }
 
-  init().catch((error) => setStatus(error.message || 'Erreur chargement croquis', 'error'));
+  init().catch((error) => {
+    const detail = error && error.message ? error.message : 'Erreur inconnue';
+    setStatus(`Impossible de charger l’éditeur de croquis. Détail: ${detail}`, 'error');
+  });
 })();
