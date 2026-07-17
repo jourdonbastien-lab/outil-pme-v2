@@ -770,8 +770,9 @@ async function extractTextFromPdfBuffer(buffer) {
     const result = await pdfParse(buffer);
     const text = String(result?.text || '');
     const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
-    return { text, wordCount, warning: '' };
-  } catch {
+    return { text, wordCount, pageCount: Number(result?.numpages || 0), warning: '' };
+  } catch (err) {
+    console.error('Scan EBP: lecture PDF impossible:', err.message || err);
     return { text: '', wordCount: 0, warning: 'Lecture PDF impossible. Vérifiez le fichier ou complétez manuellement.' };
   }
 }
@@ -853,6 +854,7 @@ async function analyzeEbpFile(filePath, mimeType) {
         warning: '',
         ocrWarning: '',
         pdfWordCount: pdfResult.wordCount,
+        pdfPageCount: pdfResult.pageCount || 0,
         ocrWordCount: 0,
       };
     }
@@ -866,6 +868,7 @@ async function analyzeEbpFile(filePath, mimeType) {
       warning: pdfResult.warning || ocrResult.warning || 'PDF peu textuel: OCR utilisé en secours.',
       ocrWarning: ocrResult.warning || '',
       pdfWordCount: pdfResult.wordCount,
+      pdfPageCount: pdfResult.pageCount || 0,
       ocrWordCount: ocrResult.wordCount,
     };
   }
@@ -879,6 +882,7 @@ async function analyzeEbpFile(filePath, mimeType) {
     warning: ocrResult.warning || '',
     ocrWarning: ocrResult.warning || '',
     pdfWordCount: 0,
+    pdfPageCount: 0,
     ocrWordCount: ocrResult.wordCount,
   };
 }
@@ -6349,6 +6353,7 @@ async function renderEbpScanValidationPage(req, res, options) {
   const extractedText = String(analysis.text || '').trim();
   const ocrTextLength = ocrText.replace(/\s+/g, ' ').length;
   const pdfTextLength = pdfText.replace(/\s+/g, ' ').length;
+  const pdfPageCount = Number(analysis.pdfPageCount || 0);
   const ocrTooShort = ocrTextLength < 40;
   const pdfTooShort = pdfTextLength < 40;
   const fields = extractEbpFieldsFromText(extractedText);
@@ -6365,6 +6370,7 @@ async function renderEbpScanValidationPage(req, res, options) {
   const amountHt = fields.amount_ht !== null ? String(fields.amount_ht) : '';
   const amountTtc = fields.amount_ttc !== null ? String(fields.amount_ttc) : '';
   const warning = analysis.warning
+    || (analysis.source === 'pdf' && pdfPageCount > 1 ? `PDF ${pdfPageCount} pages analyse: toutes les pages texte ont ete lues.` : '')
     || (analysis.source === 'pdf' && pdfTooShort ? 'Le PDF est peu textuel: vérifiez les champs détectés.' : '')
     || (analysis.source === 'ocr' && ocrTooShort ? 'OCR vide ou trop court: vérifiez le fichier, puis corrigez les champs manuellement.' : '')
     || (!extractedText ? 'Analyse incertaine: vérifiez et corrigez les champs.' : '');
