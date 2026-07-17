@@ -27,21 +27,36 @@
     return '/outils/prises-cotes/escalier';
   }
 
-  function loadScript(src) {
+  function loadScriptOnce(src, globalName) {
     return new Promise((resolve, reject) => {
-      const existing = Array.from(document.scripts).find((script) => script.src && script.src.endsWith(src));
-      if (existing && existing.dataset.loaded === 'true') {
+      if (globalName && typeof window[globalName] === 'function') {
         resolve();
+        return;
+      }
+      const existing = document.querySelector(`script[data-engine-src="${src}"]`);
+      if (existing) {
+        existing.addEventListener('load', () => {
+          if (globalName && typeof window[globalName] !== 'function') {
+            reject(new Error(`Fichier chargé mais fonction absente: ${globalName}`));
+            return;
+          }
+          resolve();
+        }, { once: true });
+        existing.addEventListener('error', () => reject(new Error(`Échec du chargement: ${src}`)), { once: true });
         return;
       }
       const script = document.createElement('script');
       script.src = src;
+      script.dataset.engineSrc = src;
       script.onload = () => {
-        script.dataset.loaded = 'true';
+        if (globalName && typeof window[globalName] !== 'function') {
+          reject(new Error(`Fichier chargé mais fonction absente: ${globalName}`));
+          return;
+        }
         resolve();
       };
-      script.onerror = () => reject(new Error(`Impossible de charger le script ${src}`));
-      document.body.appendChild(script);
+      script.onerror = () => reject(new Error(`Échec du chargement: ${src}`));
+      document.head.appendChild(script);
     });
   }
 
@@ -88,9 +103,18 @@
   }
 
   async function init() {
-    if (!measurementId || !sketchId || !editorHost || typeof window.getTechnicalDrawingTemplate !== 'function') {
+    if (!measurementId || !sketchId || !editorHost) {
       setStatus('Croquis indisponible', 'error');
       return;
+    }
+    if (typeof window.createTechnicalDrawingCore !== 'function') {
+      throw new Error('Dépendance absente: technical-drawing-core.js');
+    }
+    if (typeof window.getTechnicalDrawingTemplate !== 'function') {
+      throw new Error('Dépendance absente: technical-drawing-template.js');
+    }
+    if (typeof window.initTechnicalDrawingEditor !== 'function') {
+      throw new Error('Dépendance absente: technical-drawing-editor.js');
     }
 
     const response = await fetch(`/api/measurements/${measurementId}/croquis/${encodeURIComponent(sketchId)}`);
@@ -132,10 +156,7 @@
     };
 
     assertEditorDomReady();
-    await loadScript('/outils/prises-cotes/escalier-v2.js');
-    if (typeof window.initEscalierDrawingEngine !== 'function') {
-      throw new Error('Moteur de croquis Escalier V2 indisponible');
-    }
+    await loadScriptOnce('/outils/prises-cotes/escalier-v2.js?v=20260717-1', 'initEscalierDrawingEngine');
     await window.initEscalierDrawingEngine({
       mode: 'croquis-technique',
       context: window.TECHNICAL_DRAWING_CONTEXT,

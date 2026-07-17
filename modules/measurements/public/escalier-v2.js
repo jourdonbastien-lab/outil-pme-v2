@@ -3,6 +3,12 @@
   const technicalDrawingRuntimeContext = window.TECHNICAL_DRAWING_CONTEXT || { mode: 'escalier' };
   const isCroquisTechniqueMode = technicalDrawingRuntimeContext.mode === 'croquis-technique';
   let croquisTechniqueEngineStarted = false;
+  window.initEscalierDrawingEngine = async function initEscalierDrawingEngine(options = {}) {
+    if (typeof window.__initEscalierDrawingEngineImpl !== 'function') {
+      throw new Error('Le moteur Escalier V2 est chargé mais son initialisation interne n’est pas prête. Vérifier technical-drawing-core.js et les erreurs JavaScript précédentes.');
+    }
+    return window.__initEscalierDrawingEngineImpl(options);
+  };
   const PHOTO_CATEGORIES = [
     'Vue generale',
     'Depart',
@@ -4867,7 +4873,7 @@
     return window.TECHNICAL_DRAWING_API;
   }
 
-  window.initEscalierDrawingEngine = async function initEscalierDrawingEngine(options = {}) {
+  window.__initEscalierDrawingEngineImpl = async function initEscalierDrawingEngineImpl(options = {}) {
     const mode = options.mode || (options.context && options.context.mode) || technicalDrawingRuntimeContext.mode || 'escalier';
     if (mode === 'croquis-technique') {
       return startCroquisTechniqueDrawingEngine(options.context || technicalDrawingRuntimeContext);
