@@ -399,6 +399,26 @@ function createModuleSheet() {
     if (form.elements.quote_id) form.elements.quote_id.value = String(quote.id || quoteId);
   }
 
+  async function addPhotoRecoveryAccess() {
+    if (moduleLabel !== 'Portail' || initialServerId !== 9) return;
+    try {
+      const response = await fetch('/api/measurements/photo-recovery-access?id=9', {
+        method: 'GET',
+        credentials: 'same-origin'
+      });
+      if (!response.ok) return;
+      const access = await response.json();
+      if (!access.allowed || document.getElementById('photoRecoveryLink')) return;
+      const link = document.createElement('a');
+      link.id = 'photoRecoveryLink';
+      link.className = 'btn btn-primary';
+      link.href = '/outils/prises-cotes/recuperation-photos';
+      link.textContent = 'Récupérer les anciennes photos';
+      const host = document.querySelector('.hero-actions') || form.querySelector('.sheet-actions') || form.querySelector('.sheet-header') || form;
+      host.appendChild(link);
+    } catch {}
+  }
+
   async function saveRecord() {
     const payload = collectFormData();
     const recordName = payload.recordName || `Fiche ${moduleLabel.toLowerCase()} ${new Date().toLocaleDateString('fr-FR')}`;
@@ -610,6 +630,7 @@ function createModuleSheet() {
     try {
       if (initialServerId) await loadServerRecord(initialServerId);
       else if (initialQuoteId) await prefillFromQuote(initialQuoteId);
+      await addPhotoRecoveryAccess();
     } catch (error) {
       saveStatus.textContent = error.message || 'Impossible de charger la fiche';
     }
