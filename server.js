@@ -1404,6 +1404,7 @@ function createSqliteTables(database) {
       cost_unit REAL,
       cost_total REAL,
       margin_pct REAL,
+      coefficient REAL,
       hours REAL,
       hourly_cost REAL,
       cost_category TEXT,
@@ -1629,6 +1630,7 @@ function runSqliteMigrations(ensureColumn) {
   ensureColumn('quote_lines', 'cost_unit', 'REAL');
   ensureColumn('quote_lines', 'cost_total', 'REAL');
   ensureColumn('quote_lines', 'margin_pct', 'REAL');
+  ensureColumn('quote_lines', 'coefficient', 'REAL');
   ensureColumn('quote_lines', 'hours', 'REAL');
   ensureColumn('quote_lines', 'hourly_cost', 'REAL');
   ensureColumn('quote_lines', 'cost_category', 'TEXT');
@@ -10654,7 +10656,7 @@ const photosHtml = photos.map(photo => {
   <label>Marge (%)</label>
   <div class="clients-input-shell">
     ${clientPageIcon('add')}
-  <input id="matMargin" type="number" step="0.1" value="30">
+  <input id="matMargin" name="margin_pct" type="number" step="0.1" value="30">
   </div>
 </div>
             <div class="quote-material-summary" id="quickMatSummary">
@@ -11246,7 +11248,7 @@ function printPlan() {
         <label>Coût unitaire (€)</label>
         <div class="clients-input-shell">
           ${clientPageIcon('postal')}
-        <input id="prest_cost" name="cost_unit" type="number" step="0.01" value="0" required />
+        <input id="prest_cost" name="cost_unit" type="number" min="0" step="0.01" value="" placeholder="Coût interne" />
         </div>
       </div>
 
@@ -11254,7 +11256,7 @@ function printPlan() {
         <label>Marge (%)</label>
         <div class="clients-input-shell">
           ${clientPageIcon('add')}
-        <input id="prest_margin" name="margin_pct" type="number" step="0.1" value="0" />
+        <input id="prest_margin" name="margin_pct" type="number" step="0.1" value="" placeholder="0" />
         </div>
       </div>
 
@@ -11662,18 +11664,22 @@ app.get('/devis/line/:id/edit', requireLogin, (req, res) => {
   const line = db
     .prepare('SELECT * FROM quote_lines WHERE id = ?')
     .get(req.params.id);
-
   if (!line) {
     return res.status(404).send('Ligne introuvable');
   }
 
   res.send(`
-    <form method="POST" action="/devis/line/${line.id}/edit">
-
-      <input name="label" value="${line.label}">
-      <input name="qty" value="${line.qty}">
-      <input name="unit_price" value="${line.unit_price}">
-      <label>Coût unitaire interne <input name="cost_unit" type="number" min="0" step="0.01" value="${line.cost_unit == null ? '' : line.cost_unit}"></label>
+    <form method="POST" action="/devis/line/${line.id}/edit" id="quoteLineEditForm">
+      <label>Libellé <input name="label" value="${escHtml(line.label || '')}" required></label>
+      <label>Quantité <input name="qty" type="number" min="0.01" step="0.01" value="${escHtml(String(line.qty))}" required></label>
+      <label>Unité <input name="unit" value="${escHtml(line.unit || '')}" readonly></label>
+      <label>Prix d’achat unitaire <input name="cost_unit" type="number" min="0" step="0.01" value="${line.cost_unit == null ? '' : escHtml(String(line.cost_unit))}"></label>
+      <label>Marge (%) <input name="margin_pct" type="number" step="0.1" value="${line.margin_pct == null ? '' : escHtml(String(line.margin_pct))}"></label>
+      <label>Coefficient <input name="coefficient" type="number" min="0.01" step="0.01" value="${line.coefficient == null ? '' : escHtml(String(line.coefficient))}"></label>
+      <label>Coût total explicite <input name="cost_total" type="number" min="0" step="0.01" value="${line.cost_total == null ? '' : escHtml(String(line.cost_total))}"></label>
+      <label>Heures <input name="hours" type="number" min="0" step="0.01" value="${line.hours == null ? '' : escHtml(String(line.hours))}"></label>
+      <label>Coût horaire interne <input name="hourly_cost" type="number" min="0" step="0.01" value="${line.hourly_cost == null ? '' : escHtml(String(line.hourly_cost))}"></label>
+      <label>Prix de vente unitaire <input name="unit_price" type="number" min="0" step="0.01" value="${escHtml(String(line.unit_price))}" required></label>
       <label>Catégorie de coût <select name="cost_category"><option value="">Détection automatique</option>${projectProfitability.LINE_COST_CATEGORIES.map((category) => `<option value="${escHtml(category)}" ${line.cost_category === category ? 'selected' : ''}>${escHtml(category)}</option>`).join('')}</select></label>
 
       <button type="submit">
@@ -11681,6 +11687,7 @@ app.get('/devis/line/:id/edit', requireLogin, (req, res) => {
       </button>
 
     </form>
+    <script>(function(){var form=document.getElementById('quoteLineEditForm');if(!form)return;var cost=form.elements.cost_unit;var margin=form.elements.margin_pct;var price=form.elements.unit_price;function update(){if(cost.value==='')return;var c=Number(cost.value);var m=margin.value===''?0:Number(margin.value);if(Number.isFinite(c)&&Number.isFinite(m))price.value=(c*(1+m/100)).toFixed(2);}cost.addEventListener('input',update);margin.addEventListener('input',update);})();</script>
   `);
 
 });
@@ -11689,13 +11696,24 @@ app.post('/devis/line/:id/edit', requireLogin, (req, res) => {
   const line = db
     .prepare('SELECT * FROM quote_lines WHERE id = ?')
     .get(req.params.id);
+  if (!line) return res.status(404).send('Ligne introuvable');
 
   const qty = Number(req.body.qty || 0);
   const pu = Number(req.body.unit_price || 0);
+  if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(pu) || pu < 0) return res.status(400).send('Quantité ou prix de vente invalide');
   const costUnitRaw = String(req.body.cost_unit ?? '').trim();
   const costUnit = costUnitRaw === '' ? null : Number(costUnitRaw.replace(',', '.'));
+  const optionalBodyNumber = (name) => { const raw = String(req.body[name] ?? '').trim(); return raw === '' ? null : Number(raw.replace(',', '.')); };
+  const marginPct = optionalBodyNumber('margin_pct');
+  const coefficient = optionalBodyNumber('coefficient');
+  const costTotal = optionalBodyNumber('cost_total');
+  const hours = optionalBodyNumber('hours');
+  const hourlyCost = optionalBodyNumber('hourly_cost');
   const costCategory = String(req.body.cost_category || '').trim();
   if (costUnit !== null && (!Number.isFinite(costUnit) || costUnit < 0)) return res.status(400).send('Coût unitaire invalide');
+  for (const [label, value] of [['marge', marginPct], ['coefficient', coefficient], ['coût total', costTotal], ['heures', hours], ['coût horaire', hourlyCost]]) {
+    if (value !== null && (!Number.isFinite(value) || (label !== 'marge' && value < 0))) return res.status(400).send(`${label} invalide`);
+  }
   if (costCategory && !projectProfitability.LINE_COST_CATEGORIES.includes(costCategory)) return res.status(400).send('Catégorie de coût invalide');
 
   db.prepare(`
@@ -11706,6 +11724,11 @@ app.post('/devis/line/:id/edit', requireLogin, (req, res) => {
       unit_price = ?,
       total = ?,
       cost_unit = ?,
+      cost_total = ?,
+      margin_pct = ?,
+      coefficient = ?,
+      hours = ?,
+      hourly_cost = ?,
       cost_category = ?,
       cost_source = ?
     WHERE id = ?
@@ -11715,8 +11738,13 @@ app.post('/devis/line/:id/edit', requireLogin, (req, res) => {
     pu,
     qty * pu,
     costUnit,
+    costTotal,
+    marginPct,
+    coefficient,
+    hours,
+    hourlyCost,
     costCategory || null,
-    costUnit === null ? null : 'modification de la ligne',
+    [costUnit, costTotal, marginPct, coefficient, hours, hourlyCost].every((value) => value === null) ? null : 'modification de la ligne',
     req.params.id
   );
 
@@ -11750,24 +11778,31 @@ app.post('/devis/line', requireLogin, (req, res) => {
   const costUnit = costUnitRaw === '' ? null : Number(costUnitRaw.replace(',', '.'));
   const lineMarginRaw = String(req.body.margin_pct ?? '').trim();
   const lineMargin = lineMarginRaw === '' ? null : Number(lineMarginRaw.replace(',', '.'));
+  const optionalLineNumber = (name) => { const raw = String(req.body[name] ?? '').trim(); return raw === '' ? null : Number(raw.replace(',', '.')); };
+  const coefficient = optionalLineNumber('coefficient');
+  const costTotal = optionalLineNumber('cost_total');
+  const submittedHours = optionalLineNumber('hours');
+  const submittedHourlyCost = optionalLineNumber('hourly_cost');
   const costCategory = String(req.body.cost_category || '').trim();
-  const costSource = String(req.body.cost_source || (costUnit !== null ? 'saisie de la ligne' : '')).trim();
+  const hasLineCostInput = [costUnit, costTotal, lineMargin, coefficient, submittedHours, submittedHourlyCost].some((value) => value !== null);
+  const costSource = String(req.body.cost_source || (hasLineCostInput ? 'saisie de la ligne' : '')).trim();
 
   if (!quote_id || !label || !unit || !Number.isFinite(qty) || !Number.isFinite(unit_price) || qty <= 0 || unit_price <= 0) {
     return res.status(400).send('Données ligne invalides');
   }
   if ((costUnit !== null && (!Number.isFinite(costUnit) || costUnit < 0)) || (lineMargin !== null && !Number.isFinite(lineMargin))) return res.status(400).send('Coût ou marge de ligne invalide');
+  for (const value of [coefficient, costTotal, submittedHours, submittedHourlyCost]) if (value !== null && (!Number.isFinite(value) || value < 0)) return res.status(400).send('Donnée de coût invalide');
 
   const total = round2(qty * unit_price);
 
   db.prepare(
     `
-    INSERT INTO quote_lines (quote_id, category, label, qty, unit, unit_price, total, cost_unit, margin_pct, hours, hourly_cost, cost_category, cost_source, position, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO quote_lines (quote_id, category, label, qty, unit, unit_price, total, cost_unit, cost_total, margin_pct, coefficient, hours, hourly_cost, cost_category, cost_source, position, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
-  ).run(quote_id, category || null, label, qty, unit, unit_price, total, costUnit, lineMargin,
-    ['h', 'heure', 'heures'].includes(unit.toLowerCase()) ? qty : null,
-    ['h', 'heure', 'heures'].includes(unit.toLowerCase()) ? costUnit : null,
+  ).run(quote_id, category || null, label, qty, unit, unit_price, total, costUnit, costTotal, lineMargin, coefficient,
+    submittedHours ?? (['h', 'heure', 'heures'].includes(unit.toLowerCase()) ? qty : null),
+    submittedHourlyCost ?? (['h', 'heure', 'heures'].includes(unit.toLowerCase()) ? costUnit : null),
     costCategory || null, costSource || null, 0, new Date().toISOString());
 
   res.redirect('/devis/' + quote_id);

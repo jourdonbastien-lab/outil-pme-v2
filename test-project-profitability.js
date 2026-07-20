@@ -89,6 +89,34 @@ assert.strictEqual(noDuplicateAdjustment.totalCost, 100);
 const legacyIgnored = profitability.analyzeQuoteLines({ quote: { cout_revient: 9999 }, lines: [{ id: 7, label: 'Ligne historique', qty: 1, unit: 'u', unit_price: 500, total: 500, cost_unit: 200 }] });
 assert.strictEqual(legacyIgnored.totalCost, 200, 'un ancien coût global ne doit pas être ajouté à l’analyse des lignes');
 
+const purchaseTotalPriority = profitability.analyzeQuoteLines({ lines: [{ id: 8, label: 'Thermo', qty: 2, unit: 'u', unit_price: 500, total: 1000, cost_unit: 300, cost_total: 550 }] });
+assert.strictEqual(purchaseTotalPriority.lines[0].detectedCost, 550);
+assert.strictEqual(purchaseTotalPriority.lines[0].costSource, 'purchase_total');
+
+const coefficientCost = profitability.analyzeQuoteLines({ lines: [{ id: 9, label: 'Moteur BFT', qty: 1, unit: 'u', unit_price: 270, total: 270, coefficient: 1.5 }] });
+assert.strictEqual(coefficientCost.lines[0].detectedCost, 180);
+assert.strictEqual(coefficientCost.lines[0].costSource, 'sale_divided_by_coefficient');
+
+const marginFormulaCost = profitability.analyzeQuoteLines({ lines: [{ id: 10, label: 'Parclose', qty: 1, unit: 'u', unit_price: 270, total: 270, margin_pct: 50 }] });
+assert.strictEqual(marginFormulaCost.lines[0].detectedCost, 180);
+assert.strictEqual(marginFormulaCost.lines[0].costSource, 'margin_formula');
+
+const productQuantityOne = profitability.analyzeQuoteLines({ lines: [{ id: 11, category: 'Fabrication', label: 'Clôture', qty: 1, unit: 'u', unit_price: 2800, total: 2800 }] });
+assert.strictEqual(productQuantityOne.lines[0].detectedCost, null);
+assert.strictEqual(productQuantityOne.lines[0].costSource, 'unavailable');
+assert.notStrictEqual(productQuantityOne.lines[0].category, 'main-d’œuvre atelier');
+
+const fabricationHours = profitability.analyzeQuoteLines({ lines: [{ id: 12, category: 'Prestation', label: 'Fabrication atelier', qty: 10, unit: 'h', unit_price: 80, total: 800 }] });
+assert.strictEqual(fabricationHours.lines[0].detectedCost, 550);
+assert.strictEqual(fabricationHours.lines[0].costSource, 'hours_times_internal_rate');
+const installationHours = profitability.analyzeQuoteLines({ lines: [{ id: 13, category: 'Prestation', label: 'Pose', qty: 4, unit: 'h', unit_price: 90, total: 360 }] });
+assert.strictEqual(installationHours.lines[0].detectedCost, 220);
+assert.strictEqual(installationHours.lines[0].category, 'main-d’œuvre pose');
+
+for (const field of ['purchaseUnitPrice', 'purchaseTotal', 'saleUnitPrice', 'saleTotal', 'quantity', 'marginInput', 'coefficientInput', 'detectedCost', 'costSource']) {
+  assert(Object.hasOwn(coefficientCost.lines[0], field), `champ diagnostic absent: ${field}`);
+}
+
 const quoteBefore = JSON.stringify(detailed);
 const lineBefore = JSON.stringify(lines(10000));
 const snapshot = profitability.buildForecastSnapshot({ id: 8, ...detailed }, lines(10000));
