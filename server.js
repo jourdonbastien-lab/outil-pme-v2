@@ -405,6 +405,8 @@ const MEASUREMENT_SHEETS = {
   autres: 'autres.html',
 };
 const MEASUREMENTS_ASSETS = new Set([
+  'measurement-modern.css',
+  'measurement-modern.js',
   'measurements.css',
   'measurements.js',
   'module-sheet.js',

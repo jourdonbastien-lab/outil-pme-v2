@@ -1622,6 +1622,20 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       const node = photoTemplate.content.firstElementChild.cloneNode(true);
       node.querySelector('img').src = photo.url || photo.dataUrl || '';
       node.querySelector('img').alt = photo.original_name || photo.name || 'Photo chantier';
+      const captionInput = node.querySelector('.photo-caption');
+      if (captionInput) {
+        captionInput.value = photo.caption || '';
+        captionInput.addEventListener('change', async () => {
+          photos[index].caption = captionInput.value;
+          if (!photo.id || !currentServerId) return;
+          const response = await fetch(`/api/measurements/${currentServerId}/photos/${encodeURIComponent(photo.id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ caption: captionInput.value })
+          });
+          if (!response.ok) saveStatus.textContent = 'Impossible de modifier la légende';
+        });
+      }
       node.querySelector('.photo-remove').addEventListener('click', async () => {
         if (photo.id && currentServerId) {
           const response = await fetch(`/api/measurements/${currentServerId}/photos/${encodeURIComponent(photo.id)}`, {
