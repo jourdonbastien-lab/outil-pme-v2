@@ -13,6 +13,7 @@ const { readDatabaseConfig } = require('./lib/databaseConfig');
 const { parseEbpQuoteText, parseEbpInvoiceText } = require('./lib/ebpQuoteParser');
 const googleSync = require('./lib/googleCalendarSync');
 const agendaEventRange = require('./lib/agendaEventRange');
+const measurementRoutes = require('./lib/measurementRoutes');
 const app = express();
 
 function tryRequire(moduleName) {
@@ -1997,7 +1998,7 @@ function measurementLinkBadge(row) {
   return '<span class="measurement-link-badge">Non rattachée</span>';
 }
 
-function renderMeasurementCards(rows) {
+function renderMeasurementCards(rows, options = {}) {
   if (!rows.length) return '<div class="empty-state">Aucune prise de cote liée.</div>';
   return `
     <div class="measurement-linked-grid">
@@ -2008,7 +2009,7 @@ function renderMeasurementCards(rows) {
             <span>${escHtml(row.module || 'Prise de cote')}</span>
           </div>
           ${measurementLinkBadge(row)}
-          <a class="btn btn-secondary" href="/outils/prises-cotes/fiche/${row.id}">Ouvrir</a>
+          <a class="btn btn-secondary" href="${escHtml(measurementRoutes.canonicalMeasurementUrl(row, options) || `/outils/prises-cotes/fiche/${row.id}`)}">Ouvrir</a>
         </article>
       `).join('')}
     </div>
@@ -2364,23 +2365,6 @@ function ensureGoogleCalendarConfig(res) {
   return false;
 }
 
-async function listGoogleCalendarEvents(calendar, calendarId, timeMin) {
-  const items = [];
-  let pageToken;
-  do {
-    const result = await calendar.events.list({
-      calendarId,
-      singleEvents: true,
-      timeMin,
-      maxResults: 2500,
-      pageToken
-    });
-    items.push(...(result.data.items || []));
-    pageToken = result.data.nextPageToken;
-  } while (pageToken);
-  return items;
-}
-
 function googleSyncOptions() {
   return { timeZone: GOOGLE_CALENDAR_TIME_ZONE };
 }
@@ -2428,6 +2412,7 @@ function syncReportCounts(actions) {
     createGoogle: actions.createGoogle.length,
     updateLocal: actions.updateLocal.length,
     updateGoogle: actions.updateGoogle.length,
+    deleteLocal: (actions.deleteLocal || []).length,
     ambiguous: actions.ambiguous.length,
     errors: actions.errors.length,
     googleDuplicates: actions.googleDuplicates.length
@@ -2439,6 +2424,7 @@ function renderGoogleSyncSummary(req, report, options = {}) {
   const counts = syncReportCounts(actions);
   const added = counts.importLocal + counts.createGoogle;
   const updated = counts.link + counts.updateLocal + counts.updateGoogle;
+  const deleted = counts.deleteLocal;
   const ignored = counts.ambiguous + counts.googleDuplicates;
   const errors = counts.errors;
 
@@ -2456,6 +2442,7 @@ function renderGoogleSyncSummary(req, report, options = {}) {
       <div class="dashboard-grid">
         <div class="stat-card"><strong>${added}</strong><span>Événements ajoutés</span></div>
         <div class="stat-card"><strong>${updated}</strong><span>Événements mis à jour</span></div>
+        <div class="stat-card"><strong>${deleted}</strong><span>Événements supprimés localement</span></div>
         <div class="stat-card"><strong>${ignored}</strong><span>Événements ignorés</span></div>
         <div class="stat-card"><strong>${errors}</strong><span>Erreurs</span></div>
       </div>
@@ -4507,6 +4494,18 @@ app.get('/api/measurements/link-options', requireLogin, (req, res) => {
   res.json({ quotes, clientOrders });
 });
 
+app.get('/api/measurements/context', requireLogin, (req, res) => {
+  const quoteId = parseOptionalId(req.query.quote_id);
+  if (!quoteId) return res.status(400).json({ ok: false, error: 'ID devis invalide' });
+  const quote = db.prepare('SELECT id, title, client_name FROM quotes WHERE id = ?').get(quoteId);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Devis introuvable' });
+  return res.json({ ok: true, quote: {
+    id: quote.id,
+    client: String(quote.client_name || '').trim(),
+    chantier: String(quote.title || '').trim()
+  } });
+});
+
 app.get('/api/measurements/escalier-v2/bootstrap', requireLogin, (req, res) => {
   const moduleName = 'Escalier V2';
   const requestedId = parseOptionalId(req.query.id);
@@ -4815,6 +4814,20 @@ app.post('/api/measurements', requireLogin, (req, res) => {
   res.json({ ok: true, id: info.lastInsertRowid });
 });
 
+app.get('/api/measurements/:id', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  if (!id) return res.status(400).json({ ok: false, error: 'ID prise de cote invalide' });
+  const measurement = db.prepare('SELECT * FROM measurements WHERE id = ?').get(id);
+  if (!measurement) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
+  const quoteId = parseOptionalId(measurement.quote_id);
+  const quote = quoteId ? db.prepare('SELECT id, title, client_name FROM quotes WHERE id = ?').get(quoteId) : null;
+  return res.json({
+    ok: true,
+    measurement: measurementRoutes.buildMeasurementEditorPayload(measurement, quote),
+    returnUrl: quoteId ? `/devis/${quoteId}#quote-section-measurements` : '/outils/prises-cotes'
+  });
+});
+
 app.delete('/api/measurements/:id', requireLogin, (req, res) => {
   const id = parseOptionalId(req.params.id);
   if (!id) return res.status(400).json({ ok: false, error: 'ID prise de cote invalide' });
@@ -4971,6 +4984,14 @@ app.get('/outils/prises-cotes/fiche/:id', requireLogin, (req, res) => {
   const measurement = db.prepare('SELECT * FROM measurements WHERE id = ?').get(id);
   if (!measurement) return res.status(404).send('Prise de cote introuvable');
 
+  const canonicalUrl = measurementRoutes.canonicalMeasurementUrl(measurement, { fromQuoteId: req.query.from_quote });
+  if (canonicalUrl) return res.redirect(302, canonicalUrl);
+  const linkedQuoteId = parseOptionalId(measurement.quote_id);
+  const linkedQuote = linkedQuoteId
+    ? db.prepare('SELECT id, title, client_name FROM quotes WHERE id = ?').get(linkedQuoteId)
+    : null;
+  const editorPayload = measurementRoutes.buildMeasurementEditorPayload(measurement, linkedQuote);
+
   res.send(
     pageTemplate(
       req,
@@ -4984,8 +5005,8 @@ app.get('/outils/prises-cotes/fiche/:id', requireLogin, (req, res) => {
         ${measurementLinkBadge(measurement)}
         <div class="measurement-detail-grid">
           <div><span>Module</span><strong>${escHtml(measurement.module || '—')}</strong></div>
-          <div><span>Client</span><strong>${escHtml(measurement.client || '—')}</strong></div>
-          <div><span>Chantier</span><strong>${escHtml(measurement.chantier || '—')}</strong></div>
+          <div><span>Client</span><strong>${escHtml(editorPayload.fields.client || '—')}</strong></div>
+          <div><span>Chantier</span><strong>${escHtml(editorPayload.fields.chantier || '—')}</strong></div>
           <div><span>Date</span><strong>${escHtml(formatDateLabel(measurement.measure_date))}</strong></div>
         </div>
         <div class="nav-actions">
@@ -5113,9 +5134,29 @@ app.post('/google/sync', requireLogin, async (req, res) => {
     const localSyncMin = getLocalSyncMin();
     const googleSyncTimeMin = getGoogleSyncTimeMin();
     const target = await getGoogleCalendarTarget(calendar);
-    const googleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, googleSyncTimeMin);
+    const googleResult = await googleSync.listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, {
+      timeMin: googleSyncTimeMin
+    });
+    const googleEvents = googleResult.items;
     const localEvents = getLocalSyncEvents(localSyncMin);
-    const preview = googleSync.buildSyncPreview(localEvents, googleEvents, googleSyncOptions());
+    const cancellations = googleSync.planGoogleCancellations(localEvents, googleEvents);
+    const deleteCancelledLocal = db.prepare('DELETE FROM events WHERE id = ? AND google_event_id = ?');
+    const applyGoogleCancellations = db.transaction((items) => {
+      for (const item of items) {
+        deleteCancelledLocal.run(item.id, String(item.google_event_id || '').trim());
+      }
+    });
+
+    // Google a répondu avec succès sur toutes les pages : les suppressions
+    // exactes sont appliquées avant tout envoi ou création vers Google.
+    applyGoogleCancellations(cancellations.deleteLocal);
+
+    const preview = googleSync.buildSyncPreview(
+      cancellations.remainingLocalRows,
+      cancellations.activeGoogleRows,
+      googleSyncOptions()
+    );
+    preview.actions.deleteLocal = cancellations.deleteLocal;
 
     if (preview.actions.ambiguous.length || preview.actions.errors.length) {
       return res.status(409).send(renderGoogleSyncSummary(req, { calendar: target, preview }, {
@@ -5170,8 +5211,24 @@ app.post('/google/sync', requireLogin, async (req, res) => {
       const body = googleSync.googleRequestBodyFromLocal(localItem.row, googleSyncOptions());
       if (!body) return null;
 
-      const refreshedGoogleEvents = await listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, googleSyncTimeMin);
-      const refreshedPreview = googleSync.buildSyncPreview([localItem.row], refreshedGoogleEvents, googleSyncOptions());
+      if (cancellations.cancelledGoogleEventIds.has(localItem.normalized.googleEventId)) return null;
+
+      const refreshedResult = await googleSync.listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, {
+        timeMin: googleSyncTimeMin
+      });
+      const refreshedCancellations = googleSync.planGoogleCancellations([localItem.row], refreshedResult.items);
+      for (const deletedId of refreshedCancellations.cancelledGoogleEventIds) {
+        cancellations.cancelledGoogleEventIds.add(deletedId);
+      }
+      if (refreshedCancellations.deleteLocal.length) {
+        applyGoogleCancellations(refreshedCancellations.deleteLocal);
+        return null;
+      }
+      const refreshedPreview = googleSync.buildSyncPreview(
+        refreshedCancellations.remainingLocalRows,
+        refreshedCancellations.activeGoogleRows,
+        googleSyncOptions()
+      );
       const relink = refreshedPreview.actions.link[0] || refreshedPreview.actions.updateGoogle[0];
       if (relink?.google?.normalized?.id) {
         setGoogleEventId.run(relink.google.normalized.id, localItem.normalized.rawId);
@@ -5226,7 +5283,7 @@ app.post('/google/sync', requireLogin, async (req, res) => {
     res.send(renderGoogleSyncSummary(req, { calendar: target, preview }, {
       message: applyErrors.length
         ? 'Synchronisation appliquée partiellement : certains événements sont en erreur.'
-        : 'Synchronisation appliquée. Aucun événement Google n’a été supprimé.'
+        : `Synchronisation appliquée. ${cancellations.deleteLocal.length} suppression(s) Google appliquée(s) localement.`
     }));
   } catch (err) {
     console.error('Erreur application Google Agenda :', err.response ? err.response.data : err);
@@ -6613,6 +6670,13 @@ async function renderEbpScanValidationPage(req, res, options) {
       `
     )
   );
+}
+
+function renderQuoteMeasurementCreationLinks(quoteId) {
+  const modules = ['Escalier', 'Portail', 'Clôture', 'Garde-corps', 'Pergola', 'Verrière', 'Autres'];
+  return `<div class="nav-actions">${modules.map((moduleName) => `
+    <a class="btn btn-secondary" href="${escHtml(measurementRoutes.newMeasurementUrl(moduleName, quoteId))}">+ ${escHtml(moduleName)}</a>
+  `).join('')}</div>`;
 }
 
 async function renderEbpInvoiceValidationPage(req, res, options) {
@@ -10305,7 +10369,8 @@ ${lines.length ? lines.map(l => `
     <div class="quote-collapsible-panel" id="quote-section-measurements-panel" hidden data-quote-collapsible-panel>
       <div class="quote-collapsible-content">
         <section class="quote-work-card measurement-linked-section quote-collapsible-inner-card">
-          ${renderMeasurementCards(linkedMeasurements)}
+          ${renderQuoteMeasurementCreationLinks(id)}
+          ${renderMeasurementCards(linkedMeasurements, { fromQuoteId: id })}
         </section>
       </div>
     </div>
@@ -10435,6 +10500,12 @@ ${lines.length ? lines.map(l => `
       setSection(section, shouldOpen);
     });
   });
+
+  const targetedSection = window.location.hash ? document.querySelector(window.location.hash) : null;
+  if (targetedSection && targetedSection.matches('[data-quote-collapsible]')) {
+    setSection(targetedSection, true);
+    window.requestAnimationFrame(function () { targetedSection.scrollIntoView({ block: 'start' }); });
+  }
 
   window.addEventListener('resize', function () {
     sections.forEach(function (section) {

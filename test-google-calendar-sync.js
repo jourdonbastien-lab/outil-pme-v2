@@ -105,7 +105,99 @@ function google(overrides = {}) {
   const syncRouteEnd = server.indexOf("app.get('/google/calendars'", syncRouteStart);
   const syncRoutes = server.slice(syncRouteStart, syncRouteEnd);
   assert.ok(syncRoutes.includes('googleSyncLocked'), 'sync routes must use the concurrency lock');
-  assert.ok(!syncRoutes.includes('DELETE FROM events'), 'sync routes must not delete local events');
+  assert.ok(syncRoutes.includes('DELETE FROM events WHERE id = ? AND google_event_id = ?'), 'only the exact linked row may be deleted');
 }
 
-console.log('google calendar sync tests ok');
+async function runDeletionTests() {
+  {
+    const plan = sync.planGoogleCancellations([local({ id: 11, google_event_id: 'deleted-g11' })], [{ id: 'deleted-g11', status: 'cancelled' }]);
+    assert.deepStrictEqual(plan.deleteLocal.map((row) => row.id), [11], 'linked cancelled event must be deleted locally');
+    assert.strictEqual(plan.remainingLocalRows.length, 0);
+  }
+
+  {
+    const plan = sync.planGoogleCancellations([local({ id: 12, google_event_id: '' })], [{ id: '12', status: 'cancelled' }]);
+    assert.strictEqual(plan.deleteLocal.length, 0, 'unlinked local event must be kept');
+    assert.deepStrictEqual(plan.remainingLocalRows.map((row) => row.id), [12]);
+  }
+
+  {
+    const plan = sync.planGoogleCancellations([local({ id: 13, google_event_id: 'deleted-g13' })], [{ id: 'deleted-g13', status: 'cancelled' }]);
+    const preview = sync.buildSyncPreview(plan.remainingLocalRows, plan.activeGoogleRows, { timeZone: 'Europe/Paris' });
+    assert.strictEqual(preview.actions.createGoogle.length, 0, 'cancelled event must not be recreated in the same sync');
+    assert.strictEqual(plan.cancelledGoogleEventIds.has('deleted-g13'), true);
+  }
+
+  {
+    const calls = [];
+    const calendar = { events: { list: async (params) => {
+      calls.push(params);
+      return calls.length === 1
+        ? { data: { items: [google({ id: 'page-1' })], nextPageToken: 'page-2' } }
+        : { data: { items: [{ id: 'deleted-page-2', status: 'cancelled' }], nextSyncToken: 'next-token' } };
+    } } };
+    const result = await sync.listGoogleCalendarEvents(calendar, 'calendar-id', { timeMin: '2026-07-13T00:00:00+02:00' });
+    assert.strictEqual(result.items.length, 2, 'all pages must be collected');
+    assert.strictEqual(result.nextSyncToken, 'next-token');
+    assert.strictEqual(calls[0].showDeleted, true);
+    assert.strictEqual(calls[1].pageToken, 'page-2');
+  }
+
+  {
+    let calls = 0;
+    let deletionsApplied = 0;
+    const calendar = { events: { list: async () => {
+      calls += 1;
+      if (calls === 1) return { data: { items: [{ id: 'cancelled-first-page', status: 'cancelled' }], nextPageToken: 'next' } };
+      throw new Error('Google page failure');
+    } } };
+    try {
+      const result = await sync.listGoogleCalendarEvents(calendar, 'calendar-id', { timeMin: '2026-07-13T00:00:00+02:00' });
+      deletionsApplied += sync.planGoogleCancellations([local({ google_event_id: 'cancelled-first-page' })], result.items).deleteLocal.length;
+      assert.fail('pagination failure must reject');
+    } catch (err) {
+      assert.strictEqual(err.message, 'Google page failure');
+    }
+    assert.strictEqual(deletionsApplied, 0, 'partial Google response must not delete locally');
+  }
+
+  {
+    const calls = [];
+    const calendar = { events: { list: async (params) => {
+      calls.push(params);
+      if (params.syncToken) throw { response: { status: 410 } };
+      return { data: { items: [google({ id: 'full-sync' })], nextSyncToken: 'fresh-token' } };
+    } } };
+    const result = await sync.listGoogleCalendarEvents(calendar, 'calendar-id', {
+      syncToken: 'expired-token',
+      timeMin: '2026-07-13T00:00:00+02:00'
+    });
+    assert.strictEqual(result.restartedAfter410, true, '410 must trigger a safe full sync');
+    assert.strictEqual(result.nextSyncToken, 'fresh-token');
+    assert.strictEqual(calls[1].syncToken, undefined);
+    assert.strictEqual(calls[1].timeMin, '2026-07-13T00:00:00+02:00');
+  }
+
+  {
+    const series = local({ id: 20, google_event_id: 'series-id' });
+    const occurrence = local({ id: 21, google_event_id: 'series-id_20260720T070000Z' });
+    const plan = sync.planGoogleCancellations([series, occurrence], [{ id: 'series-id_20260720T070000Z', recurringEventId: 'series-id', status: 'cancelled' }]);
+    assert.deepStrictEqual(plan.deleteLocal.map((row) => row.id), [21], 'only cancelled occurrence must be deleted');
+    assert.deepStrictEqual(plan.remainingLocalRows.map((row) => row.id), [20]);
+  }
+
+  {
+    const plan = sync.planGoogleCancellations([local({ id: 30, google_event_id: 'g1' })], [google({ id: 'g1' })]);
+    const preview = sync.buildSyncPreview(plan.remainingLocalRows, plan.activeGoogleRows, { timeZone: 'Europe/Paris' });
+    assert.strictEqual(plan.deleteLocal.length, 0, 'normal sync must not delete');
+    assert.strictEqual(preview.actions.updateLocal.length, 1);
+    assert.strictEqual(preview.actions.createGoogle.length, 0);
+  }
+}
+
+runDeletionTests()
+  .then(() => console.log('google calendar sync tests ok'))
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });

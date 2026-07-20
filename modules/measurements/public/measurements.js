@@ -1,6 +1,11 @@
 const STORAGE_KEY = 'outil-pme.escalier.measurements';
 (function () {
   const form = document.getElementById('measurementForm');
+  const pageParams = new URLSearchParams(window.location.search);
+  const initialServerId = Number(pageParams.get('id')) || null;
+  const initialQuoteId = Number(pageParams.get('quote_id')) || null;
+  const fromQuoteId = Number(pageParams.get('from_quote')) || null;
+  const returnUrl = fromQuoteId ? `/devis/${fromQuoteId}#quote-section-measurements` : '/outils/prises-cotes';
   const photoInput = document.getElementById('photoInput');
   const photoGallery = document.getElementById('photoGallery');
   const saveBtn = document.getElementById('saveBtn');
@@ -28,6 +33,12 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
   let currentSelectedSolution = null;
   let sketchRoot = null;
   let technicalSketches = [];
+
+  const backLink = document.querySelector('.back-link');
+  if (backLink) {
+    backLink.href = returnUrl;
+    backLink.textContent = fromQuoteId ? `← Retour au devis #${fromQuoteId}` : '← Retour modules';
+  }
 
   function setDefaultValues() {
     const dateField = form.elements.date;
@@ -1691,6 +1702,23 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
       : 'Fiche chargée';
   }
 
+  async function loadServerRecord(id) {
+    const response = await fetch(`/api/measurements/${id}`);
+    if (!response.ok) throw new Error('Fiche serveur introuvable');
+    const data = await response.json();
+    applyFormData(data.measurement || {});
+  }
+
+  async function prefillFromQuote(quoteId) {
+    const response = await fetch(`/api/measurements/context?quote_id=${encodeURIComponent(quoteId)}`);
+    if (!response.ok) return;
+    const data = await response.json();
+    const quote = data.quote || {};
+    if (form.elements.client && !form.elements.client.value) form.elements.client.value = quote.client || '';
+    if (form.elements.chantier && !form.elements.chantier.value) form.elements.chantier.value = quote.chantier || '';
+    if (form.elements.quote_id) form.elements.quote_id.value = String(quote.id || quoteId);
+  }
+
   function getStoredRecords() {
     try {
       return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -2061,13 +2089,23 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     field.addEventListener('change', () => syncFormFromConfigurator(field));
   });
 
-  setDefaultValues();
-  syncConfiguratorFromForm();
-  initServerLinks();
-  initHandwrittenSketch();
-  syncTremieGroups();
-  renderPlans();
-  saveStatus.textContent = getStoredRecords().length
-    ? 'Des fiches locales sont disponibles'
-    : 'Aucune sauvegarde chargée';
+  async function initializeSheet() {
+    setDefaultValues();
+    syncConfiguratorFromForm();
+    await initServerLinks();
+    initHandwrittenSketch();
+    syncTremieGroups();
+    renderPlans();
+    saveStatus.textContent = getStoredRecords().length
+      ? 'Des fiches locales sont disponibles'
+      : 'Aucune sauvegarde chargée';
+    try {
+      if (initialServerId) await loadServerRecord(initialServerId);
+      else if (initialQuoteId) await prefillFromQuote(initialQuoteId);
+    } catch (error) {
+      saveStatus.textContent = error.message || 'Impossible de charger la fiche';
+    }
+  }
+
+  initializeSheet();
 })();

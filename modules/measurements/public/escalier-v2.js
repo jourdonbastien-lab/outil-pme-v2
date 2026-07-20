@@ -226,6 +226,12 @@
   const params = new URLSearchParams(window.location.search);
   const initialOrderId = normalizeId(params.get('client_order_id'));
   const initialDraftId = normalizeId(params.get('id'));
+  const fromQuoteId = normalizeId(params.get('from_quote'));
+  const backLink = document.querySelector('.v2-back');
+  if (backLink && fromQuoteId) {
+    backLink.href = `/devis/${fromQuoteId}#quote-section-measurements`;
+    backLink.textContent = `Retour au devis #${fromQuoteId}`;
+  }
 
   let currentId = null;
   let dirty = false;

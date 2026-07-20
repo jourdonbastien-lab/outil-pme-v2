@@ -4,6 +4,11 @@ function createModuleSheet() {
 
   const storageKey = form.dataset.storageKey || 'outil-pme.measurements.generic';
   const moduleLabel = form.dataset.moduleLabel || 'Module';
+  const pageParams = new URLSearchParams(window.location.search);
+  const initialServerId = Number(pageParams.get('id')) || null;
+  const initialQuoteId = Number(pageParams.get('quote_id')) || null;
+  const fromQuoteId = Number(pageParams.get('from_quote')) || null;
+  const returnUrl = fromQuoteId ? `/devis/${fromQuoteId}#quote-section-measurements` : '/outils/prises-cotes';
 
   const photoInput = document.getElementById('photoInput');
   const photoGallery = document.getElementById('photoGallery');
@@ -25,6 +30,12 @@ function createModuleSheet() {
   let technicalSketches = [];
   let dirty = false;
   let photoViewer = null;
+
+  const backLink = document.querySelector('.back-link');
+  if (backLink) {
+    backLink.href = returnUrl;
+    backLink.textContent = fromQuoteId ? `← Retour au devis #${fromQuoteId}` : '← Retour modules';
+  }
 
   function ensurePhotoViewer() {
     if (photoViewer) return photoViewer;
@@ -371,6 +382,23 @@ function createModuleSheet() {
     updateDeleteState();
   }
 
+  async function loadServerRecord(id) {
+    const response = await fetch(`/api/measurements/${id}`);
+    if (!response.ok) throw new Error('Fiche serveur introuvable');
+    const data = await response.json();
+    applyFormData(data.measurement || {});
+  }
+
+  async function prefillFromQuote(quoteId) {
+    const response = await fetch(`/api/measurements/context?quote_id=${encodeURIComponent(quoteId)}`);
+    if (!response.ok) return;
+    const data = await response.json();
+    const quote = data.quote || {};
+    if (form.elements.client && !form.elements.client.value) form.elements.client.value = quote.client || '';
+    if (form.elements.chantier && !form.elements.chantier.value) form.elements.chantier.value = quote.chantier || '';
+    if (form.elements.quote_id) form.elements.quote_id.value = String(quote.id || quoteId);
+  }
+
   async function saveRecord() {
     const payload = collectFormData();
     const recordName = payload.recordName || `Fiche ${moduleLabel.toLowerCase()} ${new Date().toLocaleDateString('fr-FR')}`;
@@ -546,7 +574,7 @@ function createModuleSheet() {
 
   function closeSheet() {
     if (dirty && !window.confirm('Fermer la fiche sans enregistrer les modifications ?')) return;
-    window.location.href = '/outils/prises-cotes';
+    window.location.href = returnUrl;
   }
 
   saveBtn.addEventListener('click', saveRecord);
@@ -569,15 +597,25 @@ function createModuleSheet() {
     event.returnValue = '';
   });
 
-  setDefaultValues();
-  initServerLinks();
-  initHandwrittenSketch();
-  setupCollapsibleSections();
-  updateProgress();
-  updateDeleteState();
-  saveStatus.textContent = getStoredRecords().length
-    ? 'Des fiches locales sont disponibles'
-    : 'Aucune sauvegarde chargée';
+  async function initializeSheet() {
+    setDefaultValues();
+    await initServerLinks();
+    initHandwrittenSketch();
+    setupCollapsibleSections();
+    updateProgress();
+    updateDeleteState();
+    saveStatus.textContent = getStoredRecords().length
+      ? 'Des fiches locales sont disponibles'
+      : 'Aucune sauvegarde chargée';
+    try {
+      if (initialServerId) await loadServerRecord(initialServerId);
+      else if (initialQuoteId) await prefillFromQuote(initialQuoteId);
+    } catch (error) {
+      saveStatus.textContent = error.message || 'Impossible de charger la fiche';
+    }
+  }
+
+  initializeSheet();
 }
 
 createModuleSheet();
