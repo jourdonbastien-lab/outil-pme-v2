@@ -12,6 +12,7 @@ const nodemailer = require('nodemailer');
 const { readDatabaseConfig } = require('./lib/databaseConfig');
 const { parseEbpQuoteText, parseEbpInvoiceText } = require('./lib/ebpQuoteParser');
 const googleSync = require('./lib/googleCalendarSync');
+const agendaEventRange = require('./lib/agendaEventRange');
 const app = express();
 
 function tryRequire(moduleName) {
@@ -4003,31 +4004,12 @@ app.get('/agenda', requireLogin, (req, res) => {
   const selectedNextMonth = new Date(selectedMonthStart.getFullYear(), selectedMonthStart.getMonth() + 1, 1);
   const selectedMonthKey = `${selectedMonthStart.getFullYear()}-${String(selectedMonthStart.getMonth() + 1).padStart(2, '0')}`;
 
-  function eventDate(event) {
-    const date = new Date(event.start_date);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  function inRange(event, start, end) {
-    const date = eventDate(event);
-    return date && date >= start && date < end;
-  }
-
   function localDateTime(value) {
-    const normalized = googleSync.normalizeAgendaDateTime(value, APP_TIME_ZONE);
-    if (!normalized) return null;
-    const date = new Date(`${normalized}:00`);
-    return Number.isNaN(date.getTime()) ? null : date;
+    return agendaEventRange.agendaDateTime(value, APP_TIME_ZONE);
   }
 
   function eventEndDate(event) {
-    const start = localDateTime(event.start_date);
-    if (!start) return null;
-    const end = localDateTime(event.end_date);
-    if (end && end >= start) return end;
-    const fallback = new Date(start);
-    fallback.setHours(fallback.getHours() + 1);
-    return fallback;
+    return agendaEventRange.agendaEventEnd(event, APP_TIME_ZONE);
   }
 
   function isAllDayAgendaEvent(event) {
@@ -4039,9 +4021,7 @@ app.get('/agenda', requireLogin, (req, res) => {
   }
 
   function eventOverlapsDay(event, dayStart, dayEnd) {
-    const start = localDateTime(event.start_date);
-    const end = eventEndDate(event);
-    return Boolean(start && end && start < dayEnd && end > dayStart);
+    return agendaEventRange.eventOverlapsDay(event, dayStart, dayEnd, APP_TIME_ZONE);
   }
 
   function monthHref(monthDate) {
@@ -4117,7 +4097,7 @@ app.get('/agenda', requireLogin, (req, res) => {
   const workDayLabels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
 
   function renderDayView() {
-    const dayEvents = events.filter((event) => inRange(event, todayStart, tomorrow));
+    const dayEvents = events.filter((event) => eventOverlapsDay(event, todayStart, tomorrow));
     return `
       <div class="planning-single-day">
         <div class="planning-day">
@@ -4134,7 +4114,7 @@ app.get('/agenda', requireLogin, (req, res) => {
       dayStart.setDate(monday.getDate() + index);
       const dayEnd = new Date(dayStart);
       dayEnd.setDate(dayStart.getDate() + 1);
-      const dayEvents = events.filter((event) => inRange(event, dayStart, dayEnd));
+      const dayEvents = events.filter((event) => eventOverlapsDay(event, dayStart, dayEnd));
 
       return `
         <div class="planning-day">
