@@ -9,7 +9,6 @@ const PROFITABILITY_RULES = Object.freeze({
 
 const COST_FIELDS = Object.freeze({
   material: 'cout_matiere',
-  laserCutting: 'cout_decoupe_laser',
   subcontracting: 'cout_sous_traitance',
   galvanizing: 'cout_galvanisation',
   powderCoating: 'cout_thermolaquage',
@@ -17,16 +16,13 @@ const COST_FIELDS = Object.freeze({
   accessories: 'cout_accessoires',
   transport: 'cout_transport',
   consumables: 'cout_consommables',
-  rental: 'cout_locations',
-  other: 'autres_couts'
+  rental: 'cout_locations'
 });
 
 const WORK_CATEGORIES = Object.freeze([
   'escalier', 'garde-corps', 'portail', 'portillon', 'clôture', 'pergola',
-  'verrière', 'charpente', 'mobilier', 'motorisation', 'dépannage', 'autre'
+  'verrière', 'charpente', 'mobilier', 'sous-traitance', 'dépannage', 'autre'
 ]);
-
-const PROFITABILITY_STATUS = Object.freeze({ incomplete: 'incomplete', green: 'green', orange: 'orange', red: 'red' });
 
 const HOUR_CATEGORIES = Object.freeze(['etude', 'atelier', 'pose', 'transport', 'sav', 'autre']);
 const ACTUAL_COST_TYPES = Object.freeze([...Object.keys(COST_FIELDS), 'other']);
@@ -44,16 +40,16 @@ function round2(value) {
   return Math.round((finite(value) + Number.EPSILON) * 100) / 100;
 }
 
-function marginMetrics(revenue, cost, hasCost = true) {
+function marginMetrics(revenue, cost) {
   const safeRevenue = round2(revenue);
   const safeCost = round2(cost);
-  const margin = hasCost ? round2(safeRevenue - safeCost) : null;
+  const margin = round2(safeRevenue - safeCost);
   return {
     revenue: safeRevenue,
     cost: safeCost,
     margin,
-    marginOnCost: hasCost && safeCost > 0 ? round2((margin / safeCost) * 100) : null,
-    marginOnSale: hasCost && safeRevenue > 0 && safeCost > 0 ? round2((margin / safeRevenue) * 100) : null
+    marginOnCost: safeCost > 0 ? round2((margin / safeCost) * 100) : null,
+    marginOnSale: safeRevenue > 0 ? round2((margin / safeRevenue) * 100) : null
   };
 }
 
@@ -65,9 +61,8 @@ function priceForMargin(cost, rate) {
 }
 
 function profitabilityLevel(metrics, rules = PROFITABILITY_RULES) {
-  if (metrics.marginOnSale === null) return PROFITABILITY_STATUS.incomplete;
-  if (metrics.cost > metrics.revenue && metrics.revenue >= 0) return PROFITABILITY_STATUS.red;
-  if (metrics.marginOnSale < rules.minimumMarginOnSale) return PROFITABILITY_STATUS.red;
+  if (metrics.cost > metrics.revenue && metrics.revenue >= 0) return 'red-critical';
+  if (metrics.marginOnSale === null || metrics.marginOnSale < rules.minimumMarginOnSale) return 'red';
   if (metrics.marginOnSale < rules.targetMarginOnSale) return 'orange';
   return 'green';
 }
@@ -76,30 +71,25 @@ function normalizeText(value) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr-FR');
 }
 
-function detectWorkCategories(quote, lines = []) {
+function detectWorkCategory(quote, lines = []) {
   const text = normalizeText([quote?.title, ...(lines || []).flatMap((line) => [line.category, line.label])].filter(Boolean).join(' '));
   const candidates = [
-    ['garde-corps', ['garde-corps', 'garde corps']],
+    ['garde-corps', ['garde-corps', 'garde corps']], ['sous-traitance', ['sous-traitance', 'sous traitance']],
     ['portillon', ['portillon']], ['portail', ['portail']], ['escalier', ['escalier']],
     ['clôture', ['cloture']], ['pergola', ['pergola']], ['verrière', ['verriere']],
-    ['charpente', ['charpente']], ['mobilier', ['mobilier']], ['motorisation', ['motorisation', 'motorise']],
-    ['dépannage', ['depannage', 'reparation']]
+    ['charpente', ['charpente']], ['mobilier', ['mobilier']], ['dépannage', ['depannage', 'reparation']]
   ];
-  const found = candidates.filter(([, words]) => words.some((word) => text.includes(word))).map(([category]) => category);
-  return found.length ? found : ['autre'];
+  return candidates.find(([, words]) => words.some((word) => text.includes(word)))?.[0] || 'autre';
 }
-
-function detectWorkCategory(quote, lines = []) { return detectWorkCategories(quote, lines)[0]; }
 
 function calculateForecast(quote = {}, lines = [], rules = PROFITABILITY_RULES) {
   const lineTotalHT = round2((lines || []).reduce((sum, line) => sum + finite(line.total, finite(line.qty) * finite(line.unit_price)), 0));
   const explicitTotalHT = Number(quote.total_ht);
   const totalHT = Number.isFinite(explicitTotalHT) && explicitTotalHT >= 0 ? round2(explicitTotalHT) : lineTotalHT;
   const hours = {
-    study: nonNegative(quote.heures_etude), workshop: nonNegative(quote.heures_atelier), installation: nonNegative(quote.heures_pose),
-    transport: nonNegative(quote.heures_transport), sav: nonNegative(quote.heures_sav)
+    study: nonNegative(quote.heures_etude), workshop: nonNegative(quote.heures_atelier), installation: nonNegative(quote.heures_pose)
   };
-  hours.total = round2(hours.study + hours.workshop + hours.installation + hours.transport + hours.sav);
+  hours.total = round2(hours.study + hours.workshop + hours.installation);
   const hourlyCost = nonNegative(quote.cout_horaire) || rules.defaultHourlyCost;
   const laborCost = round2(hours.total * hourlyCost);
   const breakdown = {};
@@ -109,16 +99,13 @@ function calculateForecast(quote = {}, lines = [], rules = PROFITABILITY_RULES) 
   const storedCost = nonNegative(quote.cout_revient);
   const forecastCost = detailedCost > 0 ? detailedCost : storedCost;
   const costSource = detailedCost > 0 ? 'breakdown' : (storedCost > 0 ? 'existing' : 'missing');
-  const hasCost = costSource !== 'missing';
-  const metrics = marginMetrics(totalHT, forecastCost, hasCost);
-  let categories = Array.isArray(quote.work_categories) ? quote.work_categories.filter((item) => WORK_CATEGORIES.includes(item)) : [];
-  if (!categories.length) categories = WORK_CATEGORIES.includes(quote.work_category) ? [quote.work_category] : detectWorkCategories(quote, lines);
+  const metrics = marginMetrics(totalHT, forecastCost);
+  const category = WORK_CATEGORIES.includes(quote.work_category) ? quote.work_category : detectWorkCategory(quote, lines);
   return {
     totalHT, breakdown, hours, hourlyCost, laborCost, forecastCost,
     costSource,
     margin: metrics.margin, marginOnCost: metrics.marginOnCost, marginOnSale: metrics.marginOnSale,
-    riskLevel: hasCost ? profitabilityLevel(metrics, rules) : PROFITABILITY_STATUS.incomplete,
-    critical: hasCost && forecastCost > totalHT, category: categories[0], categories,
+    riskLevel: costSource === 'missing' ? 'red' : profitabilityLevel(metrics, rules), category,
     minimumPrice: priceForMargin(forecastCost, rules.minimumMarginOnSale),
     targetPrice: priceForMargin(forecastCost, rules.targetMarginOnSale),
     comfortablePrice: priceForMargin(forecastCost, rules.comfortableMarginOnSale)
@@ -175,7 +162,7 @@ function calculateActual({ order = {}, forecast = null, hours = [], costs = [], 
 }
 
 module.exports = {
-  PROFITABILITY_RULES, PROFITABILITY_STATUS, COST_FIELDS, WORK_CATEGORIES, HOUR_CATEGORIES, ACTUAL_COST_TYPES,
+  PROFITABILITY_RULES, COST_FIELDS, WORK_CATEGORIES, HOUR_CATEGORIES, ACTUAL_COST_TYPES,
   round2, marginMetrics, priceForMargin, profitabilityLevel, detectWorkCategory,
-  detectWorkCategories, calculateForecast, buildForecastSnapshot, calculateActual
+  calculateForecast, buildForecastSnapshot, calculateActual
 };

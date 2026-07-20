@@ -21,7 +21,7 @@ assert.strictEqual(orange.summary.marginOnSale, 25);
 
 const absent = reviewEngine.calculateQuoteReview({ title: 'Portail motorisé' }, lines(10000));
 assert.strictEqual(absent.riskLevel, 'red');
-assert(absent.warnings.some((warning) => warning.includes('coût de revient est absent')));
+assert(absent.warnings.some((warning) => warning.includes('pas encore renseigné')));
 assert(absent.warnings.some((warning) => warning.includes('motorisation')));
 
 const loss = reviewEngine.calculateQuoteReview({ cout_revient: 12000 }, lines(10000));
@@ -82,12 +82,13 @@ assert(mismatch.checks.some((check) => check.code === 'line_total_mismatch'));
   const openAiPayloadEnd = server.indexOf('const controller = new AbortController()', openAiPayloadStart);
   const openAiPayload = server.slice(openAiPayloadStart, openAiPayloadEnd);
   assert(!/client_name|client_email|client_phone|client_address|technicalNotes/.test(openAiPayload), 'aucune donnée client ou note libre ne doit être envoyée à OpenAI');
-  const routeStart = server.indexOf("app.post('/api/devis/:id/ai-review'");
+  const routeStart = server.indexOf('async function runQuoteProfitabilityAnalysis');
   const routeEnd = server.indexOf("app.get('/api/devis/:id/ai-reviews'", routeStart);
   const analysisRoute = server.slice(routeStart, routeEnd);
   assert(!analysisRoute.includes('UPDATE quotes'), 'analyser ne doit jamais modifier le devis');
   assert(!analysisRoute.includes('UPDATE quote_lines'), 'analyser ne doit jamais modifier les lignes');
   assert(analysisRoute.includes('INSERT INTO quote_ai_reviews'), 'l historique doit etre enregistre');
+  assert(server.includes("app.post('/api/devis/:id/profitability/analyze', requireLogin"));
 
   console.log('OK - contrôle automatique des devis');
 })().catch((error) => { console.error(error); process.exitCode = 1; });

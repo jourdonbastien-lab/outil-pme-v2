@@ -1456,39 +1456,6 @@ function createSqliteTables(database) {
   database.prepare('CREATE INDEX IF NOT EXISTS idx_quote_ai_reviews_quote_id_created_at ON quote_ai_reviews(quote_id, created_at DESC, id DESC)').run();
 
   database.prepare(`
-    CREATE TABLE IF NOT EXISTS quote_profitability_forecasts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      quote_id INTEGER NOT NULL UNIQUE,
-      material_cost REAL NOT NULL DEFAULT 0,
-      laser_cutting_cost REAL NOT NULL DEFAULT 0,
-      subcontracting_cost REAL NOT NULL DEFAULT 0,
-      galvanizing_cost REAL NOT NULL DEFAULT 0,
-      powder_coating_cost REAL NOT NULL DEFAULT 0,
-      motorization_cost REAL NOT NULL DEFAULT 0,
-      accessories_cost REAL NOT NULL DEFAULT 0,
-      transport_cost REAL NOT NULL DEFAULT 0,
-      consumables_cost REAL NOT NULL DEFAULT 0,
-      rental_cost REAL NOT NULL DEFAULT 0,
-      other_cost REAL NOT NULL DEFAULT 0,
-      study_hours REAL NOT NULL DEFAULT 0,
-      workshop_hours REAL NOT NULL DEFAULT 0,
-      installation_hours REAL NOT NULL DEFAULT 0,
-      transport_hours REAL NOT NULL DEFAULT 0,
-      sav_hours REAL NOT NULL DEFAULT 0,
-      hourly_cost REAL NOT NULL DEFAULT 55,
-      direct_costs REAL NOT NULL DEFAULT 0,
-      labor_cost REAL NOT NULL DEFAULT 0,
-      total_cost_price REAL NOT NULL DEFAULT 0,
-      work_categories_json TEXT,
-      notes TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_by INTEGER
-    )
-  `).run();
-  database.prepare('CREATE INDEX IF NOT EXISTS idx_quote_profitability_quote ON quote_profitability_forecasts(quote_id)').run();
-
-  database.prepare(`
     CREATE TABLE IF NOT EXISTS project_profitability_forecasts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       quote_id INTEGER,
@@ -10013,71 +9980,6 @@ const QUOTE_AI_COST_FIELDS = [
   'cout_motorisation', 'cout_accessoires', 'cout_transport', 'cout_consommables', 'cout_locations',
   'heures_etude', 'heures_atelier', 'heures_pose', 'cout_horaire'
 ];
-const QUOTE_PROFITABILITY_NUMBER_FIELDS = [
-  'material_cost', 'laser_cutting_cost', 'subcontracting_cost', 'galvanizing_cost', 'powder_coating_cost',
-  'motorization_cost', 'accessories_cost', 'transport_cost', 'consumables_cost', 'rental_cost', 'other_cost',
-  'study_hours', 'workshop_hours', 'installation_hours', 'transport_hours', 'sav_hours', 'hourly_cost'
-];
-
-function parseStoredCategories(value) {
-  try {
-    const parsed = JSON.parse(String(value || '[]'));
-    return Array.isArray(parsed) ? parsed.filter((item) => projectProfitability.WORK_CATEGORIES.includes(item)) : [];
-  } catch { return []; }
-}
-
-function profitabilityQuoteInput(quote, forecast) {
-  if (!forecast) return quote;
-  return {
-    ...quote,
-    cout_matiere: forecast.material_cost,
-    cout_decoupe_laser: forecast.laser_cutting_cost,
-    cout_sous_traitance: forecast.subcontracting_cost,
-    cout_galvanisation: forecast.galvanizing_cost,
-    cout_thermolaquage: forecast.powder_coating_cost,
-    cout_motorisation: forecast.motorization_cost,
-    cout_accessoires: forecast.accessories_cost,
-    cout_transport: forecast.transport_cost,
-    cout_consommables: forecast.consumables_cost,
-    cout_locations: forecast.rental_cost,
-    autres_couts: forecast.other_cost,
-    heures_etude: forecast.study_hours,
-    heures_atelier: forecast.workshop_hours,
-    heures_pose: forecast.installation_hours,
-    heures_transport: forecast.transport_hours,
-    heures_sav: forecast.sav_hours,
-    cout_horaire: forecast.hourly_cost,
-    cout_revient: null,
-    work_categories: parseStoredCategories(forecast.work_categories_json)
-  };
-}
-
-function getQuoteProfitability(quoteId) {
-  const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(quoteId);
-  if (!quote) return null;
-  const lines = db.prepare('SELECT * FROM quote_lines WHERE quote_id = ? ORDER BY position ASC, id ASC').all(quoteId);
-  const saved = db.prepare('SELECT * FROM quote_profitability_forecasts WHERE quote_id = ?').get(quoteId) || null;
-  const lineTotal = lines.reduce((sum, line) => sum + Number(line.total || 0), 0);
-  const totalHT = round2(lineTotal * (1 + Number(quote.margin_pct || 0) / 100));
-  const input = profitabilityQuoteInput({ ...quote, total_ht: totalHT }, saved);
-  const calculations = projectProfitability.calculateForecast(input, lines);
-  return {
-    quote, lines, saved, input, calculations,
-    historicalCost: !saved && Number(quote.cout_revient) > 0 ? Number(quote.cout_revient) : null,
-    detectedCategories: projectProfitability.detectWorkCategories(quote, lines)
-  };
-}
-
-function profitabilityPublic(context) {
-  return {
-    quoteId: context.quote.id,
-    saved: context.saved,
-    calculations: context.calculations,
-    historicalCost: context.historicalCost,
-    detectedCategories: context.detectedCategories,
-    availableCategories: projectProfitability.WORK_CATEGORIES
-  };
-}
 
 function quoteAiReviewPublic(row) {
   const parseJson = (value, fallback) => {
@@ -10157,84 +10059,65 @@ async function requestOpenAiQuoteReview(quote, lines, deterministic) {
   }
 }
 
-app.get('/api/devis/:id/profitability', requireLogin, (req, res) => {
+app.post('/api/devis/:id/ai-review', requireLogin, async (req, res) => {
   const quoteId = parseOptionalId(req.params.id);
   if (!quoteId) return res.status(400).json({ success: false, error: 'ID devis invalide' });
-  const context = getQuoteProfitability(quoteId);
-  if (!context) return res.status(404).json({ success: false, error: 'Devis introuvable' });
-  return res.json({ success: true, profitability: profitabilityPublic(context) });
-});
-
-app.post('/api/devis/:id/profitability', requireLogin, (req, res) => {
-  const quoteId = parseOptionalId(req.params.id);
-  if (!quoteId) return res.status(400).json({ success: false, error: 'ID devis invalide' });
-  if (!db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)) return res.status(404).json({ success: false, error: 'Devis introuvable' });
-  try {
-    const values = {};
-    for (const field of QUOTE_PROFITABILITY_NUMBER_FIELDS) {
-      const raw = req.body?.[field];
-      const value = raw === '' || raw === null || raw === undefined ? (field === 'hourly_cost' ? 55 : 0) : Number(String(raw).replace(',', '.'));
-      if (!Number.isFinite(value) || value < 0) throw new Error(`Valeur invalide : ${field}`);
-      values[field] = round2(value);
-    }
-    const categories = Array.from(new Set((Array.isArray(req.body?.work_categories) ? req.body.work_categories : [req.body?.work_categories])
-      .filter((item) => projectProfitability.WORK_CATEGORIES.includes(item))));
-    const directCosts = round2(['material_cost', 'laser_cutting_cost', 'subcontracting_cost', 'galvanizing_cost', 'powder_coating_cost', 'motorization_cost', 'accessories_cost', 'transport_cost', 'consumables_cost', 'rental_cost', 'other_cost'].reduce((sum, field) => sum + values[field], 0));
-    const totalHours = round2(['study_hours', 'workshop_hours', 'installation_hours', 'transport_hours', 'sav_hours'].reduce((sum, field) => sum + values[field], 0));
-    const laborCost = round2(totalHours * values.hourly_cost);
-    const totalCost = round2(directCosts + laborCost);
-    const now = new Date().toISOString();
-    db.prepare(`
-      INSERT INTO quote_profitability_forecasts
-        (quote_id, ${QUOTE_PROFITABILITY_NUMBER_FIELDS.join(', ')}, direct_costs, labor_cost, total_cost_price, work_categories_json, notes, created_at, updated_at, updated_by)
-      VALUES (?, ${QUOTE_PROFITABILITY_NUMBER_FIELDS.map(() => '?').join(', ')}, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(quote_id) DO UPDATE SET
-        ${QUOTE_PROFITABILITY_NUMBER_FIELDS.map((field) => `${field}=excluded.${field}`).join(', ')},
-        direct_costs=excluded.direct_costs, labor_cost=excluded.labor_cost, total_cost_price=excluded.total_cost_price,
-        work_categories_json=excluded.work_categories_json, notes=excluded.notes, updated_at=excluded.updated_at, updated_by=excluded.updated_by
-    `).run(quoteId, ...QUOTE_PROFITABILITY_NUMBER_FIELDS.map((field) => values[field]), directCosts, laborCost, totalCost,
-      JSON.stringify(categories), String(req.body?.notes || '').trim(), now, now, parseOptionalId(req.session?.user?.id));
-    return res.json({ success: true, profitability: profitabilityPublic(getQuoteProfitability(quoteId)) });
-  } catch (error) {
-    return res.status(400).json({ success: false, error: error.message || 'Chiffrage invalide' });
-  }
-});
-
-app.post('/api/devis/:id/profitability/analyze', requireLogin, runQuoteProfitabilityAnalysis);
-
-async function runQuoteProfitabilityAnalysis(req, res) {
-  const quoteId = parseOptionalId(req.params.id);
-  if (!quoteId) return res.status(400).json({ success: false, error: 'ID devis invalide' });
-  const context = getQuoteProfitability(quoteId);
-  if (!context) return res.status(404).json({ success: false, error: 'Devis introuvable' });
-  const { quote, lines, input, calculations: profitability } = context;
-  const deterministic = quoteAiReview.calculateQuoteReview(input, lines);
-  deterministic.riskLevel = profitability.riskLevel;
-  deterministic.summary = { ...deterministic.summary, totalHT: profitability.totalHT, costPrice: profitability.costSource === 'missing' ? null : profitability.forecastCost,
-    costSource: profitability.costSource, directCosts: round2(profitability.forecastCost - profitability.laborCost), laborCost: profitability.laborCost,
-    hours: profitability.hours, totalHours: profitability.hours.total, hourlyCost: profitability.hourlyCost, marginAmount: profitability.margin,
-    marginOnCost: profitability.marginOnCost, marginOnSale: profitability.marginOnSale, breakdown: profitability.breakdown,
-    minimumPrice: profitability.minimumPrice, targetPrice: profitability.targetPrice, comfortablePrice: profitability.comfortablePrice,
-    workCategories: profitability.categories };
+  const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(quoteId);
+  if (!quote) return res.status(404).json({ success: false, error: 'Devis introuvable' });
+  const lines = db.prepare('SELECT * FROM quote_lines WHERE quote_id = ? ORDER BY position ASC, id ASC').all(quoteId);
+  const lineTotal = lines.reduce((sum, line) => sum + Number(line.total || 0), 0);
+  const saleTotal = round2(lineTotal * (1 + Number(quote.margin_pct || 0) / 100));
+  const profitability = projectProfitability.calculateForecast({ ...quote, total_ht: saleTotal }, lines);
+  const deterministic = quoteAiReview.calculateQuoteReview({ ...quote, total_ht: saleTotal }, lines);
+  deterministic.riskLevel = profitability.riskLevel === 'red-critical' ? 'red' : profitability.riskLevel;
+  deterministic.summary = {
+    ...deterministic.summary,
+    totalHT: profitability.totalHT,
+    costPrice: profitability.forecastCost,
+    costSource: profitability.costSource,
+    laborCost: profitability.laborCost,
+    totalHours: profitability.hours.total,
+    hourlyCost: profitability.hourlyCost,
+    marginAmount: profitability.margin,
+    marginOnCost: profitability.marginOnCost,
+    marginOnSale: profitability.marginOnSale,
+    breakdown: profitability.breakdown,
+    minimumPrice: profitability.minimumPrice,
+    targetPrice: profitability.targetPrice,
+    comfortablePrice: profitability.comfortablePrice,
+    workCategory: profitability.category
+  };
   let aiResult = { used: false, message: 'Analyse automatique effectuée sans interprétation IA.' };
-  try { aiResult = await requestOpenAiQuoteReview(input, lines, deterministic); }
-  catch (error) { console.error('Erreur analyse IA devis:', error?.message || error); aiResult = { used: false, message: 'Interprétation IA indisponible. Les contrôles automatiques restent valides.' }; }
+  try {
+    aiResult = await requestOpenAiQuoteReview(quote, lines, deterministic);
+  } catch (error) {
+    console.error('Erreur analyse IA devis:', error && error.message ? error.message : error);
+    aiResult = { used: false, message: 'Interprétation IA indisponible. Les contrôles automatiques restent valides.' };
+  }
+
   const aiReview = aiResult.review || {};
-  const review = { ...deterministic, riskLevel: aiReview.riskLevel || deterministic.riskLevel,
+  const review = {
+    ...deterministic,
+    riskLevel: aiReview.riskLevel || deterministic.riskLevel,
     warnings: Array.from(new Set(deterministic.warnings.concat(aiReview.warnings || []))),
     positivePoints: Array.from(new Set(deterministic.positivePoints.concat(aiReview.positivePoints || []))),
-    recommendation: aiReview.recommendation || deterministic.recommendation };
+    recommendation: aiReview.recommendation || deterministic.recommendation
+  };
   const createdAt = new Date().toISOString();
   const createdBy = parseOptionalId(req.session?.user?.id);
-  const info = db.prepare(`INSERT INTO quote_ai_reviews
-    (quote_id, risk_level, total_ht, cost_price, margin_amount, margin_on_cost, margin_on_sale, checks_json, ai_response_json, model_name, created_at, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(quoteId, review.riskLevel, review.summary.totalHT, review.summary.costPrice,
-      review.summary.marginAmount, review.summary.marginOnCost, review.summary.marginOnSale, JSON.stringify(review),
-      JSON.stringify({ used: aiResult.used, message: aiResult.message }), aiResult.used ? OPENAI_QUOTE_REVIEW_MODEL : null, createdAt, createdBy);
+  const info = db.prepare(`
+    INSERT INTO quote_ai_reviews
+      (quote_id, risk_level, total_ht, cost_price, margin_amount, margin_on_cost, margin_on_sale,
+       checks_json, ai_response_json, model_name, created_at, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    quoteId, review.riskLevel, review.summary.totalHT, review.summary.costPrice || null,
+    review.summary.marginAmount, review.summary.marginOnCost, review.summary.marginOnSale,
+    JSON.stringify(review), JSON.stringify({ used: aiResult.used, message: aiResult.message }),
+    aiResult.used ? OPENAI_QUOTE_REVIEW_MODEL : null, createdAt, createdBy
+  );
   return res.json({ success: true, review: { id: info.lastInsertRowid, ...review, ai: { used: aiResult.used, message: aiResult.message }, createdAt } });
-}
-
-app.post('/api/devis/:id/ai-review', requireLogin, runQuoteProfitabilityAnalysis);
+});
 
 app.get('/api/devis/:id/ai-reviews', requireLogin, (req, res) => {
   const quoteId = parseOptionalId(req.params.id);
@@ -10354,9 +10237,7 @@ const photosHtml = photos.map(photo => {
   const acceptDisabled = String(quote.status || '') === 'Accepté';
   const marginPct = Number(quote.margin_pct ?? 0);
   const totalWithMargin = round2(total * (1 + marginPct / 100));
-  const profitabilityContext = getQuoteProfitability(id);
-  const profitabilitySaved = profitabilityContext.saved;
-  const profitabilityForecast = profitabilityContext.calculations;
+  const profitabilityForecast = projectProfitability.calculateForecast({ ...quote, total_ht: totalWithMargin }, lines);
   const vatRate = normalizeVatRate(quote.vat_rate);
   const tva = round2(total * (vatRate / 100));
   const totalTtc = round2(total + tva);
@@ -10438,31 +10319,32 @@ const photosHtml = photos.map(photo => {
           <header class="quote-ai-review-head">
             <span class="quote-ai-review-icon" aria-hidden="true">${clientPageIcon('search')}</span>
             <div><h2>Rentabilité prévisionnelle</h2><p>Calculs financiers serveur et points de vigilance métier.</p></div>
-            <span class="quote-ai-risk-badge is-${profitabilityForecast.riskLevel}" data-ai-risk>${profitabilityForecast.riskLevel === 'incomplete' ? 'Données incomplètes' : profitabilityForecast.critical ? 'Rouge critique' : profitabilityForecast.riskLevel === 'green' ? 'Vert' : profitabilityForecast.riskLevel === 'orange' ? 'Orange' : 'Rouge'}</span>
+            <span class="quote-ai-risk-badge is-${profitabilityForecast.riskLevel === 'red-critical' ? 'red' : profitabilityForecast.riskLevel}" data-ai-risk>${profitabilityForecast.riskLevel === 'red-critical' ? 'Rouge critique' : profitabilityForecast.riskLevel === 'green' ? 'Vert' : profitabilityForecast.riskLevel === 'orange' ? 'Orange' : 'Rouge'}</span>
           </header>
           <div class="profitability-overview">
             ${[
               ['Prix de vente HT', profitabilityForecast.totalHT, 'money'],
-              ['Coûts directs', profitabilityForecast.costSource === 'missing' ? null : profitabilityForecast.forecastCost - profitabilityForecast.laborCost, 'optionalMoney'],
-              ['Main-d’œuvre', profitabilityForecast.hours.total > 0 ? profitabilityForecast.laborCost : null, 'optionalMoney'],
-              ['Coût de revient', profitabilityForecast.costSource === 'missing' ? null : profitabilityForecast.forecastCost, 'optionalMoney'],
-              ['Marge prévisionnelle', profitabilityForecast.margin, 'optionalMoney'],
+              ['Coût de revient', profitabilityForecast.forecastCost, 'money'],
+              ['Main-d’œuvre', profitabilityForecast.laborCost, 'money'],
+              ['Marge prévisionnelle', profitabilityForecast.margin, 'money'],
               ['Marge sur coût', profitabilityForecast.marginOnCost, 'percent'],
               ['Marge sur vente', profitabilityForecast.marginOnSale, 'percent'],
               ['Heures prévues', profitabilityForecast.hours.total, 'hours'],
-              ['Catégories d’ouvrage', profitabilityForecast.categories.join(', '), 'text']
-            ].map(([label, value, type]) => `<div data-profitability-metric="${escHtml(label)}"><span>${label}</span><strong>${type === 'money' ? formatEuroFr(value) : type === 'optionalMoney' ? (value == null ? 'Non renseigné' : formatEuroFr(value)) : type === 'percent' ? (value == null ? 'Non calculable' : `${Number(value).toFixed(2)} %`) : type === 'hours' ? `${Number(value).toFixed(2)} h` : escHtml(value)}</strong></div>`).join('')}
+              ['Catégorie', profitabilityForecast.category, 'text']
+            ].map(([label, value, type]) => `<div><span>${label}</span><strong>${type === 'money' ? formatEuroFr(value) : type === 'percent' ? (value == null ? 'Non calculée' : `${Number(value).toFixed(2)} %`) : type === 'hours' ? `${Number(value).toFixed(2)} h` : escHtml(value)}</strong></div>`).join('')}
           </div>
           <div class="profitability-price-targets">
-            ${[[20, 'minimum', profitabilityForecast.minimumPrice], [30, 'conseillé', profitabilityForecast.targetPrice], [35, 'confortable', profitabilityForecast.comfortablePrice]].map(([rate, label, price]) => `<div><span>Prix ${label} — marge ${rate} %</span><strong>${price == null ? 'Non calculable' : formatEuroFr(price)}</strong><small>${price == null ? 'Chiffrage requis.' : totalWithMargin >= price ? `Votre prix actuel est supérieur de ${formatEuroFr(totalWithMargin - price)}.` : `Il manque ${formatEuroFr(price - totalWithMargin)} pour atteindre cet objectif.`}</small></div>`).join('')}
+            <div><span>Prix minimum — marge 20 %</span><strong>${profitabilityForecast.minimumPrice == null ? 'Non calculable' : formatEuroFr(profitabilityForecast.minimumPrice)}</strong></div>
+            <div><span>Prix conseillé — marge 30 %</span><strong>${profitabilityForecast.targetPrice == null ? 'Non calculable' : formatEuroFr(profitabilityForecast.targetPrice)}</strong></div>
+            <div><span>Prix confortable — marge 35 %</span><strong>${profitabilityForecast.comfortablePrice == null ? 'Non calculable' : formatEuroFr(profitabilityForecast.comfortablePrice)}</strong></div>
           </div>
           <div class="quote-ai-actions">
-            <button type="button" class="modern-secondary-btn" data-profitability-edit>${profitabilitySaved ? 'Modifier le chiffrage' : 'Renseigner le chiffrage'}</button>
             <button type="button" class="clients-submit-btn" data-ai-analyze>Analyser la rentabilité</button>
             <button type="button" class="modern-secondary-btn" data-ai-history>Afficher l’historique</button>
           </div>
           <p class="quote-ai-status" data-ai-status>Aucune analyse chargée.</p>
           <div class="quote-ai-report" data-ai-report hidden>
+            <div class="quote-ai-summary" data-ai-summary></div>
             <div class="quote-ai-report-columns">
               <section><h3>Alertes et points à vérifier</h3><ul data-ai-warnings></ul></section>
               <section><h3>Points positifs</h3><ul data-ai-positive></ul></section>
@@ -10471,21 +10353,22 @@ const photosHtml = photos.map(photo => {
             <p class="quote-ai-provider" data-ai-provider></p>
           </div>
           <div class="quote-ai-history" data-ai-history-list hidden></div>
-          <div class="quote-profitability-editor" data-profitability-editor hidden>
-            <form class="quote-profitability-form" data-profitability-form>
-              <section><h3>Coûts directs</h3><div class="quote-ai-cost-form">${[
-                ['material_cost','Matière'],['laser_cutting_cost','Découpe laser'],['subcontracting_cost','Sous-traitance'],['galvanizing_cost','Galvanisation'],['powder_coating_cost','Thermolaquage'],['motorization_cost','Motorisation'],['accessories_cost','Accessoires'],['transport_cost','Transport'],['consumables_cost','Consommables'],['rental_cost','Location de matériel'],['other_cost','Autres coûts']
-              ].map(([name,label]) => `<label><span>${label}</span><input type="number" min="0" step="0.01" inputmode="decimal" name="${name}" value="${profitabilitySaved ? escHtml(String(profitabilitySaved[name] || '')) : ''}"></label>`).join('')}</div></section>
-              <section><h3>Main-d’œuvre</h3><div class="quote-ai-cost-form">${[
-                ['study_hours','Heures d’étude'],['workshop_hours','Heures atelier'],['installation_hours','Heures de pose'],['transport_hours','Heures transport / manutention'],['sav_hours','Heures de SAV prévues'],['hourly_cost','Coût horaire (€ / h)']
-              ].map(([name,label]) => `<label><span>${label}</span><input type="number" min="0" step="0.01" inputmode="decimal" name="${name}" value="${profitabilitySaved ? escHtml(String(profitabilitySaved[name] ?? '')) : name === 'hourly_cost' ? '55' : ''}"></label>`).join('')}</div></section>
-              <fieldset class="profitability-categories"><legend>Catégories d’ouvrage</legend>${projectProfitability.WORK_CATEGORIES.map((category) => `<label><input type="checkbox" name="work_categories" value="${escHtml(category)}" ${(profitabilityForecast.categories || []).includes(category) ? 'checked' : ''}><span>${escHtml(category)}</span></label>`).join('')}</fieldset>
-              ${profitabilityContext.historicalCost ? `<p class="profitability-legacy">Coût historique disponible : ${formatEuroFr(profitabilityContext.historicalCost)}. Il n’a pas été importé automatiquement.</p>` : ''}
-              <label class="profitability-notes"><span>Notes</span><textarea name="notes" rows="3">${escHtml(profitabilitySaved?.notes || '')}</textarea></label>
-              <div class="quote-ai-actions"><button class="clients-submit-btn" type="submit">Enregistrer et recalculer</button><button class="modern-secondary-btn" type="button" data-profitability-cancel>Annuler</button></div>
-              <p class="quote-ai-status" data-profitability-status></p>
+          <details class="quote-ai-cost-details">
+            <summary>Données de coût utilisées pour le contrôle</summary>
+            <form method="POST" action="/devis/${id}/ai-costs" class="quote-ai-cost-form">
+              <label><span>Catégorie d’ouvrage</span><select name="work_category"><option value="">Détection automatique</option>${projectProfitability.WORK_CATEGORIES.map((category) => `<option value="${escHtml(category)}" ${quote.work_category === category ? 'selected' : ''}>${escHtml(category)}</option>`).join('')}</select></label>
+              ${[
+                ['cout_revient', 'Coût de revient existant'], ['cout_matiere', 'Matière'],
+                ['cout_sous_traitance', 'Sous-traitance'], ['cout_galvanisation', 'Galvanisation'],
+                ['cout_thermolaquage', 'Thermolaquage'], ['cout_motorisation', 'Motorisation'],
+                ['cout_accessoires', 'Accessoires'], ['cout_transport', 'Transport'],
+                ['cout_consommables', 'Consommables'], ['cout_locations', 'Locations'],
+                ['heures_etude', 'Heures étude'], ['heures_atelier', 'Heures atelier'],
+                ['heures_pose', 'Heures pose'], ['cout_horaire', 'Coût horaire']
+              ].map(([name, label]) => `<label><span>${label}</span><input type="number" min="0" step="0.01" name="${name}" value="${quote[name] == null ? '' : escHtml(String(quote[name]))}"></label>`).join('')}
+              <button class="modern-secondary-btn" type="submit">Enregistrer les données de coût</button>
             </form>
-          </div>
+          </details>
           <p class="quote-ai-disclaimer">Cette analyse est une aide au contrôle. La validation finale du devis reste sous la responsabilité de l’utilisateur.</p>
         </section>
 
@@ -10500,9 +10383,6 @@ const photosHtml = photos.map(photo => {
           var report = root.querySelector('[data-ai-report]');
           var historyList = root.querySelector('[data-ai-history-list]');
           var risk = root.querySelector('[data-ai-risk]');
-          var editor = root.querySelector('[data-profitability-editor]');
-          var editButton = root.querySelector('[data-profitability-edit]');
-          var profitabilityForm = root.querySelector('[data-profitability-form]');
           var euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
           function text(value, fallback) { return value == null ? fallback : String(value); }
           function percent(value) { return value == null ? 'Non calculée' : Number(value).toFixed(2) + ' %'; }
@@ -10514,7 +10394,7 @@ const photosHtml = photos.map(photo => {
           function renderReview(review) {
             var summary = review.summary || {};
             risk.hidden = false; risk.className = 'quote-ai-risk-badge is-' + text(review.riskLevel, 'orange');
-            risk.textContent = ({ incomplete: 'Données incomplètes', green: 'Vert', orange: 'Orange', red: 'Rouge' })[review.riskLevel] || 'À vérifier';
+            risk.textContent = ({ green: 'Vert', orange: 'Orange', red: 'Rouge' })[review.riskLevel] || 'À vérifier';
             var values = [
               ['Prix HT', euro.format(Number(summary.totalHT || 0))],
               ['Coût de revient', summary.costPrice ? euro.format(Number(summary.costPrice)) : 'Non renseigné'],
@@ -10524,6 +10404,8 @@ const photosHtml = photos.map(photo => {
               ['Prix conseillé 30 %', summary.targetPrice == null ? 'Non calculable' : euro.format(Number(summary.targetPrice))],
               ['Prix confortable 35 %', summary.comfortablePrice == null ? 'Non calculable' : euro.format(Number(summary.comfortablePrice))]
             ];
+            var host = root.querySelector('[data-ai-summary]'); host.innerHTML = '';
+            values.forEach(function (item) { var card = document.createElement('div'); var span = document.createElement('span'); var strong = document.createElement('strong'); span.textContent = item[0]; strong.textContent = item[1]; card.append(span, strong); host.appendChild(card); });
             fillList('[data-ai-warnings]', review.warnings, 'Aucune alerte supplémentaire.');
             fillList('[data-ai-positive]', review.positivePoints, 'Aucun point positif calculable avec les données disponibles.');
             root.querySelector('[data-ai-recommendation]').textContent = text(review.recommendation, 'Vérification manuelle recommandée.');
@@ -10547,23 +10429,13 @@ const photosHtml = photos.map(photo => {
           analyze.addEventListener('click', async function () {
             analyze.disabled = true; analyze.setAttribute('aria-busy', 'true'); status.textContent = 'Analyse en cours…';
             try {
-              var response = await fetch('/api/devis/' + quoteId + '/profitability/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); var data = await response.json();
+              var response = await fetch('/api/devis/' + quoteId + '/ai-review', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); var data = await response.json();
               if (!response.ok || !data.success) throw new Error(data.error || 'Analyse impossible');
               renderReview(data.review); historyList.hidden = true;
             } catch (error) { status.textContent = error.message || 'Analyse impossible'; }
             finally { analyze.disabled = false; analyze.removeAttribute('aria-busy'); }
           });
           historyButton.addEventListener('click', function () { loadHistory(true); });
-          editButton.addEventListener('click', function () { editor.hidden = false; editButton.disabled = true; editor.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
-          root.querySelector('[data-profitability-cancel]').addEventListener('click', function () { editor.hidden = true; editButton.disabled = false; });
-          profitabilityForm.addEventListener('submit', async function (event) {
-            event.preventDefault();
-            var submit = profitabilityForm.querySelector('[type="submit"]'); var formStatus = root.querySelector('[data-profitability-status]');
-            submit.disabled = true; formStatus.textContent = 'Enregistrement…';
-            var body = {}; new FormData(profitabilityForm).forEach(function (value, key) { if (key === 'work_categories') { (body[key] ||= []).push(value); } else body[key] = value; });
-            try { var response = await fetch('/api/devis/' + quoteId + '/profitability', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); var data = await response.json(); if (!response.ok || !data.success) throw new Error(data.error || 'Enregistrement impossible'); location.reload(); }
-            catch (error) { formStatus.textContent = error.message || 'Enregistrement impossible'; submit.disabled = false; }
-          });
           loadHistory(false);
         })();
         </script>

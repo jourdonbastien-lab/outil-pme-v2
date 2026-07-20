@@ -10,7 +10,9 @@ function lines(total = 10000) {
 
 const oldQuote = profitability.calculateForecast({}, lines(10000));
 assert.strictEqual(oldQuote.forecastCost, 0);
-assert.strictEqual(oldQuote.riskLevel, 'red');
+assert.strictEqual(oldQuote.riskLevel, 'incomplete');
+assert.strictEqual(oldQuote.margin, null);
+assert.strictEqual(oldQuote.marginOnSale, null);
 assert.strictEqual(oldQuote.minimumPrice, null);
 
 const detailed = {
@@ -37,8 +39,20 @@ assert.strictEqual(red.marginOnSale, 15);
 assert.strictEqual(red.riskLevel, 'red');
 
 const loss = profitability.calculateForecast({ cout_revient: 12000 }, lines(10000));
-assert.strictEqual(loss.riskLevel, 'red-critical');
+assert.strictEqual(loss.riskLevel, 'red');
+assert.strictEqual(loss.critical, true);
 assert.strictEqual(loss.margin, -2000);
+
+const requestedExample = profitability.calculateForecast({ cout_revient: 14000 }, lines(21404.70));
+assert.strictEqual(requestedExample.margin, 7404.70);
+assert.strictEqual(requestedExample.marginOnCost, 52.89);
+assert.strictEqual(requestedExample.marginOnSale, 34.59);
+assert.strictEqual(requestedExample.minimumPrice, 17500);
+assert.strictEqual(requestedExample.targetPrice, 20000);
+assert.strictEqual(requestedExample.comfortablePrice, 21538.46);
+
+const multipleCategories = profitability.calculateForecast({ title: 'Clôture avec portail motorisé et portillon', cout_revient: 100 }, lines(1000));
+assert.deepStrictEqual(multipleCategories.categories, ['portillon', 'portail', 'clôture', 'motorisation']);
 
 const quoteBefore = JSON.stringify(detailed);
 const lineBefore = JSON.stringify(lines(10000));
@@ -75,13 +89,16 @@ assert.strictEqual(actual.hourVariance, 12);
 assert.strictEqual(actual.hourVariancePct, 40);
 
 const server = fs.readFileSync('server.js', 'utf8');
-for (const schema of ['project_profitability_forecasts', 'project_actual_costs']) {
+for (const schema of ['quote_profitability_forecasts', 'project_profitability_forecasts', 'project_actual_costs']) {
   assert(server.includes(`CREATE TABLE IF NOT EXISTS ${schema}`), `migration absente: ${schema}`);
 }
 assert(server.includes("ensureColumn('chantier_hours', 'category'"));
 assert(server.includes("ensureColumn('client_orders', 'quote_id'"));
 assert(server.includes('saveProjectForecast({ ...quote, total_ht: totalWithMargin }, lines, clientOrderId)'));
 assert(server.includes("app.get('/api/orders/:id/profitability', requireLogin"));
+assert(server.includes("app.get('/api/devis/:id/profitability', requireLogin"));
+assert(server.includes("app.post('/api/devis/:id/profitability', requireLogin"));
+assert(server.includes("app.post('/api/devis/:id/profitability/analyze', requireLogin"));
 assert(server.includes("app.post('/api/orders/:id/actual-costs', requireLogin"));
 assert(server.includes('Rentabilité prévisionnelle'));
 assert(server.includes('Rentabilité du chantier'));

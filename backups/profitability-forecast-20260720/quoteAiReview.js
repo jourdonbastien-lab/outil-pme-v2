@@ -85,14 +85,11 @@ function calculateQuoteReview(quote, lines, rules = QUOTE_AI_RULES) {
   const hoursStudy = nonNegative(quote.heures_etude);
   const hoursWorkshop = nonNegative(quote.heures_atelier);
   const hoursInstallation = nonNegative(quote.heures_pose);
-  const hoursTransport = nonNegative(quote.heures_transport);
-  const hoursSav = nonNegative(quote.heures_sav);
-  const totalHours = round2(hoursStudy + hoursWorkshop + hoursInstallation + hoursTransport + hoursSav);
+  const totalHours = round2(hoursStudy + hoursWorkshop + hoursInstallation);
   const laborCost = round2(totalHours * hourlyCost);
 
   const breakdown = {
     material: nonNegative(quote.cout_matiere),
-    laserCutting: nonNegative(quote.cout_decoupe_laser),
     subcontracting: nonNegative(quote.cout_sous_traitance),
     galvanizing: nonNegative(quote.cout_galvanisation),
     powderCoating: nonNegative(quote.cout_thermolaquage),
@@ -100,8 +97,7 @@ function calculateQuoteReview(quote, lines, rules = QUOTE_AI_RULES) {
     accessories: nonNegative(quote.cout_accessoires),
     transport: nonNegative(quote.cout_transport),
     consumables: nonNegative(quote.cout_consommables),
-    rental: nonNegative(quote.cout_locations),
-    other: nonNegative(quote.autres_couts),
+    rentals: nonNegative(quote.cout_locations),
     labor: laborCost
   };
   const detailedCost = round2(Object.values(breakdown).reduce((sum, value) => sum + value, 0));
@@ -116,7 +112,7 @@ function calculateQuoteReview(quote, lines, rules = QUOTE_AI_RULES) {
   const totalTTC = round2(totalHT + vatAmount);
 
   if (!safeLines.length) warn('red', 'no_lines', 'Le devis ne contient aucune ligne chiffrée.');
-  if (costSource === 'missing') warnings.push('Le chiffrage des coûts directs et de la main-d’œuvre n’est pas encore renseigné.');
+  if (costSource === 'missing') warn('red', 'missing_cost_price', 'Le coût de revient est absent.');
   else positive('cost_price_present', 'Le coût de revient est renseigné.');
 
   if (marginOnSale !== null) {
@@ -150,10 +146,11 @@ function calculateQuoteReview(quote, lines, rules = QUOTE_AI_RULES) {
   if (breakdown.subcontracting > 0 && breakdown.transport <= 0) warn('orange', 'subcontracting_transport', 'Une sous-traitance est chiffrée sans transport associé.');
   if (isMetalWork) {
     caution('metalwork_scope', 'Vérifier la prise de cotes, l’étude, la fabrication, la finition, le transport, la pose, les fixations, les consommables, la manutention et les locations éventuelles.');
-    if (!totalHours) warnings.push('La main-d’œuvre n’est pas encore chiffrée.');
+    if (!hoursStudy && !hoursWorkshop && !hoursInstallation && existingCost === null) warn('red', 'missing_labor', 'La main-d’œuvre n’est pas comptabilisée.');
     if (totalHours > 0 && totalHours < 4) warn('orange', 'very_low_hours', 'Le nombre total d’heures prévues paraît très faible pour un ouvrage de métallerie.');
-    if (!hoursInstallation && includesAny(text, ['pose', 'installation'])) {
-      warn('orange', 'missing_installation_hours', 'La pose semble prévue dans le devis mais aucune heure de pose n’est renseignée.');
+    if (!hoursInstallation) {
+      if (costSource === 'breakdown') warn('orange', 'missing_installation_hours', 'Vérifier que la pose est correctement chiffrée.');
+      else caution('missing_installation_hours', 'Vérifier que la pose est correctement chiffrée.');
     }
     if (!breakdown.transport) {
       if (costSource === 'breakdown') warn('orange', 'missing_transport', 'Vérifier que le transport est chiffré.');
