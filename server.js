@@ -2766,6 +2766,7 @@ function dashboardTemplate(req, content) {
 
 function navIcon(name) {
   const icons = {
+    'arrow-left': '<path d="m15 18-6-6 6-6"/><path d="M9 12h11"/>',
     dashboard: '<path d="M4 4h7v7H4zM13 4h7v5h-7zM13 11h7v9h-7zM4 13h7v7H4z"/>',
     clients: '<path d="M16 19v-1.5A3.5 3.5 0 0 0 12.5 14h-5A3.5 3.5 0 0 0 4 17.5V19"/><path d="M10 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M20 19v-1.2a3 3 0 0 0-2.4-2.9"/><path d="M15.5 5.3a3 3 0 0 1 0 5.4"/>',
     tasks: '<path d="M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="m8 12 2.5 2.5L16 9"/>',
@@ -2934,7 +2935,7 @@ function pageTemplate(req, title, content) {
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -11668,27 +11669,56 @@ app.get('/devis/line/:id/edit', requireLogin, (req, res) => {
     return res.status(404).send('Ligne introuvable');
   }
 
-  res.send(`
-    <form method="POST" action="/devis/line/${line.id}/edit" id="quoteLineEditForm">
-      <label>Libellé <input name="label" value="${escHtml(line.label || '')}" required></label>
-      <label>Quantité <input name="qty" type="number" min="0.01" step="0.01" value="${escHtml(String(line.qty))}" required></label>
-      <label>Unité <input name="unit" value="${escHtml(line.unit || '')}" readonly></label>
-      <label>Prix d’achat unitaire <input name="cost_unit" type="number" min="0" step="0.01" value="${line.cost_unit == null ? '' : escHtml(String(line.cost_unit))}"></label>
-      <label>Marge (%) <input name="margin_pct" type="number" step="0.1" value="${line.margin_pct == null ? '' : escHtml(String(line.margin_pct))}"></label>
-      <label>Coefficient <input name="coefficient" type="number" min="0.01" step="0.01" value="${line.coefficient == null ? '' : escHtml(String(line.coefficient))}"></label>
-      <label>Coût total explicite <input name="cost_total" type="number" min="0" step="0.01" value="${line.cost_total == null ? '' : escHtml(String(line.cost_total))}"></label>
-      <label>Heures <input name="hours" type="number" min="0" step="0.01" value="${line.hours == null ? '' : escHtml(String(line.hours))}"></label>
-      <label>Coût horaire interne <input name="hourly_cost" type="number" min="0" step="0.01" value="${line.hourly_cost == null ? '' : escHtml(String(line.hourly_cost))}"></label>
-      <label>Prix de vente unitaire <input name="unit_price" type="number" min="0" step="0.01" value="${escHtml(String(line.unit_price))}" required></label>
-      <label>Catégorie de coût <select name="cost_category"><option value="">Détection automatique</option>${projectProfitability.LINE_COST_CATEGORIES.map((category) => `<option value="${escHtml(category)}" ${line.cost_category === category ? 'selected' : ''}>${escHtml(category)}</option>`).join('')}</select></label>
-
-      <button type="submit">
-        Enregistrer
-      </button>
-
-    </form>
-    <script>(function(){var form=document.getElementById('quoteLineEditForm');if(!form)return;var cost=form.elements.cost_unit;var margin=form.elements.margin_pct;var price=form.elements.unit_price;function update(){if(cost.value==='')return;var c=Number(cost.value);var m=margin.value===''?0:Number(margin.value);if(Number.isFinite(c)&&Number.isFinite(m))price.value=(c*(1+m/100)).toFixed(2);}cost.addEventListener('input',update);margin.addEventListener('input',update);})();</script>
-  `);
+  res.send(pageTemplate(req, 'Modifier la ligne', `
+    <main class="quote-line-editor-page">
+      <header class="quote-line-editor-hero">
+        <a href="/devis/${line.quote_id}" class="quote-line-editor-back" aria-label="Retour au devis">${clientPageIcon('arrow-left')}<span>Retour</span></a>
+        <span class="quote-line-editor-hero-icon">${clientPageIcon('quotes')}</span>
+        <div><p>Devis #${line.quote_id}</p><h1>Modifier la ligne</h1><span>${escHtml(line.label || 'Sans libellé')}</span></div>
+      </header>
+      <form method="POST" action="/devis/line/${line.id}/edit" id="quoteLineEditForm" class="quote-line-editor-card">
+        <section class="quote-line-editor-section">
+          <div class="quote-line-editor-section-head"><h2>Informations générales</h2><p>Identification et classement de la ligne.</p></div>
+          <div class="quote-line-editor-grid">
+            <label class="quote-line-editor-field field-wide"><span>Libellé</span><input name="label" value="${escHtml(line.label || '')}" required autocomplete="off"></label>
+            <label class="quote-line-editor-field field-wide"><span>Catégorie de coût</span><select name="cost_category"><option value="">Détection automatique</option>${projectProfitability.LINE_COST_CATEGORIES.map((category) => `<option value="${escHtml(category)}" ${line.cost_category === category ? 'selected' : ''}>${escHtml(category)}</option>`).join('')}</select><small>Laissez vide pour utiliser la détection automatique.</small></label>
+          </div>
+        </section>
+        <section class="quote-line-editor-section">
+          <div class="quote-line-editor-section-head"><h2>Quantité</h2></div>
+          <div class="quote-line-editor-grid">
+            <label class="quote-line-editor-field"><span>Quantité</span><input name="qty" type="number" inputmode="decimal" min="0.01" step="0.01" value="${escHtml(String(line.qty))}" required></label>
+            <label class="quote-line-editor-field"><span>Unité</span><input name="unit" value="${escHtml(line.unit || '')}" readonly><small>L’unité existante est conservée.</small></label>
+          </div>
+        </section>
+        <section class="quote-line-editor-section">
+          <div class="quote-line-editor-section-head"><h2>Coût d’achat</h2><p>Données internes utilisées par la rentabilité.</p></div>
+          <div class="quote-line-editor-grid">
+            <label class="quote-line-editor-field"><span>Prix d’achat unitaire</span><span class="quote-line-editor-input-unit"><input name="cost_unit" type="number" inputmode="decimal" min="0" step="0.01" value="${line.cost_unit == null ? '' : escHtml(String(line.cost_unit))}"><b>€</b></span><small>Coût réel payé par unité.</small></label>
+            <label class="quote-line-editor-field"><span>Coût total explicite</span><span class="quote-line-editor-input-unit"><input name="cost_total" type="number" inputmode="decimal" min="0" step="0.01" value="${line.cost_total == null ? '' : escHtml(String(line.cost_total))}"><b>€</b></span><small>Prioritaire lorsqu’il est renseigné.</small></label>
+          </div>
+        </section>
+        <section class="quote-line-editor-section">
+          <div class="quote-line-editor-section-head"><h2>Règle de vente</h2><p>Le prix de vente reste calculé avec la formule actuelle du devis.</p></div>
+          <div class="quote-line-editor-grid">
+            <label class="quote-line-editor-field"><span>Marge</span><span class="quote-line-editor-input-unit"><input name="margin_pct" type="number" inputmode="decimal" step="0.1" value="${line.margin_pct == null ? '' : escHtml(String(line.margin_pct))}"><b>%</b></span><small>Pourcentage appliqué au prix d’achat.</small></label>
+            <label class="quote-line-editor-field"><span>Coefficient</span><input name="coefficient" type="number" inputmode="decimal" min="0.01" step="0.01" value="${line.coefficient == null ? '' : escHtml(String(line.coefficient))}"><small>Multiplicateur enregistré pour la vente.</small></label>
+            <label class="quote-line-editor-field field-wide"><span>Prix de vente unitaire</span><span class="quote-line-editor-input-unit"><input name="unit_price" type="number" inputmode="decimal" min="0" step="0.01" value="${escHtml(String(line.unit_price))}" required><b>€</b></span></label>
+          </div>
+        </section>
+        <section class="quote-line-editor-section quote-line-editor-labor">
+          <div class="quote-line-editor-section-head"><h2>Main-d’œuvre</h2><p>À renseigner uniquement pour une ligne de temps de travail.</p></div>
+          <div class="quote-line-editor-grid">
+            <label class="quote-line-editor-field"><span>Heures</span><span class="quote-line-editor-input-unit"><input name="hours" type="number" inputmode="decimal" min="0" step="0.01" value="${line.hours == null ? '' : escHtml(String(line.hours))}"><b>h</b></span></label>
+            <label class="quote-line-editor-field"><span>Coût horaire interne</span><span class="quote-line-editor-input-unit"><input name="hourly_cost" type="number" inputmode="decimal" min="0" step="0.01" value="${line.hourly_cost == null ? '' : escHtml(String(line.hourly_cost))}"><b>€/h</b></span><small>Utilisé pour calculer le coût de la main-d’œuvre.</small></label>
+          </div>
+        </section>
+        <aside class="quote-line-editor-summary" aria-live="polite"><h2>Synthèse</h2><dl><div><dt>Coût d’achat total</dt><dd data-line-summary-cost>Non calculable</dd></div><div><dt>Prix de vente HT</dt><dd data-line-summary-sale>Non calculable</dd></div><div><dt>Marge estimée</dt><dd data-line-summary-margin>Non calculable</dd></div><div><dt>Marge sur vente</dt><dd data-line-summary-rate>Non calculable</dd></div></dl></aside>
+        <div class="quote-line-editor-actions"><a href="/devis/${line.quote_id}" class="modern-secondary-btn">Annuler</a><button type="submit" class="clients-submit-btn" data-line-save>Enregistrer</button></div>
+      </form>
+    </main>
+    <script>(function(){var form=document.getElementById('quoteLineEditForm');if(!form)return;var cost=form.elements.cost_unit;var totalCost=form.elements.cost_total;var margin=form.elements.margin_pct;var price=form.elements.unit_price;var qty=form.elements.qty;var hours=form.elements.hours;var hourly=form.elements.hourly_cost;var save=form.querySelector('[data-line-save]');var euro=new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'});function number(input){if(!input||input.value==='')return null;var value=Number(input.value);return Number.isFinite(value)?value:null;}function updatePrice(){if(cost.value==='')return;var c=Number(cost.value);var m=margin.value===''?0:Number(margin.value);if(Number.isFinite(c)&&Number.isFinite(m))price.value=(c*(1+m/100)).toFixed(2);}function updateSummary(){var q=number(qty);var unitCost=number(cost);var explicitCost=number(totalCost);var h=number(hours);var rate=number(hourly);var unitSale=number(price);var purchase=explicitCost!==null?explicitCost:(unitCost!==null&&q!==null?unitCost*q:(h!==null&&rate!==null?h*rate:null));var sale=unitSale!==null&&q!==null?unitSale*q:null;var estimatedMargin=purchase!==null&&sale!==null?sale-purchase:null;var marginRate=estimatedMargin!==null&&sale>0?estimatedMargin/sale*100:null;form.querySelector('[data-line-summary-cost]').textContent=purchase===null?'Non calculable':euro.format(purchase);form.querySelector('[data-line-summary-sale]').textContent=sale===null?'Non calculable':euro.format(sale);form.querySelector('[data-line-summary-margin]').textContent=estimatedMargin===null?'Non calculable':euro.format(estimatedMargin);form.querySelector('[data-line-summary-rate]').textContent=marginRate===null?'Non calculable':marginRate.toFixed(2)+' %';}cost.addEventListener('input',function(){updatePrice();updateSummary();});margin.addEventListener('input',function(){updatePrice();updateSummary();});[totalCost,price,qty,hours,hourly].forEach(function(input){input.addEventListener('input',updateSummary);});form.addEventListener('submit',function(){save.disabled=true;save.setAttribute('aria-busy','true');save.textContent='Enregistrement…';});updateSummary();})();</script>
+  `));
 
 });
 app.post('/devis/line/:id/edit', requireLogin, (req, res) => {
