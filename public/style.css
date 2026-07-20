@@ -8232,6 +8232,115 @@ body.sketchpad-drawing{
   box-shadow:0 5px 14px rgba(15,23,42,.06);
 }
 
+/* Controle automatique des devis */
+.quote-ai-review-card{
+  margin-top:16px;
+  padding:20px;
+  border:1px solid #e5e7eb;
+  border-radius:22px;
+  background:#fff;
+  box-shadow:0 12px 30px rgba(15,23,42,.07);
+}
+
+.quote-ai-review-head{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:12px;
+}
+
+.quote-ai-review-head h2,
+.quote-ai-review-head p{margin:0;}
+.quote-ai-review-head p{margin-top:4px;color:#667085;}
+.quote-ai-review-icon{
+  display:grid;
+  place-items:center;
+  width:46px;
+  height:46px;
+  border-radius:14px;
+  background:rgba(249,115,22,.12);
+  color:#f97316;
+}
+.quote-ai-review-icon svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;}
+.quote-ai-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;}
+.quote-ai-actions button{min-height:44px;}
+.quote-ai-status,.quote-ai-provider{color:#667085;font-size:13px;font-weight:700;}
+.quote-ai-risk-badge{min-height:32px;padding:7px 11px;border-radius:999px;color:#fff;font-size:12px;font-weight:900;}
+.quote-ai-risk-badge.is-green{background:#16a34a;}
+.quote-ai-risk-badge.is-orange{background:#f97316;}
+.quote-ai-risk-badge.is-red{background:#dc2626;}
+.quote-ai-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:16px;}
+.quote-ai-summary>div{min-width:0;padding:13px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;}
+.quote-ai-summary span,.quote-ai-summary strong{display:block;overflow-wrap:anywhere;}
+.quote-ai-summary span{color:#667085;font-size:12px;font-weight:800;}
+.quote-ai-summary strong{margin-top:5px;color:#101827;font-size:16px;}
+.quote-ai-report-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px;}
+.quote-ai-report-columns section,.quote-ai-recommendation{padding:16px;border:1px solid #e5e7eb;border-radius:16px;background:#fff;}
+.quote-ai-report h3{margin:0 0 10px;font-size:15px;}
+.quote-ai-report ul{margin:0;padding-left:20px;}
+.quote-ai-report li+li{margin-top:7px;}
+.quote-ai-recommendation{margin-top:12px;border-left:4px solid #f97316;background:#fff7ed;}
+.quote-ai-recommendation p{margin:0;line-height:1.55;}
+.quote-ai-history{display:grid;gap:8px;margin-top:14px;}
+.quote-ai-history-item{min-height:44px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#f8fafc;text-align:left;font-weight:800;cursor:pointer;}
+.quote-ai-cost-details{margin-top:16px;border-top:1px solid #e5e7eb;padding-top:14px;}
+.quote-ai-cost-details summary{min-height:44px;display:flex;align-items:center;color:#334155;font-weight:900;cursor:pointer;}
+.quote-ai-cost-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px;}
+.quote-ai-cost-form label{display:block;min-width:0;}
+.quote-ai-cost-form label span{display:block;margin-bottom:5px;color:#475569;font-size:12px;font-weight:800;}
+.quote-ai-cost-form input{width:100%;min-width:0;min-height:44px;border:1px solid #d8dde6;border-radius:11px;padding:9px 10px;font:inherit;}
+.quote-ai-cost-form select{width:100%;min-width:0;min-height:44px;border:1px solid #d8dde6;border-radius:11px;padding:9px 10px;background:#fff;font:inherit;}
+.quote-ai-cost-form input:focus{border-color:#f97316;outline:3px solid rgba(249,115,22,.14);}
+.quote-ai-cost-form button{grid-column:1/-1;justify-self:start;min-height:44px;}
+.quote-ai-disclaimer{margin:16px 0 0;padding:12px;border-radius:12px;background:#eff6ff;color:#1e3a5f;font-size:13px;font-weight:750;line-height:1.45;}
+.profitability-overview,.profitability-price-targets{display:grid;gap:10px;margin-top:16px;}
+.profitability-overview{grid-template-columns:repeat(4,minmax(0,1fr));}
+.profitability-price-targets{grid-template-columns:repeat(3,minmax(0,1fr));}
+.profitability-overview>div,.profitability-price-targets>div{padding:13px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;min-width:0;}
+.profitability-price-targets>div{background:#fff7ed;border-color:#fed7aa;}
+.profitability-overview span,.profitability-price-targets span,.project-profitability-metrics span,.project-profitability-variances span{display:block;color:#667085;font-size:12px;font-weight:800;}
+.profitability-overview strong,.profitability-price-targets strong{display:block;margin-top:5px;overflow-wrap:anywhere;color:#101827;}
+.project-profitability-card{margin-top:18px;}
+.modern-section-title p{margin:4px 0 0;color:#667085;}
+.project-profitability-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px;}
+.project-profitability-columns>article{padding:16px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;}
+.project-profitability-columns h3{margin:0 0 12px;color:#101827;}
+.project-profitability-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+.project-profitability-metrics>div,.project-profitability-variances>div{padding:11px;border-radius:12px;background:#f8fafc;min-width:0;}
+.project-profitability-metrics strong,.project-profitability-variances strong{display:block;margin-top:4px;overflow-wrap:anywhere;}
+.project-profitability-variances{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px;}
+.profit-positive{color:#166534;}.profit-negative{color:#991b1b;}
+.profitability-costs{margin-top:16px;border-top:1px solid #e5e7eb;padding-top:12px;}
+.profitability-costs summary{display:flex;align-items:center;min-height:44px;font-weight:900;cursor:pointer;}
+.profitability-cost-list{display:grid;gap:8px;margin-top:10px;}
+.profitability-cost-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:12px;background:#f8fafc;}
+.profitability-cost-row span{display:block;color:#667085;font-size:12px;}
+.profitability-cost-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px;}
+.profitability-cost-form label span{display:block;margin-bottom:5px;color:#475569;font-size:12px;font-weight:800;}
+.profitability-cost-form input,.profitability-cost-form select{width:100%;min-width:0;min-height:44px;border:1px solid #d8dde6;border-radius:11px;padding:9px 10px;background:#fff;font:inherit;}
+.profitability-cost-form input:focus,.profitability-cost-form select:focus{border-color:#f97316;outline:3px solid rgba(249,115,22,.14);}
+.profitability-cost-form button{grid-column:1/-1;justify-self:start;min-height:44px;}
+.profitability-empty{color:#667085;line-height:1.5;}
+
+@media(max-width:900px){
+  .quote-ai-summary{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .quote-ai-cost-form{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .profitability-overview,.project-profitability-variances{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .profitability-cost-form{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+
+@media(max-width:600px){
+  .quote-ai-review-card{padding:15px;border-radius:18px;}
+  .quote-ai-review-head{grid-template-columns:auto minmax(0,1fr);}
+  .quote-ai-risk-badge{grid-column:1/-1;width:max-content;}
+  .quote-ai-actions,.quote-ai-actions button{width:100%;}
+  .quote-ai-summary,.quote-ai-report-columns,.quote-ai-cost-form{grid-template-columns:minmax(0,1fr);}
+  .quote-ai-cost-form button{width:100%;}
+  .profitability-overview,.profitability-price-targets,.project-profitability-columns,.project-profitability-metrics,.project-profitability-variances,.profitability-cost-form{grid-template-columns:minmax(0,1fr);}
+  .profitability-cost-row{grid-template-columns:minmax(0,1fr);}
+  .profitability-cost-row button,.profitability-cost-form button{width:100%;}
+}
+
 .measurement-linked-card strong,
 .measurement-linked-card span{
   display:block;
