@@ -64,7 +64,7 @@ function createModuleSheet() {
     const viewer = ensurePhotoViewer();
     const img = viewer.querySelector('img');
     const caption = viewer.querySelector('p');
-    img.src = photo.dataUrl;
+    img.src = photo.url || photo.dataUrl;
     img.alt = photo.caption || photo.name || 'Photo chantier';
     caption.textContent = photo.caption || photo.name || '';
     viewer.hidden = false;
@@ -383,10 +383,41 @@ function createModuleSheet() {
   }
 
   async function loadServerRecord(id) {
+    const localRecord = getStoredRecords().find((record) => String(record.server_id || record.id || '') === String(id));
     const response = await fetch(`/api/measurements/${id}`);
     if (!response.ok) throw new Error('Fiche serveur introuvable');
     const data = await response.json();
     applyFormData(data.measurement || {});
+    const legacyPhotos = Array.isArray(localRecord?.photos)
+      ? localRecord.photos.filter((photo) => photo && photo.dataUrl)
+      : [];
+    if (legacyPhotos.length) photos = legacyPhotos;
+    await loadServerPhotos();
+  }
+
+  async function loadServerPhotos() {
+    if (!currentServerId) return;
+    const response = await fetch(`/api/measurements/${currentServerId}/photos`);
+    if (!response.ok) return;
+    const data = await response.json();
+    const legacyPhotos = photos.filter((photo) => photo && photo.dataUrl && !photo.url);
+    const serverPhotos = Array.isArray(data.photos) ? data.photos : [];
+    photos = legacyPhotos.concat(serverPhotos);
+    renderPhotos();
+  }
+
+  async function uploadServerPhotos(files) {
+    if (!files.length) return;
+    if (!currentServerId) await saveRecord();
+    if (!currentServerId) throw new Error('Enregistrez la fiche avant les photos');
+    const body = new FormData();
+    files.forEach((file) => body.append('photos', file, file.name));
+    const response = await fetch(`/api/measurements/${currentServerId}/photos`, { method: 'POST', body });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Upload photo impossible');
+    const legacyPhotos = photos.filter((photo) => photo && photo.dataUrl && !photo.url);
+    photos = legacyPhotos.concat(Array.isArray(data.photos) ? data.photos : []);
+    renderPhotos();
   }
 
   async function prefillFromQuote(quoteId) {
@@ -465,7 +496,7 @@ function createModuleSheet() {
     }
   }
 
-  function loadRecord() {
+  async function loadRecord() {
     const records = getStoredRecords();
     if (!records.length) {
       saveStatus.textContent = 'Aucune fiche enregistrée';
@@ -489,6 +520,7 @@ function createModuleSheet() {
 
     form.reset();
     applyFormData(record);
+    if (currentServerId) await loadServerPhotos();
   }
 
   function resetForm() {
@@ -516,50 +548,60 @@ function createModuleSheet() {
 
     photos.forEach((photo, index) => {
       const node = photoTemplate.content.firstElementChild.cloneNode(true);
-      node.querySelector('img').src = photo.dataUrl;
+      node.querySelector('img').src = photo.url || photo.dataUrl;
       node.querySelector('img').alt = photo.name || 'Photo chantier';
       node.querySelector('img').addEventListener('click', () => openPhotoViewer(photo));
       const captionInput = node.querySelector('.photo-caption');
       if (captionInput) {
         captionInput.value = photo.caption || '';
-        captionInput.addEventListener('input', () => {
+        captionInput.addEventListener('change', async () => {
           photos[index].caption = captionInput.value;
-          setDirty(true);
+          if (photo.id && photo.url && currentServerId) {
+            const response = await fetch(`/api/measurements/${currentServerId}/photos/${encodeURIComponent(photo.id)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ caption: captionInput.value })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) saveStatus.textContent = data.error || 'Erreur légende photo';
+          } else {
+            setDirty(true);
+          }
         });
       }
       node.querySelector('.photo-remove').addEventListener('click', () => {
         if (!window.confirm('Supprimer cette photo ?')) return;
-        photos.splice(index, 1);
-        renderPhotos();
-        setDirty(true);
+        if (photo.id && photo.url && currentServerId) {
+          fetch(`/api/measurements/${currentServerId}/photos/${encodeURIComponent(photo.id)}`, { method: 'DELETE' })
+            .then((response) => response.json().then((data) => ({ response, data })))
+            .then(({ response, data }) => {
+              if (!response.ok || !data.ok) throw new Error(data.error || 'Suppression impossible');
+              const legacyPhotos = photos.filter((item) => item && item.dataUrl && !item.url);
+              photos = legacyPhotos.concat(Array.isArray(data.photos) ? data.photos : []);
+              renderPhotos();
+            })
+            .catch((error) => { saveStatus.textContent = error.message || 'Suppression photo impossible'; });
+        } else {
+          photos.splice(index, 1);
+          renderPhotos();
+          setDirty(true);
+        }
       });
       photoGallery.appendChild(node);
-    });
-  }
-
-  function fileToDataUrl(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
     });
   }
 
   if (photoInput) {
     photoInput.addEventListener('change', async (event) => {
       const files = Array.from(event.target.files || []);
-      const newPhotos = [];
-      for (const file of files) {
-        newPhotos.push({
-          name: file.name,
-          dataUrl: await fileToDataUrl(file),
-        });
-      }
-      photos = photos.concat(newPhotos);
-      renderPhotos();
       photoInput.value = '';
-      setDirty(true);
+      try {
+        saveStatus.textContent = 'Envoi des photos…';
+        await uploadServerPhotos(files);
+        saveStatus.textContent = 'Photos enregistrées sur le serveur';
+      } catch (error) {
+        saveStatus.textContent = error.message || 'Upload photo impossible';
+      }
       updateProgress();
     });
   }

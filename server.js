@@ -14,6 +14,7 @@ const { parseEbpQuoteText, parseEbpInvoiceText } = require('./lib/ebpQuoteParser
 const googleSync = require('./lib/googleCalendarSync');
 const agendaEventRange = require('./lib/agendaEventRange');
 const measurementRoutes = require('./lib/measurementRoutes');
+const measurementPhotoFiles = require('./lib/measurementPhotoFiles');
 const app = express();
 
 function tryRequire(moduleName) {
@@ -367,6 +368,10 @@ const ESCALIER_V2_PHOTO_DIR = resolveStoragePath(
   process.env.OUTIL_PME_ESCALIER_V2_PHOTO_DIR,
   path.join(STORAGE_DIR, 'measurement_photos', 'escalier-v2')
 );
+const MEASUREMENT_PHOTO_DIR = resolveStoragePath(
+  process.env.OUTIL_PME_MEASUREMENT_PHOTO_DIR,
+  path.join(STORAGE_DIR, 'measurements')
+);
 const EBP_SCAN_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_SCAN_DIR, path.join(STORAGE_DIR, 'ebp_scans'));
 const EBP_SCAN_TMP_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_SCAN_TMP_DIR, path.join(STORAGE_DIR, 'tmp', 'ebp-scans'));
 const EBP_INCOMING_DIR = resolveStoragePath(process.env.OUTIL_PME_EBP_INCOMING_DIR, path.join(STORAGE_DIR, 'incoming-ebp'));
@@ -382,6 +387,7 @@ ensureDir(QUOTE_PHOTO_DIR);
 ensureDir(SKETCHES_DIR);
 ensureDir(PDF_STORAGE_DIR);
 ensureDir(ESCALIER_V2_PHOTO_DIR);
+ensureDir(MEASUREMENT_PHOTO_DIR);
 ensureDir(EBP_SCAN_DIR);
 ensureDir(EBP_SCAN_TMP_DIR);
 ensureDir(EBP_INCOMING_DIR);
@@ -1298,6 +1304,23 @@ function createSqliteTables(database) {
       updated_at TEXT
     )
   `).run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS measurement_photo_files (
+      id TEXT PRIMARY KEY,
+      measurement_id INTEGER NOT NULL,
+      stored_name TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size INTEGER NOT NULL DEFAULT 0,
+      caption TEXT,
+      sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(measurement_id, sha256)
+    )
+  `).run();
+
+  database.prepare('CREATE INDEX IF NOT EXISTS idx_measurement_photo_files_measurement_id ON measurement_photo_files(measurement_id)').run();
 }
 
 function runSqliteMigrations(ensureColumn) {
@@ -4495,6 +4518,42 @@ app.get('/api/measurements/link-options', requireLogin, (req, res) => {
   res.json({ quotes, clientOrders });
 });
 
+const measurementPhotoStorage = multer.diskStorage({
+  destination(req, file, cb) {
+    try {
+      const measurementId = parseOptionalId(req.params.id);
+      if (!measurementId) return cb(new Error('ID fiche invalide'));
+      const row = db.prepare('SELECT id, module FROM measurements WHERE id = ?').get(measurementId);
+      if (!row || row.module === 'Escalier V2') return cb(new Error('Fiche de mesure classique introuvable'));
+      const dir = measurementPhotoFiles.measurementPhotoDir(MEASUREMENT_PHOTO_DIR, measurementId);
+      ensureDir(dir);
+      cb(null, dir);
+    } catch (error) {
+      cb(error);
+    }
+  },
+  filename(req, file, cb) {
+    try {
+      cb(null, measurementPhotoFiles.generatedStoredName(file));
+    } catch (error) {
+      cb(error);
+    }
+  }
+});
+
+const measurementPhotoUpload = multer({
+  storage: measurementPhotoStorage,
+  limits: { fileSize: measurementPhotoFiles.MAX_FILE_SIZE, files: 20 },
+  fileFilter(req, file, cb) {
+    try {
+      measurementPhotoFiles.validatePhotoFile(file);
+      cb(null, true);
+    } catch (error) {
+      cb(error);
+    }
+  }
+});
+
 app.get('/api/measurements/context', requireLogin, (req, res) => {
   const quoteId = parseOptionalId(req.query.quote_id);
   if (!quoteId) return res.status(400).json({ ok: false, error: 'ID devis invalide' });
@@ -4511,6 +4570,148 @@ app.get('/api/measurements/photo-recovery-access', requireLogin, (req, res) => {
   const measurementId = parseOptionalId(req.query.id);
   const isAdmin = req.session?.user?.role !== 'atelier';
   return res.json({ ok: true, allowed: Boolean(isAdmin && measurementId === 9) });
+});
+
+function measurementPhotoPublic(photo) {
+  return {
+    id: String(photo.id),
+    measurementId: Number(photo.measurement_id),
+    name: String(photo.original_name || 'Photo'),
+    originalName: String(photo.original_name || 'Photo'),
+    mimeType: String(photo.mime_type || ''),
+    size: Number(photo.size || 0),
+    caption: String(photo.caption || ''),
+    hash: String(photo.sha256 || ''),
+    createdAt: photo.created_at || null,
+    url: `/api/measurements/${photo.measurement_id}/photos/${encodeURIComponent(photo.id)}/file`
+  };
+}
+
+function listMeasurementPhotos(measurementId) {
+  return db.prepare(`
+    SELECT id, measurement_id, stored_name, original_name, mime_type, size, caption, sha256, created_at
+    FROM measurement_photo_files
+    WHERE measurement_id = ?
+    ORDER BY created_at ASC, id ASC
+  `).all(measurementId).map(measurementPhotoPublic);
+}
+
+app.get('/api/measurements/:id/photos', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  if (!id) return res.status(400).json({ ok: false, error: 'ID fiche invalide' });
+  const row = db.prepare('SELECT id, module FROM measurements WHERE id = ?').get(id);
+  if (!row || row.module === 'Escalier V2') return res.status(404).json({ ok: false, error: 'Fiche classique introuvable' });
+  return res.json({ ok: true, photos: listMeasurementPhotos(id) });
+});
+
+app.post('/api/measurements/:id/photos', requireLogin, (req, res) => {
+  measurementPhotoUpload.array('photos', 20)(req, res, (uploadError) => {
+    const uploadedFiles = Array.isArray(req.files) ? req.files : [];
+    const cleanupUploaded = () => uploadedFiles.forEach((file) => {
+      if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
+    });
+    if (uploadError) {
+      cleanupUploaded();
+      return res.status(400).json({ ok: false, error: uploadError.message || 'Upload impossible' });
+    }
+
+    const id = parseOptionalId(req.params.id);
+    if (!id || !uploadedFiles.length) {
+      cleanupUploaded();
+      return res.status(400).json({ ok: false, error: id ? 'Aucune photo recue' : 'ID fiche invalide' });
+    }
+
+    let metadataCommitted = false;
+    try {
+      const now = new Date().toISOString();
+      const pending = [];
+      const duplicateFiles = [];
+      const hashesInBatch = new Set();
+      for (const file of uploadedFiles) {
+        const descriptor = measurementPhotoFiles.validatePhotoFile(file);
+        const hash = measurementPhotoFiles.fileSha256(file.path);
+        const existing = db.prepare('SELECT id FROM measurement_photo_files WHERE measurement_id = ? AND sha256 = ?').get(id, hash);
+        if (existing || hashesInBatch.has(hash)) {
+          duplicateFiles.push(file.path);
+          continue;
+        }
+        hashesInBatch.add(hash);
+        pending.push({
+          id: crypto.randomUUID(),
+          measurementId: id,
+          storedName: path.basename(file.filename),
+          originalName: descriptor.originalName,
+          mimeType: descriptor.mimeType,
+          size: Number(file.size || descriptor.size || 0),
+          caption: '',
+          hash,
+          createdAt: now
+        });
+      }
+
+      const insert = db.prepare(`
+        INSERT INTO measurement_photo_files
+          (id, measurement_id, stored_name, original_name, mime_type, size, caption, sha256, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      db.transaction((items) => {
+        items.forEach((photo) => insert.run(
+          photo.id, photo.measurementId, photo.storedName, photo.originalName,
+          photo.mimeType, photo.size, photo.caption, photo.hash, photo.createdAt
+        ));
+      })(pending);
+      metadataCommitted = true;
+      duplicateFiles.forEach((filePath) => { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); });
+      return res.json({ ok: true, photos: listMeasurementPhotos(id), duplicatesIgnored: duplicateFiles.length });
+    } catch (error) {
+      if (!metadataCommitted) cleanupUploaded();
+      console.error('Erreur stockage photo prise de cote:', error);
+      return res.status(500).json({ ok: false, error: 'Impossible de stocker la photo' });
+    }
+  });
+});
+
+app.patch('/api/measurements/:id/photos/:photoId', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  const photoId = String(req.params.photoId || '').trim();
+  if (!id || !photoId) return res.status(400).json({ ok: false, error: 'Parametres invalides' });
+  const caption = String(req.body?.caption || '').trim().slice(0, 300);
+  const result = db.prepare('UPDATE measurement_photo_files SET caption = ? WHERE id = ? AND measurement_id = ?')
+    .run(caption, photoId, id);
+  if (!result.changes) return res.status(404).json({ ok: false, error: 'Photo introuvable' });
+  return res.json({ ok: true, photos: listMeasurementPhotos(id) });
+});
+
+app.delete('/api/measurements/:id/photos/:photoId', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  const photoId = String(req.params.photoId || '').trim();
+  if (!id || !photoId) return res.status(400).json({ ok: false, error: 'Parametres invalides' });
+  const photo = db.prepare('SELECT * FROM measurement_photo_files WHERE id = ? AND measurement_id = ?').get(photoId, id);
+  if (!photo) return res.status(404).json({ ok: false, error: 'Photo introuvable' });
+  try {
+    measurementPhotoFiles.removeOwnedFile(MEASUREMENT_PHOTO_DIR, id, photo.stored_name);
+    db.prepare('DELETE FROM measurement_photo_files WHERE id = ? AND measurement_id = ?').run(photoId, id);
+    return res.json({ ok: true, photos: listMeasurementPhotos(id) });
+  } catch (error) {
+    console.error('Erreur suppression photo prise de cote:', error);
+    return res.status(500).json({ ok: false, error: 'Suppression photo impossible' });
+  }
+});
+
+app.get('/api/measurements/:id/photos/:photoId/file', requireLogin, (req, res) => {
+  const id = parseOptionalId(req.params.id);
+  const photoId = String(req.params.photoId || '').trim();
+  if (!id || !photoId) return res.status(400).send('Parametres invalides');
+  const photo = db.prepare('SELECT * FROM measurement_photo_files WHERE id = ? AND measurement_id = ?').get(photoId, id);
+  if (!photo) return res.status(404).send('Photo introuvable');
+  try {
+    const filePath = measurementPhotoFiles.photoFilePath(MEASUREMENT_PHOTO_DIR, id, photo.stored_name);
+    if (!fs.existsSync(filePath)) return res.status(404).send('Fichier photo introuvable');
+    res.type(photo.mime_type || 'application/octet-stream');
+    return res.sendFile(filePath);
+  } catch {
+    return res.status(400).send('Chemin photo invalide');
+  }
 });
 
 app.get('/api/measurements/escalier-v2/bootstrap', requireLogin, (req, res) => {
@@ -4844,7 +5045,11 @@ app.delete('/api/measurements/:id', requireLogin, (req, res) => {
 
   try {
     removeStoragePathIfExists(sketchPath('measurements', id));
-    const result = db.prepare('DELETE FROM measurements WHERE id = ?').run(id);
+    removeStoragePathIfExists(safeResolveInside(MEASUREMENT_PHOTO_DIR, String(id)));
+    const result = db.transaction((measurementId) => {
+      db.prepare('DELETE FROM measurement_photo_files WHERE measurement_id = ?').run(measurementId);
+      return db.prepare('DELETE FROM measurements WHERE id = ?').run(measurementId);
+    })(id);
     if (!result.changes) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
     return res.json({ ok: true, deletedId: id, redirect: '/outils/prises-cotes' });
   } catch (error) {

@@ -1620,9 +1620,18 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     photoGallery.innerHTML = '';
     photos.forEach((photo, index) => {
       const node = photoTemplate.content.firstElementChild.cloneNode(true);
-      node.querySelector('img').src = photo.dataUrl;
-      node.querySelector('img').alt = photo.name || 'Photo chantier';
-      node.querySelector('.photo-remove').addEventListener('click', () => {
+      node.querySelector('img').src = photo.url || photo.dataUrl || '';
+      node.querySelector('img').alt = photo.original_name || photo.name || 'Photo chantier';
+      node.querySelector('.photo-remove').addEventListener('click', async () => {
+        if (photo.id && currentServerId) {
+          const response = await fetch(`/api/measurements/${currentServerId}/photos/${encodeURIComponent(photo.id)}`, {
+            method: 'DELETE'
+          });
+          if (!response.ok) {
+            saveStatus.textContent = 'Impossible de supprimer la photo';
+            return;
+          }
+        }
         photos.splice(index, 1);
         renderPhotos();
       });
@@ -1630,13 +1639,31 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     });
   }
 
-  function fileToDataUrl(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
+  async function loadServerPhotos() {
+    if (!currentServerId) return;
+    const response = await fetch(`/api/measurements/${currentServerId}/photos`);
+    if (!response.ok) throw new Error('Photos serveur indisponibles');
+    const data = await response.json();
+    const legacyPhotos = photos.filter((photo) => photo && photo.dataUrl && !photo.id);
+    photos = legacyPhotos.concat(Array.isArray(data.photos) ? data.photos : []);
+    renderPhotos();
+  }
+
+  async function uploadServerPhotos(files) {
+    if (!files.length) return;
+    if (!currentServerId) await saveRecord();
+    if (!currentServerId) throw new Error('La fiche doit etre enregistree avant les photos');
+    const body = new FormData();
+    files.forEach((file) => body.append('photos', file, file.name));
+    const response = await fetch(`/api/measurements/${currentServerId}/photos`, {
+      method: 'POST',
+      body
     });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Envoi des photos impossible');
+    const legacyPhotos = photos.filter((photo) => photo && photo.dataUrl && !photo.id);
+    photos = legacyPhotos.concat(Array.isArray(result.photos) ? result.photos : []);
+    renderPhotos();
   }
 
   function getCheckboxValues(name) {
@@ -1706,7 +1733,11 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     const response = await fetch(`/api/measurements/${id}`);
     if (!response.ok) throw new Error('Fiche serveur introuvable');
     const data = await response.json();
-    applyFormData(data.measurement || {});
+    const localRecord = getStoredRecords().find((entry) => Number(entry.server_id || entry.id) === Number(id));
+    const serverRecord = data.measurement || {};
+    if (localRecord && Array.isArray(localRecord.photos)) serverRecord.photos = localRecord.photos;
+    applyFormData(serverRecord);
+    await loadServerPhotos();
   }
 
   async function prefillFromQuote(quoteId) {
@@ -1927,7 +1958,7 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
     }
   }
 
-  function loadRecord() {
+  async function loadRecord() {
     const records = getStoredRecords();
     if (!records.length) {
       saveStatus.textContent = 'Aucune fiche enregistrée';
@@ -1951,6 +1982,13 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
 
     form.reset();
     applyFormData(record);
+    if (currentServerId) {
+      try {
+        await loadServerPhotos();
+      } catch {
+        saveStatus.textContent = 'Fiche chargee - photos serveur indisponibles';
+      }
+    }
   }
 
   function resetForm() {
@@ -1979,16 +2017,15 @@ const STORAGE_KEY = 'outil-pme.escalier.measurements';
 
   photoInput.addEventListener('change', async (event) => {
     const files = Array.from(event.target.files || []);
-    const newPhotos = [];
-    for (const file of files) {
-      newPhotos.push({
-        name: file.name,
-        dataUrl: await fileToDataUrl(file),
-      });
-    }
-    photos = photos.concat(newPhotos);
-    renderPhotos();
     photoInput.value = '';
+    if (!files.length) return;
+    try {
+      saveStatus.textContent = 'Envoi des photos...';
+      await uploadServerPhotos(files);
+      saveStatus.textContent = `${files.length} photo(s) enregistree(s) sur le serveur`;
+    } catch (error) {
+      saveStatus.textContent = error.message || 'Envoi des photos impossible';
+    }
   });
 
   saveBtn.addEventListener('click', saveRecord);
