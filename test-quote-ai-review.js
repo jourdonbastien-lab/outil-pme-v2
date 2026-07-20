@@ -44,6 +44,16 @@ assert.strictEqual(mismatch.riskLevel, 'red');
 assert(mismatch.checks.some((check) => check.code === 'negative_line'));
 assert(mismatch.checks.some((check) => check.code === 'line_total_mismatch'));
 
+const automaticReview = reviewEngine.calculateAutomaticLineReview({
+  status: 'incomplete', reliability: 'incomplete', totalHT: 10000, lineSaleTotal: 10000,
+  counts: { total: 1, analyzed: 0, missing: 1 }, missingSaleHT: 10000,
+  materialCost: 0, subcontractingCost: 0, laborCost: 0, otherDetectedCost: 0, detectedCost: 0,
+  adjustmentsCost: 0, lines: [{ id: 1, label: 'Acier', category: 'matière acier', saleHT: 10000, cost: null, status: 'missing', significant: true }]
+}, {}, [{ id: 1, label: 'Acier' }]);
+assert.strictEqual(automaticReview.riskLevel, 'incomplete');
+assert(automaticReview.checks.some((check) => check.code === 'line_without_cost'));
+assert(automaticReview.checks.some((check) => check.code === 'material_without_cost'));
+
 (async () => {
   let called = false;
   const withoutKey = await reviewEngine.requestOpenAiInterpretation({
@@ -76,7 +86,7 @@ assert(mismatch.checks.some((check) => check.code === 'line_total_mismatch'));
   assert(server.includes('CREATE TABLE IF NOT EXISTS quote_ai_reviews'));
   assert(server.includes("app.post('/api/devis/:id/ai-review', requireLogin"));
   assert(server.includes("app.get('/api/devis/:id/ai-reviews', requireLogin"));
-  assert(server.includes('Analyser la rentabilité'));
+  assert(server.includes('Réanalyser le devis'));
   assert(server.includes('Cette analyse est une aide au contrôle'));
   const openAiPayloadStart = server.indexOf('const safePayload = {', server.indexOf('async function requestOpenAiQuoteReview'));
   const openAiPayloadEnd = server.indexOf('const controller = new AbortController()', openAiPayloadStart);

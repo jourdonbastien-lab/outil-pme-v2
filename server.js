@@ -1401,6 +1401,13 @@ function createSqliteTables(database) {
       unit TEXT NOT NULL,
       unit_price REAL NOT NULL,
       total REAL NOT NULL,
+      cost_unit REAL,
+      cost_total REAL,
+      margin_pct REAL,
+      hours REAL,
+      hourly_cost REAL,
+      cost_category TEXT,
+      cost_source TEXT,
       position INTEGER DEFAULT 0,
       created_at TEXT NOT NULL
     )
@@ -1484,6 +1491,11 @@ function createSqliteTables(database) {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_by INTEGER
+      ,analysis_json TEXT
+      ,manual_adjustments_json TEXT
+      ,reliability_level TEXT
+      ,analyzed_at TEXT
+      ,engine_version INTEGER
     )
   `).run();
   database.prepare('CREATE INDEX IF NOT EXISTS idx_quote_profitability_quote ON quote_profitability_forecasts(quote_id)').run();
@@ -1614,6 +1626,18 @@ function runSqliteMigrations(ensureColumn) {
   ensureColumn('quotes', 'heures_pose', 'REAL');
   ensureColumn('quotes', 'cout_horaire', 'REAL');
   ensureColumn('quotes', 'work_category', 'TEXT');
+  ensureColumn('quote_lines', 'cost_unit', 'REAL');
+  ensureColumn('quote_lines', 'cost_total', 'REAL');
+  ensureColumn('quote_lines', 'margin_pct', 'REAL');
+  ensureColumn('quote_lines', 'hours', 'REAL');
+  ensureColumn('quote_lines', 'hourly_cost', 'REAL');
+  ensureColumn('quote_lines', 'cost_category', 'TEXT');
+  ensureColumn('quote_lines', 'cost_source', 'TEXT');
+  ensureColumn('quote_profitability_forecasts', 'analysis_json', 'TEXT');
+  ensureColumn('quote_profitability_forecasts', 'manual_adjustments_json', 'TEXT');
+  ensureColumn('quote_profitability_forecasts', 'reliability_level', 'TEXT');
+  ensureColumn('quote_profitability_forecasts', 'analyzed_at', 'TEXT');
+  ensureColumn('quote_profitability_forecasts', 'engine_version', 'INTEGER');
   ensureColumn('client_orders', 'quote_id', 'INTEGER NULL');
   ensureColumn('client_orders', 'work_category', 'TEXT');
   ensureColumn('chantier_hours', 'category', "TEXT DEFAULT 'autre'");
@@ -10013,43 +10037,9 @@ const QUOTE_AI_COST_FIELDS = [
   'cout_motorisation', 'cout_accessoires', 'cout_transport', 'cout_consommables', 'cout_locations',
   'heures_etude', 'heures_atelier', 'heures_pose', 'cout_horaire'
 ];
-const QUOTE_PROFITABILITY_NUMBER_FIELDS = [
-  'material_cost', 'laser_cutting_cost', 'subcontracting_cost', 'galvanizing_cost', 'powder_coating_cost',
-  'motorization_cost', 'accessories_cost', 'transport_cost', 'consumables_cost', 'rental_cost', 'other_cost',
-  'study_hours', 'workshop_hours', 'installation_hours', 'transport_hours', 'sav_hours', 'hourly_cost'
-];
-
-function parseStoredCategories(value) {
-  try {
-    const parsed = JSON.parse(String(value || '[]'));
-    return Array.isArray(parsed) ? parsed.filter((item) => projectProfitability.WORK_CATEGORIES.includes(item)) : [];
-  } catch { return []; }
-}
-
-function profitabilityQuoteInput(quote, forecast) {
-  if (!forecast) return quote;
-  return {
-    ...quote,
-    cout_matiere: forecast.material_cost,
-    cout_decoupe_laser: forecast.laser_cutting_cost,
-    cout_sous_traitance: forecast.subcontracting_cost,
-    cout_galvanisation: forecast.galvanizing_cost,
-    cout_thermolaquage: forecast.powder_coating_cost,
-    cout_motorisation: forecast.motorization_cost,
-    cout_accessoires: forecast.accessories_cost,
-    cout_transport: forecast.transport_cost,
-    cout_consommables: forecast.consumables_cost,
-    cout_locations: forecast.rental_cost,
-    autres_couts: forecast.other_cost,
-    heures_etude: forecast.study_hours,
-    heures_atelier: forecast.workshop_hours,
-    heures_pose: forecast.installation_hours,
-    heures_transport: forecast.transport_hours,
-    heures_sav: forecast.sav_hours,
-    cout_horaire: forecast.hourly_cost,
-    cout_revient: null,
-    work_categories: parseStoredCategories(forecast.work_categories_json)
-  };
+function parseJsonArray(value) {
+  try { const parsed = JSON.parse(String(value || '[]')); return Array.isArray(parsed) ? parsed : []; }
+  catch { return []; }
 }
 
 function getQuoteProfitability(quoteId) {
@@ -10057,13 +10047,15 @@ function getQuoteProfitability(quoteId) {
   if (!quote) return null;
   const lines = db.prepare('SELECT * FROM quote_lines WHERE quote_id = ? ORDER BY position ASC, id ASC').all(quoteId);
   const saved = db.prepare('SELECT * FROM quote_profitability_forecasts WHERE quote_id = ?').get(quoteId) || null;
-  const lineTotal = lines.reduce((sum, line) => sum + Number(line.total || 0), 0);
-  const totalHT = round2(lineTotal * (1 + Number(quote.margin_pct || 0) / 100));
-  const input = profitabilityQuoteInput({ ...quote, total_ht: totalHT }, saved);
-  const calculations = projectProfitability.calculateForecast(input, lines);
+  const adjustments = parseJsonArray(saved?.manual_adjustments_json);
+  const calculations = projectProfitability.analyzeQuoteLines({ quote, lines, adjustments });
   return {
-    quote, lines, saved, input, calculations,
-    historicalCost: !saved && Number(quote.cout_revient) > 0 ? Number(quote.cout_revient) : null,
+    quote, lines, saved, input: quote, calculations,
+    historicalCost: Number(quote.cout_revient) > 0 ? Number(quote.cout_revient) : null,
+    historicalForecastCosts: saved ? {
+      materialCost: saved.material_cost, subcontractingCost: saved.subcontracting_cost,
+      laborCost: saved.labor_cost, totalCost: saved.total_cost_price
+    } : null,
     detectedCategories: projectProfitability.detectWorkCategories(quote, lines)
   };
 }
@@ -10075,7 +10067,8 @@ function profitabilityPublic(context) {
     calculations: context.calculations,
     historicalCost: context.historicalCost,
     detectedCategories: context.detectedCategories,
-    availableCategories: projectProfitability.WORK_CATEGORIES
+    availableCategories: projectProfitability.WORK_CATEGORIES,
+    lineCostCategories: projectProfitability.LINE_COST_CATEGORIES
   };
 }
 
@@ -10170,30 +10163,26 @@ app.post('/api/devis/:id/profitability', requireLogin, (req, res) => {
   if (!quoteId) return res.status(400).json({ success: false, error: 'ID devis invalide' });
   if (!db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)) return res.status(404).json({ success: false, error: 'Devis introuvable' });
   try {
-    const values = {};
-    for (const field of QUOTE_PROFITABILITY_NUMBER_FIELDS) {
-      const raw = req.body?.[field];
-      const value = raw === '' || raw === null || raw === undefined ? (field === 'hourly_cost' ? 55 : 0) : Number(String(raw).replace(',', '.'));
-      if (!Number.isFinite(value) || value < 0) throw new Error(`Valeur invalide : ${field}`);
-      values[field] = round2(value);
+    const requested = Array.isArray(req.body?.adjustments) ? req.body.adjustments : [];
+    const adjustments = requested.slice(0, 50).map((item, index) => {
+      const amount = Number(String(item?.amount ?? '').replace(',', '.'));
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error(`Montant invalide pour l’ajustement ${index + 1}`);
+      return { id: String(item.id || crypto.randomUUID()), label: String(item.label || '').trim() || 'Ajustement manuel',
+        type: projectProfitability.LINE_COST_CATEGORIES.includes(item.type) ? item.type : 'divers', amount: round2(amount), lineId: parseOptionalId(item.lineId) };
+    });
+    const lines = db.prepare('SELECT * FROM quote_lines WHERE quote_id = ?').all(quoteId);
+    for (const adjustment of adjustments) {
+      if (adjustment.lineId && lines.some((line) => line.id === adjustment.lineId && (line.cost_total != null || line.cost_unit != null))) {
+        throw new Error('Un ajustement ne peut pas doubler le coût déjà enregistré d’une ligne.');
+      }
     }
-    const categories = Array.from(new Set((Array.isArray(req.body?.work_categories) ? req.body.work_categories : [req.body?.work_categories])
-      .filter((item) => projectProfitability.WORK_CATEGORIES.includes(item))));
-    const directCosts = round2(['material_cost', 'laser_cutting_cost', 'subcontracting_cost', 'galvanizing_cost', 'powder_coating_cost', 'motorization_cost', 'accessories_cost', 'transport_cost', 'consumables_cost', 'rental_cost', 'other_cost'].reduce((sum, field) => sum + values[field], 0));
-    const totalHours = round2(['study_hours', 'workshop_hours', 'installation_hours', 'transport_hours', 'sav_hours'].reduce((sum, field) => sum + values[field], 0));
-    const laborCost = round2(totalHours * values.hourly_cost);
-    const totalCost = round2(directCosts + laborCost);
     const now = new Date().toISOString();
     db.prepare(`
-      INSERT INTO quote_profitability_forecasts
-        (quote_id, ${QUOTE_PROFITABILITY_NUMBER_FIELDS.join(', ')}, direct_costs, labor_cost, total_cost_price, work_categories_json, notes, created_at, updated_at, updated_by)
-      VALUES (?, ${QUOTE_PROFITABILITY_NUMBER_FIELDS.map(() => '?').join(', ')}, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(quote_id) DO UPDATE SET
-        ${QUOTE_PROFITABILITY_NUMBER_FIELDS.map((field) => `${field}=excluded.${field}`).join(', ')},
-        direct_costs=excluded.direct_costs, labor_cost=excluded.labor_cost, total_cost_price=excluded.total_cost_price,
-        work_categories_json=excluded.work_categories_json, notes=excluded.notes, updated_at=excluded.updated_at, updated_by=excluded.updated_by
-    `).run(quoteId, ...QUOTE_PROFITABILITY_NUMBER_FIELDS.map((field) => values[field]), directCosts, laborCost, totalCost,
-      JSON.stringify(categories), String(req.body?.notes || '').trim(), now, now, parseOptionalId(req.session?.user?.id));
+      INSERT INTO quote_profitability_forecasts (quote_id, manual_adjustments_json, notes, created_at, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(quote_id) DO UPDATE SET manual_adjustments_json=excluded.manual_adjustments_json,
+        notes=excluded.notes, updated_at=excluded.updated_at, updated_by=excluded.updated_by
+    `).run(quoteId, JSON.stringify(adjustments), String(req.body?.notes || '').trim(), now, now, parseOptionalId(req.session?.user?.id));
     return res.json({ success: true, profitability: profitabilityPublic(getQuoteProfitability(quoteId)) });
   } catch (error) {
     return res.status(400).json({ success: false, error: error.message || 'Chiffrage invalide' });
@@ -10208,14 +10197,7 @@ async function runQuoteProfitabilityAnalysis(req, res) {
   const context = getQuoteProfitability(quoteId);
   if (!context) return res.status(404).json({ success: false, error: 'Devis introuvable' });
   const { quote, lines, input, calculations: profitability } = context;
-  const deterministic = quoteAiReview.calculateQuoteReview(input, lines);
-  deterministic.riskLevel = profitability.riskLevel;
-  deterministic.summary = { ...deterministic.summary, totalHT: profitability.totalHT, costPrice: profitability.costSource === 'missing' ? null : profitability.forecastCost,
-    costSource: profitability.costSource, directCosts: round2(profitability.forecastCost - profitability.laborCost), laborCost: profitability.laborCost,
-    hours: profitability.hours, totalHours: profitability.hours.total, hourlyCost: profitability.hourlyCost, marginAmount: profitability.margin,
-    marginOnCost: profitability.marginOnCost, marginOnSale: profitability.marginOnSale, breakdown: profitability.breakdown,
-    minimumPrice: profitability.minimumPrice, targetPrice: profitability.targetPrice, comfortablePrice: profitability.comfortablePrice,
-    workCategories: profitability.categories };
+  const deterministic = quoteAiReview.calculateAutomaticLineReview(profitability, quote, lines);
   let aiResult = { used: false, message: 'Analyse automatique effectuée sans interprétation IA.' };
   try { aiResult = await requestOpenAiQuoteReview(input, lines, deterministic); }
   catch (error) { console.error('Erreur analyse IA devis:', error?.message || error); aiResult = { used: false, message: 'Interprétation IA indisponible. Les contrôles automatiques restent valides.' }; }
@@ -10226,6 +10208,12 @@ async function runQuoteProfitabilityAnalysis(req, res) {
     recommendation: aiReview.recommendation || deterministic.recommendation };
   const createdAt = new Date().toISOString();
   const createdBy = parseOptionalId(req.session?.user?.id);
+  db.prepare(`INSERT INTO quote_profitability_forecasts
+    (quote_id, analysis_json, reliability_level, analyzed_at, engine_version, created_at, updated_at, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(quote_id) DO UPDATE SET analysis_json=excluded.analysis_json, reliability_level=excluded.reliability_level,
+      analyzed_at=excluded.analyzed_at, engine_version=excluded.engine_version, updated_at=excluded.updated_at, updated_by=excluded.updated_by`
+  ).run(quoteId, JSON.stringify(profitability), profitability.reliability, createdAt, profitability.engineVersion, createdAt, createdAt, createdBy);
   const info = db.prepare(`INSERT INTO quote_ai_reviews
     (quote_id, risk_level, total_ht, cost_price, margin_amount, margin_on_cost, margin_on_sale, checks_json, ai_response_json, model_name, created_at, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(quoteId, review.riskLevel, review.summary.totalHT, review.summary.costPrice,
@@ -10438,27 +10426,34 @@ const photosHtml = photos.map(photo => {
           <header class="quote-ai-review-head">
             <span class="quote-ai-review-icon" aria-hidden="true">${clientPageIcon('search')}</span>
             <div><h2>Rentabilité prévisionnelle</h2><p>Calculs financiers serveur et points de vigilance métier.</p></div>
-            <span class="quote-ai-risk-badge is-${profitabilityForecast.riskLevel}" data-ai-risk>${profitabilityForecast.riskLevel === 'incomplete' ? 'Données incomplètes' : profitabilityForecast.critical ? 'Rouge critique' : profitabilityForecast.riskLevel === 'green' ? 'Vert' : profitabilityForecast.riskLevel === 'orange' ? 'Orange' : 'Rouge'}</span>
+            <span class="quote-ai-risk-badge is-${profitabilityForecast.status}" data-ai-risk>${profitabilityForecast.status === 'incomplete' ? 'Données incomplètes' : profitabilityForecast.critical ? 'Rouge critique' : profitabilityForecast.status === 'green' ? 'Vert' : profitabilityForecast.status === 'orange' ? 'Orange' : 'Rouge'}</span>
           </header>
           <div class="profitability-overview">
             ${[
               ['Prix de vente HT', profitabilityForecast.totalHT, 'money'],
-              ['Coûts directs', profitabilityForecast.costSource === 'missing' ? null : profitabilityForecast.forecastCost - profitabilityForecast.laborCost, 'optionalMoney'],
-              ['Main-d’œuvre', profitabilityForecast.hours.total > 0 ? profitabilityForecast.laborCost : null, 'optionalMoney'],
-              ['Coût de revient', profitabilityForecast.costSource === 'missing' ? null : profitabilityForecast.forecastCost, 'optionalMoney'],
+              ['Coût matière détecté', profitabilityForecast.materialCost, 'money'],
+              ['Sous-traitance détectée', profitabilityForecast.subcontractingCost, 'money'],
+              ['Main-d’œuvre détectée', profitabilityForecast.laborCost, 'money'],
+              ['Autres coûts détectés', profitabilityForecast.otherDetectedCost, 'money'],
+              ['Ajustements manuels', profitabilityForecast.adjustmentsCost, 'money'],
+              ['Coût total prévisionnel', profitabilityForecast.totalCost, 'money'],
               ['Marge prévisionnelle', profitabilityForecast.margin, 'optionalMoney'],
               ['Marge sur coût', profitabilityForecast.marginOnCost, 'percent'],
               ['Marge sur vente', profitabilityForecast.marginOnSale, 'percent'],
-              ['Heures prévues', profitabilityForecast.hours.total, 'hours'],
-              ['Catégories d’ouvrage', profitabilityForecast.categories.join(', '), 'text']
+              ['Niveau de fiabilité', ({complete:'Complet',partial:'Partiel',incomplete:'Incomplet'})[profitabilityForecast.reliability], 'text'],
+              ['Lignes sans coût', `${profitabilityForecast.counts.missing} / ${profitabilityForecast.counts.total}`, 'text'],
+              ['Vente sans coût associé', profitabilityForecast.missingSaleHT, 'money']
             ].map(([label, value, type]) => `<div data-profitability-metric="${escHtml(label)}"><span>${label}</span><strong>${type === 'money' ? formatEuroFr(value) : type === 'optionalMoney' ? (value == null ? 'Non renseigné' : formatEuroFr(value)) : type === 'percent' ? (value == null ? 'Non calculable' : `${Number(value).toFixed(2)} %`) : type === 'hours' ? `${Number(value).toFixed(2)} h` : escHtml(value)}</strong></div>`).join('')}
           </div>
+          <section class="profitability-line-analysis"><h3>Analyse des lignes du devis</h3><div class="profitability-line-table" role="table">
+            ${profitabilityForecast.lines.map((line) => `<article class="profitability-line-row is-${line.status}" role="row"><div><span>Libellé</span><strong>${escHtml(line.label || 'Sans libellé')}</strong></div><div><span>Catégorie</span><strong>${escHtml(line.category)}</strong></div><div><span>Vente HT</span><strong>${formatEuroFr(line.saleHT)}</strong></div><div><span>Coût détecté</span><strong>${line.cost == null ? 'Coût non renseigné' : formatEuroFr(line.cost)}</strong></div><div><span>Marge</span><strong>${line.margin == null ? 'Non calculable' : formatEuroFr(line.margin)}</strong></div><div><span>Statut</span><strong>${line.status === 'missing' ? 'À compléter' : line.status === 'loss' ? 'Déficitaire' : 'Analysée'}</strong><small>${escHtml(line.origin)}</small></div></article>`).join('') || '<p class="profitability-empty">Aucune ligne à analyser.</p>'}
+          </div></section>
           <div class="profitability-price-targets">
             ${[[20, 'minimum', profitabilityForecast.minimumPrice], [30, 'conseillé', profitabilityForecast.targetPrice], [35, 'confortable', profitabilityForecast.comfortablePrice]].map(([rate, label, price]) => `<div><span>Prix ${label} — marge ${rate} %</span><strong>${price == null ? 'Non calculable' : formatEuroFr(price)}</strong><small>${price == null ? 'Chiffrage requis.' : totalWithMargin >= price ? `Votre prix actuel est supérieur de ${formatEuroFr(totalWithMargin - price)}.` : `Il manque ${formatEuroFr(price - totalWithMargin)} pour atteindre cet objectif.`}</small></div>`).join('')}
           </div>
           <div class="quote-ai-actions">
-            <button type="button" class="modern-secondary-btn" data-profitability-edit>${profitabilitySaved ? 'Modifier le chiffrage' : 'Renseigner le chiffrage'}</button>
-            <button type="button" class="clients-submit-btn" data-ai-analyze>Analyser la rentabilité</button>
+            <button type="button" class="modern-secondary-btn" data-profitability-edit>Ajustements manuels</button>
+            <button type="button" class="clients-submit-btn" data-ai-analyze>Réanalyser le devis</button>
             <button type="button" class="modern-secondary-btn" data-ai-history>Afficher l’historique</button>
           </div>
           <p class="quote-ai-status" data-ai-status>Aucune analyse chargée.</p>
@@ -10473,16 +10468,14 @@ const photosHtml = photos.map(photo => {
           <div class="quote-ai-history" data-ai-history-list hidden></div>
           <div class="quote-profitability-editor" data-profitability-editor hidden>
             <form class="quote-profitability-form" data-profitability-form>
-              <section><h3>Coûts directs</h3><div class="quote-ai-cost-form">${[
-                ['material_cost','Matière'],['laser_cutting_cost','Découpe laser'],['subcontracting_cost','Sous-traitance'],['galvanizing_cost','Galvanisation'],['powder_coating_cost','Thermolaquage'],['motorization_cost','Motorisation'],['accessories_cost','Accessoires'],['transport_cost','Transport'],['consumables_cost','Consommables'],['rental_cost','Location de matériel'],['other_cost','Autres coûts']
-              ].map(([name,label]) => `<label><span>${label}</span><input type="number" min="0" step="0.01" inputmode="decimal" name="${name}" value="${profitabilitySaved ? escHtml(String(profitabilitySaved[name] || '')) : ''}"></label>`).join('')}</div></section>
-              <section><h3>Main-d’œuvre</h3><div class="quote-ai-cost-form">${[
-                ['study_hours','Heures d’étude'],['workshop_hours','Heures atelier'],['installation_hours','Heures de pose'],['transport_hours','Heures transport / manutention'],['sav_hours','Heures de SAV prévues'],['hourly_cost','Coût horaire (€ / h)']
-              ].map(([name,label]) => `<label><span>${label}</span><input type="number" min="0" step="0.01" inputmode="decimal" name="${name}" value="${profitabilitySaved ? escHtml(String(profitabilitySaved[name] ?? '')) : name === 'hourly_cost' ? '55' : ''}"></label>`).join('')}</div></section>
-              <fieldset class="profitability-categories"><legend>Catégories d’ouvrage</legend>${projectProfitability.WORK_CATEGORIES.map((category) => `<label><input type="checkbox" name="work_categories" value="${escHtml(category)}" ${(profitabilityForecast.categories || []).includes(category) ? 'checked' : ''}><span>${escHtml(category)}</span></label>`).join('')}</fieldset>
-              ${profitabilityContext.historicalCost ? `<p class="profitability-legacy">Coût historique disponible : ${formatEuroFr(profitabilityContext.historicalCost)}. Il n’a pas été importé automatiquement.</p>` : ''}
+              <section class="profitability-adjustments"><h3>Ajustements manuels</h3><p>Ajoutez uniquement un coût absent des lignes du devis. Les coûts détectés automatiquement ne sont jamais remplacés.</p>
+                <div data-adjustment-list>${parseJsonArray(profitabilitySaved?.manual_adjustments_json).map((item) => `<div class="profitability-adjustment-row" data-adjustment-row><label><span>Type</span><select data-adjustment-type>${projectProfitability.LINE_COST_CATEGORIES.map((type) => `<option value="${escHtml(type)}" ${item.type === type ? 'selected' : ''}>${escHtml(type)}</option>`).join('')}</select></label><label><span>Libellé</span><input data-adjustment-label value="${escHtml(item.label || '')}" required></label><label><span>Montant HT</span><input data-adjustment-amount type="number" min="0.01" step="0.01" inputmode="decimal" value="${escHtml(String(item.amount || ''))}" required></label><button type="button" class="modern-danger-btn" data-adjustment-remove>Supprimer</button></div>`).join('')}</div>
+                <template data-adjustment-template><div class="profitability-adjustment-row" data-adjustment-row><label><span>Type</span><select data-adjustment-type>${projectProfitability.LINE_COST_CATEGORIES.map((type) => `<option value="${escHtml(type)}">${escHtml(type)}</option>`).join('')}</select></label><label><span>Libellé</span><input data-adjustment-label required></label><label><span>Montant HT</span><input data-adjustment-amount type="number" min="0.01" step="0.01" inputmode="decimal" required></label><button type="button" class="modern-danger-btn" data-adjustment-remove>Supprimer</button></div></template>
+                <button type="button" class="modern-secondary-btn" data-adjustment-add>Ajouter un ajustement</button>
+              </section>
+              ${(profitabilityContext.historicalCost || profitabilityContext.historicalForecastCosts?.totalCost) ? `<p class="profitability-legacy">Ancienne donnée globale disponible (${formatEuroFr(profitabilityContext.historicalForecastCosts?.totalCost || profitabilityContext.historicalCost)}). Conservée pour l’historique, elle n’est pas ajoutée au calcul automatique.</p>` : ''}
               <label class="profitability-notes"><span>Notes</span><textarea name="notes" rows="3">${escHtml(profitabilitySaved?.notes || '')}</textarea></label>
-              <div class="quote-ai-actions"><button class="clients-submit-btn" type="submit">Enregistrer et recalculer</button><button class="modern-secondary-btn" type="button" data-profitability-cancel>Annuler</button></div>
+              <div class="quote-ai-actions"><button class="clients-submit-btn" type="submit">Enregistrer les ajustements</button><button class="modern-secondary-btn" type="button" data-profitability-cancel>Annuler</button></div>
               <p class="quote-ai-status" data-profitability-status></p>
             </form>
           </div>
@@ -10556,11 +10549,16 @@ const photosHtml = photos.map(photo => {
           historyButton.addEventListener('click', function () { loadHistory(true); });
           editButton.addEventListener('click', function () { editor.hidden = false; editButton.disabled = true; editor.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
           root.querySelector('[data-profitability-cancel]').addEventListener('click', function () { editor.hidden = true; editButton.disabled = false; });
+          var adjustmentList = root.querySelector('[data-adjustment-list]'); var adjustmentTemplate = root.querySelector('[data-adjustment-template]');
+          function bindAdjustmentRow(row) { var remove = row.querySelector('[data-adjustment-remove]'); if (remove) remove.addEventListener('click', function () { row.remove(); }); }
+          adjustmentList.querySelectorAll('[data-adjustment-row]').forEach(bindAdjustmentRow);
+          root.querySelector('[data-adjustment-add]').addEventListener('click', function () { var row = adjustmentTemplate.content.firstElementChild.cloneNode(true); adjustmentList.appendChild(row); bindAdjustmentRow(row); row.querySelector('input').focus(); });
           profitabilityForm.addEventListener('submit', async function (event) {
             event.preventDefault();
             var submit = profitabilityForm.querySelector('[type="submit"]'); var formStatus = root.querySelector('[data-profitability-status]');
             submit.disabled = true; formStatus.textContent = 'Enregistrement…';
-            var body = {}; new FormData(profitabilityForm).forEach(function (value, key) { if (key === 'work_categories') { (body[key] ||= []).push(value); } else body[key] = value; });
+            var body = { notes: new FormData(profitabilityForm).get('notes') || '', adjustments: [] };
+            adjustmentList.querySelectorAll('[data-adjustment-row]').forEach(function (row) { body.adjustments.push({ type: row.querySelector('[data-adjustment-type]').value, label: row.querySelector('[data-adjustment-label]').value, amount: row.querySelector('[data-adjustment-amount]').value }); });
             try { var response = await fetch('/api/devis/' + quoteId + '/profitability', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); var data = await response.json(); if (!response.ok || !data.success) throw new Error(data.error || 'Enregistrement impossible'); location.reload(); }
             catch (error) { formStatus.textContent = error.message || 'Enregistrement impossible'; submit.disabled = false; }
           });
@@ -10595,6 +10593,9 @@ const photosHtml = photos.map(photo => {
               <form method="POST" action="/devis/line" class="quote-line-modern-form" id="quickMatForm">
           <input type="hidden" name="quote_id" value="${id}">
           <input type="hidden" name="category" value="Matière">
+          <input type="hidden" name="cost_category" id="quickMatCostCategory" value="matière acier">
+          <input type="hidden" name="cost_unit" id="quickMatCostUnit" value="">
+          <input type="hidden" name="cost_source" value="répertoire matières">
 
           <div class="quote-line-form-grid">
             <div class="modern-field field-wide">
@@ -10695,6 +10696,8 @@ const summaryName = document.getElementById('quickMatSummaryName');
 const summaryUnit = document.getElementById('quickMatSummaryUnit');
 const summaryPrice = document.getElementById('quickMatSummaryPrice');
 const summaryTotal = document.getElementById('quickMatSummaryTotal');
+const costUnit = document.getElementById('quickMatCostUnit');
+const costCategory = document.getElementById('quickMatCostCategory');
 
 if (!label || !unit || !pu) return;
 
@@ -10739,6 +10742,7 @@ function sync(){
   const found = MAT_INDEX.get(k);
 
   if (!found) {
+    if (costUnit) costUnit.value = '';
     updateMaterialSummary(null);
     return;
   }
@@ -10748,6 +10752,11 @@ function sync(){
   }
 
   if (Number.isFinite(found.price) && found.price > 0){
+    if (costUnit) costUnit.value = found.price.toFixed(2);
+    if (costCategory) {
+      const descriptor = (found.type + ' ' + found.name).toLowerCase();
+      costCategory.value = descriptor.includes('inox') ? 'inox' : descriptor.includes('alu') ? 'aluminium' : descriptor.includes('bois') ? 'bois' : 'matière acier';
+    }
 
     const m = Number(margin?.value || 0);
 
@@ -11190,13 +11199,16 @@ function printPlan() {
         <label>Type</label>
         <div class="clients-input-shell">
           ${clientPageIcon('database')}
-        <select id="prest_type" required>
-          <option value="Main d’œuvre">Main d’œuvre</option>
-          <option value="Pose">Pose</option>
-          <option value="Laser">Laser</option>
-          <option value="Galvanisation">Galvanisation</option>
-          <option value="Thermolaquage">Thermolaquage</option>
-          <option value="Matières">Matières</option>
+        <select id="prest_type" name="cost_category" required>
+          <option value="main-d’œuvre atelier">Main d’œuvre atelier</option>
+          <option value="main-d’œuvre pose">Pose</option>
+          <option value="sous-traitance">Laser / sous-traitance</option>
+          <option value="galvanisation">Galvanisation</option>
+          <option value="thermolaquage">Thermolaquage</option>
+          <option value="matière acier">Matières</option>
+          <option value="motorisation">Motorisation</option>
+          <option value="déplacement">Déplacement</option>
+          <option value="location">Location</option>
         </select>
         </div>
       </div>
@@ -11234,7 +11246,7 @@ function printPlan() {
         <label>Coût unitaire (€)</label>
         <div class="clients-input-shell">
           ${clientPageIcon('postal')}
-        <input id="prest_cost" type="number" step="0.01" value="0" required />
+        <input id="prest_cost" name="cost_unit" type="number" step="0.01" value="0" required />
         </div>
       </div>
 
@@ -11242,7 +11254,7 @@ function printPlan() {
         <label>Marge (%)</label>
         <div class="clients-input-shell">
           ${clientPageIcon('add')}
-        <input id="prest_margin" type="number" step="0.1" value="0" />
+        <input id="prest_margin" name="margin_pct" type="number" step="0.1" value="0" />
         </div>
       </div>
 
@@ -11661,6 +11673,8 @@ app.get('/devis/line/:id/edit', requireLogin, (req, res) => {
       <input name="label" value="${line.label}">
       <input name="qty" value="${line.qty}">
       <input name="unit_price" value="${line.unit_price}">
+      <label>Coût unitaire interne <input name="cost_unit" type="number" min="0" step="0.01" value="${line.cost_unit == null ? '' : line.cost_unit}"></label>
+      <label>Catégorie de coût <select name="cost_category"><option value="">Détection automatique</option>${projectProfitability.LINE_COST_CATEGORIES.map((category) => `<option value="${escHtml(category)}" ${line.cost_category === category ? 'selected' : ''}>${escHtml(category)}</option>`).join('')}</select></label>
 
       <button type="submit">
         Enregistrer
@@ -11678,6 +11692,11 @@ app.post('/devis/line/:id/edit', requireLogin, (req, res) => {
 
   const qty = Number(req.body.qty || 0);
   const pu = Number(req.body.unit_price || 0);
+  const costUnitRaw = String(req.body.cost_unit ?? '').trim();
+  const costUnit = costUnitRaw === '' ? null : Number(costUnitRaw.replace(',', '.'));
+  const costCategory = String(req.body.cost_category || '').trim();
+  if (costUnit !== null && (!Number.isFinite(costUnit) || costUnit < 0)) return res.status(400).send('Coût unitaire invalide');
+  if (costCategory && !projectProfitability.LINE_COST_CATEGORIES.includes(costCategory)) return res.status(400).send('Catégorie de coût invalide');
 
   db.prepare(`
     UPDATE quote_lines
@@ -11685,13 +11704,19 @@ app.post('/devis/line/:id/edit', requireLogin, (req, res) => {
       label = ?,
       qty = ?,
       unit_price = ?,
-      total = ?
+      total = ?,
+      cost_unit = ?,
+      cost_category = ?,
+      cost_source = ?
     WHERE id = ?
   `).run(
     req.body.label,
     qty,
     pu,
     qty * pu,
+    costUnit,
+    costCategory || null,
+    costUnit === null ? null : 'modification de la ligne',
     req.params.id
   );
 
@@ -11721,19 +11746,29 @@ app.post('/devis/line', requireLogin, (req, res) => {
   const unit = String(req.body.unit || '').trim();
   const qty = Number(req.body.qty || 0);
   const unit_price = Number(req.body.unit_price || 0);
+  const costUnitRaw = String(req.body.cost_unit ?? '').trim();
+  const costUnit = costUnitRaw === '' ? null : Number(costUnitRaw.replace(',', '.'));
+  const lineMarginRaw = String(req.body.margin_pct ?? '').trim();
+  const lineMargin = lineMarginRaw === '' ? null : Number(lineMarginRaw.replace(',', '.'));
+  const costCategory = String(req.body.cost_category || '').trim();
+  const costSource = String(req.body.cost_source || (costUnit !== null ? 'saisie de la ligne' : '')).trim();
 
   if (!quote_id || !label || !unit || !Number.isFinite(qty) || !Number.isFinite(unit_price) || qty <= 0 || unit_price <= 0) {
     return res.status(400).send('Données ligne invalides');
   }
+  if ((costUnit !== null && (!Number.isFinite(costUnit) || costUnit < 0)) || (lineMargin !== null && !Number.isFinite(lineMargin))) return res.status(400).send('Coût ou marge de ligne invalide');
 
   const total = round2(qty * unit_price);
 
   db.prepare(
     `
-    INSERT INTO quote_lines (quote_id, category, label, qty, unit, unit_price, total, position, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO quote_lines (quote_id, category, label, qty, unit, unit_price, total, cost_unit, margin_pct, hours, hourly_cost, cost_category, cost_source, position, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
-  ).run(quote_id, category || null, label, qty, unit, unit_price, total, 0, new Date().toISOString());
+  ).run(quote_id, category || null, label, qty, unit, unit_price, total, costUnit, lineMargin,
+    ['h', 'heure', 'heures'].includes(unit.toLowerCase()) ? qty : null,
+    ['h', 'heure', 'heures'].includes(unit.toLowerCase()) ? costUnit : null,
+    costCategory || null, costSource || null, 0, new Date().toISOString());
 
   res.redirect('/devis/' + quote_id);
 });
@@ -11801,10 +11836,11 @@ app.post('/devis/line/material', requireLogin, (req, res) => {
 
   db.prepare(
     `
-    INSERT INTO quote_lines (quote_id, category, label, qty, unit, unit_price, total, position, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO quote_lines (quote_id, category, label, qty, unit, unit_price, total, cost_unit, cost_category, cost_source, position, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
-  ).run(quote_id, category || null, label, qty, unit, unit_price, total, 0, new Date().toISOString());
+  ).run(quote_id, category || null, label, qty, unit, unit_price, total, unit_price,
+    projectProfitability.detectLineCostCategory({ category, label }), 'répertoire matières', 0, new Date().toISOString());
 
   res.redirect('/devis/' + quote_id);
 });

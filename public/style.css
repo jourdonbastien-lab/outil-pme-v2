@@ -8315,6 +8315,21 @@ body.sketchpad-drawing{
 .profitability-notes span{display:block;margin-bottom:6px;font-weight:800;color:#475569;}
 .profitability-notes textarea{width:100%;padding:12px;border:1px solid #d8dde6;border-radius:12px;font:inherit;resize:vertical;}
 .profitability-legacy{margin:0;padding:12px;border-radius:12px;background:#fff7ed;color:#9a3412;font-weight:750;}
+.profitability-line-analysis{margin-top:18px;}
+.profitability-line-analysis h3{margin:0 0 10px;color:#172554;font-size:16px;}
+.profitability-line-table{display:grid;gap:8px;}
+.profitability-line-row{display:grid;grid-template-columns:1.5fr repeat(5,minmax(100px,1fr));gap:10px;padding:12px;border:1px solid #e2e8f0;border-radius:14px;background:#fff;}
+.profitability-line-row.is-missing{border-color:#fdba74;background:#fff7ed;}
+.profitability-line-row.is-loss{border-color:#fca5a5;background:#fef2f2;}
+.profitability-line-row span,.profitability-line-row small{display:block;color:#64748b;font-size:11px;font-weight:800;}
+.profitability-line-row strong{display:block;margin-top:4px;overflow-wrap:anywhere;font-size:13px;}
+.profitability-line-row small{margin-top:4px;line-height:1.35;}
+.profitability-adjustments{grid-column:1/-1!important;}
+.profitability-adjustments>p{color:#64748b;line-height:1.5;}
+.profitability-adjustment-row{display:grid;grid-template-columns:1fr 1.6fr 1fr auto;gap:10px;align-items:end;margin-bottom:10px;padding:12px;border:1px solid #e2e8f0;border-radius:14px;background:#f8fafc;}
+.profitability-adjustment-row label span{display:block;margin-bottom:5px;color:#475569;font-size:12px;font-weight:800;}
+.profitability-adjustment-row input,.profitability-adjustment-row select{width:100%;min-width:0;min-height:48px;padding:9px 10px;border:1px solid #d8dde6;border-radius:11px;background:#fff;font:inherit;}
+.profitability-adjustment-row button{min-height:48px;}
 .project-profitability-card{margin-top:18px;}
 .modern-section-title p{margin:4px 0 0;color:#667085;}
 .project-profitability-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px;}
@@ -8354,6 +8369,9 @@ body.sketchpad-drawing{
   .quote-profitability-editor{padding:12px;margin-left:-3px;margin-right:-3px;}
   .quote-profitability-form section{padding:12px;}
   .quote-profitability-form input,.quote-profitability-form textarea{min-height:48px;}
+  .profitability-line-row{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .profitability-adjustment-row{grid-template-columns:minmax(0,1fr);}
+  .profitability-adjustment-row button{width:100%;}
   .quote-ai-cost-form button{width:100%;}
   .profitability-overview,.profitability-price-targets,.project-profitability-columns,.project-profitability-metrics,.project-profitability-variances,.profitability-cost-form{grid-template-columns:minmax(0,1fr);}
   .profitability-cost-row{grid-template-columns:minmax(0,1fr);}

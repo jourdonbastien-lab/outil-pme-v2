@@ -54,6 +54,41 @@ assert.strictEqual(requestedExample.comfortablePrice, 21538.46);
 const multipleCategories = profitability.calculateForecast({ title: 'Clôture avec portail motorisé et portillon', cout_revient: 100 }, lines(1000));
 assert.deepStrictEqual(multipleCategories.categories, ['portillon', 'portail', 'clôture', 'motorisation']);
 
+const automaticComplete = profitability.analyzeQuoteLines({ lines: [
+  { id: 1, category: 'Matière', label: 'Acier', qty: 1, unit: 'forfait', unit_price: 12000, total: 12000, cost_total: 8000 },
+  { id: 2, category: 'Sous-traitance', label: 'Découpe laser', qty: 1, unit: 'forfait', unit_price: 4000, total: 4000, cost_total: 2000 },
+  { id: 3, category: 'Prestation', cost_category: 'main-d’œuvre atelier', label: 'Fabrication atelier', qty: 1, unit: 'forfait', unit_price: 5404.70, total: 5404.70, cost_total: 4000 }
+] });
+assert.strictEqual(automaticComplete.totalHT, 21404.70);
+assert.strictEqual(automaticComplete.materialCost, 8000);
+assert.strictEqual(automaticComplete.subcontractingCost, 2000);
+assert.strictEqual(automaticComplete.laborCost, 4000);
+assert.strictEqual(automaticComplete.totalCost, 14000);
+assert.strictEqual(automaticComplete.margin, 7404.70);
+assert.strictEqual(automaticComplete.marginOnCost, 52.89);
+assert.strictEqual(automaticComplete.marginOnSale, 34.59);
+assert.strictEqual(automaticComplete.reliability, 'complete');
+
+const automaticMissing = profitability.analyzeQuoteLines({ lines: [{ id: 4, category: 'Matière', label: 'Acier sans achat', qty: 1, unit: 'forfait', unit_price: 10000, total: 10000 }] });
+assert.strictEqual(automaticMissing.status, 'incomplete');
+assert.strictEqual(automaticMissing.margin, null);
+assert.strictEqual(automaticMissing.marginOnSale, null);
+assert.strictEqual(automaticMissing.counts.missing, 1);
+
+const automaticLabor = profitability.analyzeQuoteLines({ lines: [{ id: 5, category: 'Prestation', label: 'Main d’œuvre atelier', qty: 20, unit: 'h', unit_price: 90, total: 1800 }] });
+assert.strictEqual(automaticLabor.laborCost, 1100);
+assert.strictEqual(automaticLabor.lines[0].origin, 'heures × coût horaire interne par défaut');
+
+const noDuplicateAdjustment = profitability.analyzeQuoteLines({
+  lines: [{ id: 6, category: 'Matière', label: 'Acier', qty: 1, unit: 'u', unit_price: 200, total: 200, cost_unit: 100 }],
+  adjustments: [{ id: 'duplicate', lineId: 6, type: 'matière acier', label: 'Même acier', amount: 100 }]
+});
+assert.strictEqual(noDuplicateAdjustment.adjustmentsCost, 0);
+assert.strictEqual(noDuplicateAdjustment.totalCost, 100);
+
+const legacyIgnored = profitability.analyzeQuoteLines({ quote: { cout_revient: 9999 }, lines: [{ id: 7, label: 'Ligne historique', qty: 1, unit: 'u', unit_price: 500, total: 500, cost_unit: 200 }] });
+assert.strictEqual(legacyIgnored.totalCost, 200, 'un ancien coût global ne doit pas être ajouté à l’analyse des lignes');
+
 const quoteBefore = JSON.stringify(detailed);
 const lineBefore = JSON.stringify(lines(10000));
 const snapshot = profitability.buildForecastSnapshot({ id: 8, ...detailed }, lines(10000));
@@ -99,10 +134,16 @@ assert(server.includes("app.get('/api/orders/:id/profitability', requireLogin"))
 assert(server.includes("app.get('/api/devis/:id/profitability', requireLogin"));
 assert(server.includes("app.post('/api/devis/:id/profitability', requireLogin"));
 assert(server.includes("app.post('/api/devis/:id/profitability/analyze', requireLogin"));
+for (const column of ['analysis_json', 'manual_adjustments_json', 'reliability_level', 'analyzed_at', 'engine_version']) {
+  assert(server.includes(`ensureColumn('quote_profitability_forecasts', '${column}'`), `migration absente: ${column}`);
+}
+for (const column of ['cost_unit', 'cost_total', 'margin_pct', 'hours', 'hourly_cost', 'cost_category', 'cost_source']) {
+  assert(server.includes(`ensureColumn('quote_lines', '${column}'`), `migration ligne absente: ${column}`);
+}
 assert(server.includes("app.post('/api/orders/:id/actual-costs', requireLogin"));
 assert(server.includes('Rentabilité prévisionnelle'));
 assert(server.includes('Rentabilité du chantier'));
-assert(server.includes('Analyser la rentabilité'));
+assert(server.includes('Réanalyser le devis'));
 assert(server.includes('idx_project_actual_costs_supplier_invoice'), 'anti-doublon facture fournisseur absent');
 
 console.log('OK - rentabilité lots 1 à 5');
