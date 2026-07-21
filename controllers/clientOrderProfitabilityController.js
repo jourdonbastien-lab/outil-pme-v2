@@ -5,8 +5,8 @@ function createClientOrderProfitabilityController(dependencies = {}) {
     'pageTemplate', 'escapeHtml', 'formatEuroFr', 'isoDate',
     'getClientOrderFinancialSnapshot', 'validateClientOrderCostLine',
     'clientOrderForecastData', 'projectProfitabilityForOrder',
-    'renderOrderProfitabilityOverview', 'renderClientOrderForecastCard',
-    'renderOrderHoursTracking', 'clientOrderFolderUrl',
+    'renderClientOrderProfitabilityView', 'clientPageIcon', 'pcFolderIcon',
+    'calculateCostLine', 'clientOrderFolderUrl', 'roundAmount',
     'clientOrderDetailRedirect', 'importMissingQuoteCostLines'
   ];
   if (!dependencies.db || typeof dependencies.db.prepare !== 'function') {
@@ -20,14 +20,17 @@ function createClientOrderProfitabilityController(dependencies = {}) {
   if (!Array.isArray(dependencies.actualCostTypes)) {
     throw new Error('createClientOrderProfitabilityController: actualCostTypes is required');
   }
+  for (const name of ['laborCategories', 'materialUnits']) {
+    if (!Array.isArray(dependencies[name])) throw new Error(`createClientOrderProfitabilityController: ${name} is required`);
+  }
 
   const {
     db, pageTemplate, escapeHtml, formatEuroFr, isoDate,
     getClientOrderFinancialSnapshot, validateClientOrderCostLine,
     clientOrderForecastData, projectProfitabilityForOrder,
-    renderOrderProfitabilityOverview, renderClientOrderForecastCard,
-    renderOrderHoursTracking, clientOrderFolderUrl,
-    clientOrderDetailRedirect, importMissingQuoteCostLines, actualCostTypes
+    renderClientOrderProfitabilityView, clientPageIcon, pcFolderIcon,
+    calculateCostLine, laborCategories, materialUnits, clientOrderFolderUrl,
+    roundAmount, clientOrderDetailRedirect, importMissingQuoteCostLines, actualCostTypes
   } = dependencies;
 
   function requireClientOrderForCostLine(req, res) {
@@ -53,15 +56,12 @@ function createClientOrderProfitabilityController(dependencies = {}) {
     forecastData.importStatus = req.query.importStatus;
     const realData = projectProfitabilityForOrder(order);
     const financialSnapshot = getClientOrderFinancialSnapshot(db, order.id);
-    const content = `<div class="pc-modern-page order-profitability-page">
-      <section class="pc-modern-hero order-profitability-hero">
-        <div><span>Commande #${order.id}</span><h1>Budget de la commande</h1><p>${escapeHtml(order.name || 'Client')} · ${escapeHtml(order.description || `Commande_${order.id}`)}</p></div>
-        <div class="pc-modern-actions"><span class="order-profitability-status">${escapeHtml(order.chantier_status || order.status || 'En cours')}</span><strong>${formatEuroFr(order.price)} HT</strong><a class="modern-cancel-link" href="${clientOrderFolderUrl(order)}">← Retour à la commande</a></div>
-      </section>
-      ${renderOrderProfitabilityOverview(order, financialSnapshot)}
-      ${renderClientOrderForecastCard(order, forecastData, financialSnapshot)}
-      ${renderOrderHoursTracking(order, realData, financialSnapshot)}
-    </div>`;
+    const content = renderClientOrderProfitabilityView({
+      order, forecastData, realData, financialSnapshot,
+      escapeHtml, formatEuroFr, clientPageIcon, pcFolderIcon,
+      calculateCostLine, laborCategories, materialUnits,
+      clientOrderFolderUrl, roundAmount
+    });
     return res.send(pageTemplate(req, `Budget - ${order.description || order.id}`, content));
   }
 

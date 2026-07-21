@@ -6,6 +6,7 @@ const fs = require('fs');
 const server = fs.readFileSync('server.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const profitabilityController = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
+const profitabilityView = fs.readFileSync('views/clientOrderProfitabilityView.js', 'utf8');
 const css = fs.readFileSync('public/style.css', 'utf8');
 
 assert(clientOrderRoutes.includes("get('/orders/client/:orderId/profitability', 'profitabilityPage')"));
@@ -15,30 +16,30 @@ assert(server.includes("return `/orders/client/${order.id}/profitability#order-b
 const routeStart = profitabilityController.indexOf('function showProfitability');
 const routeEnd = profitabilityController.indexOf('function getProfitabilityApi', routeStart);
 const route = profitabilityController.slice(routeStart, routeEnd);
-for (const renderer of ['renderOrderProfitabilityOverview', 'renderClientOrderForecastCard', 'renderOrderHoursTracking']) assert(route.includes(renderer));
+assert(route.includes('renderClientOrderProfitabilityView'));
 for (const removed of ['renderOrderActualDetails', 'renderOrderProfitabilityComparison', 'renderProjectProfitabilityCard']) assert(!route.includes(`${removed}(`), `ancienne zone encore rendue: ${removed}`);
 
-for (const heading of ['Résultat de la commande', '<h2>Budget de la commande</h2>', '<h2>Suivi des heures</h2>']) assert(server.includes(heading), `zone absente: ${heading}`);
-for (const state of ['Rentable', 'À surveiller', 'En perte', 'Budget incomplet']) assert(server.includes(state));
+for (const heading of ['Résultat de la commande', '<h2>Budget de la commande</h2>', '<h2>Suivi des heures</h2>']) assert(profitabilityView.includes(heading), `zone absente: ${heading}`);
+for (const state of ['Rentable', 'À surveiller', 'En perte', 'Budget incomplet']) assert(profitabilityView.includes(state));
 assert(server.includes("require('./lib/clientOrderFinancialSnapshot')"));
-assert(server.includes('financialSnapshot.margin.forecastAmount'));
-assert(server.includes('financialSnapshot.margin.forecastRate'));
-assert(server.includes('financialSnapshot.budget.total'));
+assert(profitabilityView.includes('financialSnapshot.margin.forecastAmount'));
+assert(profitabilityView.includes('financialSnapshot.margin.forecastRate'));
+assert(profitabilityView.includes('financialSnapshot.budget.total'));
 assert(server.includes('financialSnapshot.revenue.remainingToInvoiceExVat'));
 assert(server.includes('const financialSnapshots = new Map(orders.map'));
 assert(server.includes('const financialSnapshot = clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, orderDb.id);'));
 assert(server.includes('financialSnapshot.revenue.invoicedExVat'));
-assert(server.includes("financialSnapshot.sources.budget === 'none'"));
+assert(profitabilityView.includes("financialSnapshot.sources.budget === 'none'"));
 
-assert(server.includes('id="order-budget"'));
-assert(server.includes('class="order-cost-group"'));
-assert(!server.includes('class="order-cost-group" open'));
-for (const origin of ['Issu du devis', 'Ajout manuel']) assert(server.includes(origin));
-for (const action of ['Ajouter de la main-d’œuvre', 'Ajouter de la matière', 'Ajouter un autre coût', 'Modifier', 'Dupliquer', 'Supprimer']) assert(server.includes(action));
+assert(profitabilityView.includes('id="order-budget"'));
+assert(profitabilityView.includes('class="order-cost-group"'));
+assert(!profitabilityView.includes('class="order-cost-group" open'));
+for (const origin of ['Issu du devis', 'Ajout manuel']) assert(profitabilityView.includes(origin));
+for (const action of ['Ajouter de la main-d’œuvre', 'Ajouter de la matière', 'Ajouter un autre coût', 'Modifier', 'Dupliquer', 'Supprimer']) assert(profitabilityView.includes(action));
 
-const hoursStart = server.indexOf('function renderOrderHoursTracking');
-const hoursEnd = server.indexOf('function renderOrderActualDetails', hoursStart);
-const hoursRenderer = server.slice(hoursStart, hoursEnd);
+const hoursStart = profitabilityView.indexOf('function renderHoursTracking');
+const hoursEnd = profitabilityView.indexOf('return `<div class="pc-modern-page', hoursStart);
+const hoursRenderer = profitabilityView.slice(hoursStart, hoursEnd);
 for (const label of ['Heures prévues', 'Heures réalisées', 'Écart', 'Voir les heures']) assert(hoursRenderer.includes(label));
 assert(!hoursRenderer.includes('laborCost'));
 
