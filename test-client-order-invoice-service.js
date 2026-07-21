@@ -1,0 +1,12 @@
+'use strict';
+const assert = require('assert'); const fs = require('fs');
+const { createClientOrderInvoiceService } = require('./services/clientOrderInvoiceService');
+assert.throws(() => createClientOrderInvoiceService(), /db is required/);
+const calls=[]; const db={prepare(sql){return{get(...p){calls.push(['get',sql,p]);return {id:p[0]};},all(...p){calls.push(['all',sql,p]);return [];},run(...p){calls.push(['run',sql,p]);return{changes:1,lastInsertRowid:9};}};}};
+const s=createClientOrderInvoiceService({db});
+for(const n of ['getOrderById','listInvoicesByOrderId','listAnalyzedFileNames','getInvoiceById','findDuplicate','createInvoice','deleteInvoiceRecord']) assert.strictEqual(typeof s[n],'function');
+s.getOrderById(7); s.listInvoicesByOrderId(7); s.listAnalyzedFileNames(7); s.getInvoiceById(2,7); s.findDuplicate(7,'FA1','hash');
+s.createInvoice({orderId:7,invoiceNumber:null,invoiceDate:'2026-07-21',clientName:'C',amountHt:1,vatAmount:0,amountTtc:1,storedFileName:null,originalFileName:null,fileHash:null,sourceType:'existing',createdAt:'now'}); s.deleteInvoiceRecord(2,7);
+assert(calls.every(c=>c[2].length>0)); assert(calls.some(c=>c[1].includes('lower(invoice_number)'))); assert(calls.some(c=>c[1].includes('file_hash = ?')));
+const source=fs.readFileSync('services/clientOrderInvoiceService.js','utf8'); assert(!source.includes('express')); assert(!source.includes("require('../server')"));
+console.log('OK - service factures commandes clients');

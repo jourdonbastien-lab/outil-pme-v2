@@ -7,6 +7,7 @@ const server = fs.readFileSync('server.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const profitabilityController = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
 const profitabilityView = fs.readFileSync('views/clientOrderProfitabilityView.js', 'utf8');
+const invoicesController = fs.readFileSync('controllers/clientOrderInvoicesController.js', 'utf8');
 const css = fs.readFileSync('public/style.css', 'utf8');
 
 assert(clientOrderRoutes.includes("get('/orders/client/:orderId/profitability', 'profitabilityPage')"));
@@ -27,7 +28,7 @@ assert(profitabilityView.includes('financialSnapshot.margin.forecastRate'));
 assert(profitabilityView.includes('financialSnapshot.budget.total'));
 assert(server.includes('financialSnapshot.revenue.remainingToInvoiceExVat'));
 assert(server.includes('const financialSnapshots = new Map(orders.map'));
-assert(server.includes('const financialSnapshot = clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, orderDb.id);'));
+assert(invoicesController.includes('getClientOrderFinancialSnapshot'));
 assert(server.includes('financialSnapshot.revenue.invoicedExVat'));
 assert(profitabilityView.includes("financialSnapshot.sources.budget === 'none'"));
 

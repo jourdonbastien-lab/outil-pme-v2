@@ -40,6 +40,9 @@ const { createClientOrderProfitabilityController } = require('./controllers/clie
 const { renderClientOrderProfitabilityView } = require('./views/clientOrderProfitabilityView');
 const { createClientOrderPurchaseService } = require('./services/clientOrderPurchaseService');
 const { createClientOrderPurchasesController } = require('./controllers/clientOrderPurchasesController');
+const { createClientOrderInvoiceService } = require('./services/clientOrderInvoiceService');
+const { createClientOrderInvoicesController } = require('./controllers/clientOrderInvoicesController');
+const { renderClientOrderInvoicesView } = require('./views/clientOrderInvoicesView');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -8870,14 +8873,9 @@ app.get('/pc-folders/:client/:order/:type', requireLogin, (req, res) => {
   const entries = fs.readdirSync(dirPath, { withFileTypes: true });
   const files = entries.filter((e) => e.isFile()).map((e) => e.name);
   const orderDb = findClientOrderByFolder(client, order);
-  const analyzedInvoiceFileNames = type === 'Factures' && orderDb
-    ? new Set(
-        db
-          .prepare('SELECT stored_file_name FROM client_order_invoices WHERE client_order_id = ? AND stored_file_name IS NOT NULL AND stored_file_name != ?')
-          .all(orderDb.id, '')
-          .map((row) => path.basename(String(row.stored_file_name || '')))
-      )
-    : new Set();
+  const invoiceFolderData = type === 'Factures'
+    ? clientOrderInvoicesController.getInvoicesFolderData(orderDb)
+    : { analyzedFileNames: new Set() };
 
 const list = files.length
   ? `
@@ -8885,16 +8883,9 @@ const list = files.length
       ${files.map(f => {
         const ext = path.extname(String(f || '')).toLowerCase();
         const canAnalyzeInvoice = type === 'Factures' && orderDb && EBP_SCAN_ALLOWED_EXT.has(ext);
-        const alreadyAnalyzed = canAnalyzeInvoice && analyzedInvoiceFileNames.has(path.basename(f));
+        const alreadyAnalyzed = canAnalyzeInvoice && invoiceFolderData.analyzedFileNames.has(path.basename(f));
         const invoiceAnalyzeAction = canAnalyzeInvoice
-          ? alreadyAnalyzed
-            ? '<span class="pc-modern-badge">Déjà analysée</span>'
-            : `
-              <form method="POST" action="/orders/client/${orderDb.id}/invoices/analyze-existing" class="pc-modern-inline-form">
-                <input type="hidden" name="invoice_file_name" value="${escHtml(path.basename(f))}" />
-                <button class="pc-modern-open" type="submit">Analyser</button>
-              </form>
-            `
+          ? clientOrderInvoicesController.renderInvoiceFileAction({ orderDb, fileName: path.basename(f), alreadyAnalyzed })
           : '';
         return `
           <article class="pc-modern-card pc-modern-file-card">
@@ -9078,74 +9069,8 @@ const list = files.length
     : '';
 
   const invoicesBlock = type === 'Factures'
-    ? (() => {
-        if (!orderDb) {
-          return `
-            <section class="pc-modern-panel">
-              <div class="modern-section-title">
-                ${pcFolderIcon('Factures', 'clients-title-icon')}
-                <div>
-                  <h2>Factures EBP</h2>
-                  <p>Commande non retrouvée en base, scan indisponible.</p>
-                </div>
-              </div>
-            </section>
-          `;
-        }
-
-        const invoices = db
-          .prepare('SELECT * FROM client_order_invoices WHERE client_order_id = ? ORDER BY invoice_date DESC, id DESC')
-          .all(orderDb.id);
-        const financialSnapshot = clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, orderDb.id);
-        const totalInvoiced = financialSnapshot.revenue.invoicedExVat;
-        const remaining = financialSnapshot.revenue.remainingToInvoiceExVat;
-        const invoiceCards = invoices.length
-          ? invoices.map((invoice) => {
-              const openUrl = `/pc-file/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}/${encodeURIComponent(invoice.stored_file_name || '')}`;
-              return `
-                <article class="order-purchase-card">
-                  <div class="order-purchase-main">
-                    <div>
-                      <h3>${escHtml(invoice.invoice_number || 'Facture sans numero')}</h3>
-                      <p>
-                        <span>${escHtml(invoice.invoice_date || 'Date inconnue')}</span>
-                        <span>${escHtml(formatEuroFr(invoice.amount_ht || 0))} HT</span>
-                        <span>${escHtml(formatEuroFr(invoice.vat_amount || 0))} TVA</span>
-                        <span>${escHtml(formatEuroFr(invoice.amount_ttc || 0))} TTC</span>
-                      </p>
-                      <small>${escHtml(invoice.original_file_name || invoice.stored_file_name || '')}</small>
-                    </div>
-                  </div>
-                  ${invoice.stored_file_name ? `<a class="modern-cancel-link" href="${openUrl}" target="_blank">Consulter</a>` : ''}
-                  <form method="POST" action="/orders/client/${orderDb.id}/invoices/${invoice.id}/delete" class="order-purchase-delete" onsubmit="return confirm('Supprimer cette facture ? Le reste a facturer sera recalcule.');">
-                    <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
-                  </form>
-                </article>
-              `;
-            }).join('')
-          : '<div class="empty-state">Aucune facture EBP validée pour cette commande.</div>';
-
-        return `
-          <section class="pc-modern-panel">
-            <div class="modern-section-title">
-              ${pcFolderIcon('Factures', 'clients-title-icon')}
-              <div>
-                <h2>Factures EBP</h2>
-                <p>Commande HT : ${escHtml(formatEuroFr(financialSnapshot.revenue.expectedExVat))} · Déjà facturé : ${escHtml(formatEuroFr(totalInvoiced))} · Reste : ${escHtml(formatEuroFr(remaining))}</p>
-              </div>
-            </div>
-            <form method="POST" action="/orders/client/${orderDb.id}/invoices/analyze" enctype="multipart/form-data" class="pc-modern-upload-form">
-              <input type="file" name="invoice_file" accept="image/*,.pdf,application/pdf" required />
-              <button class="clients-submit-btn" type="submit">Scanner une facture EBP</button>
-            </form>
-            <div class="order-purchase-list">
-              ${invoiceCards}
-            </div>
-          </section>
-        `;
-      })()
+    ? clientOrderInvoicesController.renderInvoicesFolder({ orderDb, client, order, type })
     : '';
-    
 
   const content = `
     <div class="pc-modern-page">
@@ -9194,162 +9119,6 @@ const list = files.length
 
   res.send(pageTemplate(req, `${type} - ${order}`, content));
 });
-
-const handleAnalyzeClientOrderInvoice = (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-  if (!order) return res.status(404).send('Commande introuvable');
-
-  ebpScanUpload.single('invoice_file')(req, res, async (err) => {
-    const fallbackUrl = getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures');
-    if (err) {
-      return res.redirect(`${fallbackUrl}?error=${encodeURIComponent(err.message || 'Upload facture impossible')}`);
-    }
-    if (!req.file) {
-      return res.redirect(`${fallbackUrl}?error=Aucun+fichier+recu`);
-    }
-
-    try {
-      return await renderEbpInvoiceValidationPage(req, res, {
-        orderId,
-        scanFileName: req.file.filename,
-        scanOriginalName: req.file.originalname || req.file.filename,
-        mimeType: req.file.mimetype,
-      });
-    } catch (e) {
-      return res.redirect(`${fallbackUrl}?error=${encodeURIComponent(e.message || 'Analyse facture impossible')}`);
-    }
-  });
-};
-
-const handleAnalyzeExistingClientOrderInvoice = async (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-  if (!order) return res.status(404).send('Commande introuvable');
-
-  const fallbackUrl = getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures');
-  try {
-    const existingFileName = path.basename(String(req.body.invoice_file_name || ''));
-    validateExistingInvoiceFile(order, existingFileName);
-    return await renderEbpInvoiceValidationPage(req, res, {
-      orderId,
-      sourceType: 'existing',
-      existingFileName,
-    });
-  } catch (e) {
-    return res.redirect(`${fallbackUrl}?error=${encodeURIComponent(e.message || 'Analyse facture impossible')}`);
-  }
-};
-
-const handleCreateClientOrderInvoice = (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-  if (!order) return res.status(404).send('Commande introuvable');
-
-  const redirectUrl = getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures');
-  try {
-    const sourceType = req.body.source_type === 'existing' ? 'existing' : 'upload';
-    const existing = sourceType === 'existing'
-      ? validateExistingInvoiceFile(order, req.body.existing_file)
-      : null;
-    const scanFileName = sourceType === 'upload' ? path.basename(String(req.body.scan_file || '')) : '';
-    const originalFileName = sourceType === 'upload'
-      ? path.basename(String(req.body.scan_original_name || scanFileName))
-      : existing.fileName;
-    if (sourceType === 'upload' && !scanFileName) return res.status(400).send('Fichier facture manquant');
-
-    const scanPath = sourceType === 'upload' ? safeResolveInside(EBP_SCAN_DIR, scanFileName) : existing.filePath;
-    if (!fs.existsSync(scanPath)) return res.status(400).send('Fichier facture introuvable. Relancez le scan.');
-
-    const invoiceNumber = String(req.body.invoice_number || '').trim();
-    const invoiceDate = String(req.body.invoice_date || '').trim() || isoDate();
-    const clientName = String(req.body.client_name || '').trim() || order.name || '';
-    const amountHt = parseDecimalInput(req.body.amount_ht, 0);
-    const vatAmount = parseDecimalInput(req.body.vat_amount, 0);
-    const amountTtc = hasDecimalInput(req.body.amount_ttc)
-      ? parseDecimalInput(req.body.amount_ttc, 0)
-      : round2(amountHt + vatAmount);
-    if (amountHt <= 0) return res.status(400).send('Montant HT facture positif requis');
-    if (vatAmount < 0) return res.status(400).send('Montant TVA negatif impossible');
-    if (amountTtc <= 0) return res.status(400).send('Montant TTC facture positif requis');
-    if (!invoiceTotalsAreConsistent(amountHt, vatAmount, amountTtc)) {
-      return res.status(400).send('Les montants ne correspondent pas: HT + TVA doit etre proche du TTC. Corrigez les champs puis validez.');
-    }
-
-    const hash = fileSha256(scanPath);
-    const duplicate = db.prepare(`
-      SELECT id
-      FROM client_order_invoices
-      WHERE client_order_id = ?
-        AND (
-          (invoice_number IS NOT NULL AND invoice_number != '' AND lower(invoice_number) = lower(?))
-          OR file_hash = ?
-        )
-      LIMIT 1
-    `).get(orderId, invoiceNumber, hash);
-    if (duplicate) return res.status(409).send('Facture deja enregistree pour cette commande.');
-
-    let storedFileName = originalFileName;
-    if (sourceType === 'upload') {
-      const invoicesDir = clientOrderInvoicesDir(order);
-      const destinationPath = uniqueFilePath(invoicesDir, originalFileName || scanFileName);
-      fs.copyFileSync(scanPath, destinationPath);
-      storedFileName = path.basename(destinationPath);
-    }
-
-    db.prepare(`
-      INSERT INTO client_order_invoices
-        (client_order_id, invoice_number, invoice_date, client_name, amount_ht, vat_amount, amount_ttc, stored_file_name, original_file_name, file_hash, source_type, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      orderId,
-      invoiceNumber || null,
-      invoiceDate,
-      clientName,
-      amountHt,
-      vatAmount,
-      amountTtc,
-      storedFileName,
-      originalFileName,
-      hash,
-      sourceType,
-      new Date().toISOString()
-    );
-
-    if (sourceType === 'upload') {
-      try {
-        fs.unlinkSync(scanPath);
-      } catch {}
-    }
-
-    return res.redirect(redirectUrl);
-  } catch (e) {
-    return res.status(500).send(`Erreur creation facture EBP: ${escHtml(e.message || 'inconnue')}`);
-  }
-};
-
-const handleDeleteClientOrderInvoice = (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  const invoiceId = Number(req.params.invoiceId || 0);
-  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-  if (!order) return res.status(404).send('Commande introuvable');
-
-  const invoice = db.prepare('SELECT * FROM client_order_invoices WHERE id = ? AND client_order_id = ?').get(invoiceId, orderId);
-  if (!invoice) return res.status(404).send('Facture introuvable');
-
-  db.prepare('DELETE FROM client_order_invoices WHERE id = ? AND client_order_id = ?').run(invoiceId, orderId);
-
-  if (invoice.stored_file_name && invoice.source_type !== 'existing') {
-    try {
-      const filePath = safeResolveInside(clientOrderInvoicesDir(order), path.basename(invoice.stored_file_name));
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    } catch (e) {
-      console.warn('Suppression fichier facture impossible:', e.message);
-    }
-  }
-
-  return res.redirect(getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures'));
-};
 
 app.post('/pc-folders/:client/:order/:type/upload', requireLogin, pcUpload.single('file'), (req, res) => {
   const client = safeName(req.params.client);
@@ -13519,6 +13288,34 @@ const clientOrderPurchasesController = createClientOrderPurchasesController({
   normalizePurchaseStatus,
   getPurchaseOrderRedirect
 });
+const clientOrderInvoiceService = createClientOrderInvoiceService({ db });
+const clientOrderInvoicesController = createClientOrderInvoicesController({
+  invoiceService: clientOrderInvoiceService,
+  uploadInvoice: (req, res, callback) => ebpScanUpload.single('invoice_file')(req, res, callback),
+  renderValidationPage: renderEbpInvoiceValidationPage,
+  validateExistingInvoiceFile,
+  basename: path.basename,
+  getPurchaseOrderRedirect,
+  parseDecimalInput,
+  hasDecimalInput,
+  roundAmount: round2,
+  invoiceTotalsAreConsistent,
+  fileSha256,
+  safeResolveInside,
+  scanDirectory: EBP_SCAN_DIR,
+  fileExists: fs.existsSync,
+  clientOrderInvoicesDir,
+  uniqueFilePath,
+  copyFile: fs.copyFileSync,
+  deleteFile: fs.unlinkSync,
+  getClientOrderFinancialSnapshot: (orderId) => clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, orderId),
+  renderClientOrderInvoicesView,
+  escapeHtml: escHtml,
+  formatEuroFr,
+  clientPageIcon,
+  pcFolderIcon,
+  isoDate
+});
 
 registerClientOrderRoutes(app, {
   requireLogin,
@@ -13536,10 +13333,10 @@ registerClientOrderRoutes(app, {
     duplicateCostLine: clientOrderProfitabilityController.duplicateBudgetLine,
     deleteCostLine: clientOrderProfitabilityController.deleteBudgetLine,
     importQuoteCostLines: clientOrderProfitabilityController.importBudgetFromQuote,
-    analyzeInvoice: handleAnalyzeClientOrderInvoice,
-    analyzeExistingInvoice: handleAnalyzeExistingClientOrderInvoice,
-    createInvoice: handleCreateClientOrderInvoice,
-    deleteInvoice: handleDeleteClientOrderInvoice,
+    analyzeInvoice: clientOrderInvoicesController.analyzeInvoice,
+    analyzeExistingInvoice: clientOrderInvoicesController.analyzeExistingInvoice,
+    createInvoice: clientOrderInvoicesController.createClientOrderInvoice,
+    deleteInvoice: clientOrderInvoicesController.deleteClientOrderInvoice,
     addPurchase: clientOrderPurchasesController.addPurchase,
     updatePurchase: clientOrderPurchasesController.updatePurchase,
     deletePurchase: clientOrderPurchasesController.deletePurchase

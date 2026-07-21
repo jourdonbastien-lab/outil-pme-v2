@@ -20,7 +20,7 @@ const handlerNames = [
   'create', 'update', 'done', 'updateChantier', 'profitabilityPage', 'profitabilityApi',
   'createActualCost', 'deleteActualCost', 'createCostLine', 'editCostLine',
   'duplicateCostLine', 'deleteCostLine', 'importQuoteCostLines', 'analyzeInvoice',
-  'analyzeExistingInvoice', 'createInvoice', 'deleteInvoice'
+  'analyzeExistingInvoice', 'createInvoice', 'deleteInvoice', 'addPurchase', 'updatePurchase', 'deletePurchase'
 ];
 const handlers = Object.fromEntries(handlerNames.map((name) => [name, function routeHandler() {}]));
 registerClientOrderRoutes(app, { requireLogin, handlers });
@@ -42,7 +42,10 @@ const expected = [
   ['POST', '/orders/client/:id/invoices/analyze'],
   ['POST', '/orders/client/:id/invoices/analyze-existing'],
   ['POST', '/orders/client/:id/invoices/create'],
-  ['POST', '/orders/client/:id/invoices/:invoiceId/delete']
+  ['POST', '/orders/client/:id/invoices/:invoiceId/delete'],
+  ['POST', '/orders/client/:id/purchases'],
+  ['POST', '/orders/client/:id/purchases/:purchaseId/update'],
+  ['POST', '/orders/client/:id/purchases/:purchaseId/delete']
 ];
 assert.deepStrictEqual(registered.map(({ method, path }) => [method, path]), expected);
 assert.strictEqual(new Set(registered.map(({ method, path }) => `${method} ${path}`)).size, registered.length, 'route enregistrée plusieurs fois');

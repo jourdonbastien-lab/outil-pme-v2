@@ -1,0 +1,11 @@
+'use strict';
+const assert=require('assert'); const fs=require('fs'); const {renderClientOrderInvoicesView}=require('./views/clientOrderInvoicesView');
+const base={orderDb:{id:7},invoices:[],snapshot:{revenue:{expectedExVat:1000,invoicedExVat:400,remainingToInvoiceExVat:600}},client:'C',order:'O',type:'Factures',escapeHtml:String,formatEuroFr:v=>`${v} €`,clientPageIcon:()=>'<svg></svg>',pcFolderIcon:()=>'<svg></svg>'};
+assert.strictEqual(typeof renderClientOrderInvoicesView,'function');
+let html=renderClientOrderInvoicesView(base); for(const x of ['Factures EBP','Commande HT : 1000 €','Déjà facturé : 400 €','Reste : 600 €','Scanner une facture EBP','Aucune facture EBP validée']) assert(html.includes(x));
+html=renderClientOrderInvoicesView({...base,invoices:[{id:2,invoice_number:'FA1',invoice_date:'2026-07-21',amount_ht:400,vat_amount:80,amount_ttc:480,stored_file_name:'fa.pdf'}]});
+for(const x of ['FA1','400 € HT','80 € TVA','480 € TTC','action="/orders/client/7/invoices/2/delete"','Consulter','Supprimer']) assert(html.includes(x));
+assert(renderClientOrderInvoicesView({...base,mode:'fileAction',fileName:'fa.pdf',alreadyAnalyzed:false}).includes('>Analyser<'));
+assert(renderClientOrderInvoicesView({...base,mode:'fileAction',fileName:'fa.pdf',alreadyAnalyzed:true}).includes('Déjà analysée'));
+const source=fs.readFileSync('views/clientOrderInvoicesView.js','utf8'); assert(!/\.prepare\(|\bdb\b|express|better-sqlite3/.test(source));
+console.log('OK - vue factures commandes clients');
