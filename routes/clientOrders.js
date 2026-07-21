@@ -17,7 +17,8 @@ function registerClientOrderRoutes(app, dependencies) {
     'create', 'update', 'done', 'updateChantier', 'profitabilityPage', 'profitabilityApi',
     'createActualCost', 'deleteActualCost', 'createCostLine', 'editCostLine',
     'duplicateCostLine', 'deleteCostLine', 'importQuoteCostLines', 'analyzeInvoice',
-    'analyzeExistingInvoice', 'createInvoice', 'deleteInvoice'
+    'analyzeExistingInvoice', 'createInvoice', 'deleteInvoice',
+    'addPurchase', 'updatePurchase', 'deletePurchase'
   ]) {
     if (typeof handlers[name] !== 'function') throw new TypeError(`Gestionnaire ${name} manquant.`);
   }
@@ -45,6 +46,10 @@ function registerClientOrderRoutes(app, dependencies) {
   post('/orders/client/:id/invoices/analyze-existing', 'analyzeExistingInvoice');
   post('/orders/client/:id/invoices/create', 'createInvoice');
   post('/orders/client/:id/invoices/:invoiceId/delete', 'deleteInvoice');
+
+  post('/orders/client/:id/purchases', 'addPurchase');
+  post('/orders/client/:id/purchases/:purchaseId/update', 'updatePurchase');
+  post('/orders/client/:id/purchases/:purchaseId/delete', 'deletePurchase');
 }
 
 module.exports = { registerClientOrderRoutes };

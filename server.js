@@ -38,6 +38,8 @@ const clientOrderFinancialSnapshot = require('./lib/clientOrderFinancialSnapshot
 const { registerClientOrderRoutes } = require('./routes/clientOrders');
 const { createClientOrderProfitabilityController } = require('./controllers/clientOrderProfitabilityController');
 const { renderClientOrderProfitabilityView } = require('./views/clientOrderProfitabilityView');
+const { createClientOrderPurchaseService } = require('./services/clientOrderPurchaseService');
+const { createClientOrderPurchasesController } = require('./controllers/clientOrderPurchasesController');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -9349,88 +9351,6 @@ const handleDeleteClientOrderInvoice = (req, res) => {
   return res.redirect(getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures'));
 };
 
-app.post('/orders/client/:id/purchases', requireLogin, (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-  if (!order) return res.status(404).send('Commande introuvable');
-
-  const designation = String(req.body.designation || '').trim();
-  if (!designation) return res.status(400).send('Désignation requise');
-
-  const category = String(req.body.category || '').trim() || null;
-  const qty = parseDecimalInput(req.body.qty, 1);
-  const unit = String(req.body.unit || '').trim() || null;
-  const reference = String(req.body.reference || '').trim() || null;
-  const supplier = String(req.body.supplier || '').trim() || null;
-  const neededDate = String(req.body.needed_date || '').trim() || null;
-  const note = String(req.body.note || '').trim() || null;
-  const status = normalizePurchaseStatus(req.body.status);
-  const now = new Date().toISOString();
-
-  db.prepare(`
-    INSERT INTO client_order_purchases
-      (client_order_id, designation, category, qty, unit, reference, supplier, needed_date, note, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(orderId, designation, category, qty, unit, reference, supplier, neededDate, note, status, now, now);
-
-  res.redirect(getPurchaseOrderRedirect(order));
-});
-
-app.post('/orders/client/:id/purchases/:purchaseId/update', requireLogin, (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  const purchaseId = Number(req.params.purchaseId || 0);
-  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-  if (!order) return res.status(404).send('Commande introuvable');
-
-  const existing = db
-    .prepare('SELECT id FROM client_order_purchases WHERE id = ? AND client_order_id = ?')
-    .get(purchaseId, orderId);
-  if (!existing) return res.status(404).send('Article introuvable');
-
-  const designation = String(req.body.designation || '').trim();
-  if (!designation) return res.status(400).send('Désignation requise');
-
-  db.prepare(`
-    UPDATE client_order_purchases
-    SET designation = ?,
-        category = ?,
-        qty = ?,
-        unit = ?,
-        reference = ?,
-        supplier = ?,
-        needed_date = ?,
-        note = ?,
-        status = ?,
-        updated_at = ?
-    WHERE id = ? AND client_order_id = ?
-  `).run(
-    designation,
-    String(req.body.category || '').trim() || null,
-    parseDecimalInput(req.body.qty, 1),
-    String(req.body.unit || '').trim() || null,
-    String(req.body.reference || '').trim() || null,
-    String(req.body.supplier || '').trim() || null,
-    String(req.body.needed_date || '').trim() || null,
-    String(req.body.note || '').trim() || null,
-    normalizePurchaseStatus(req.body.status),
-    new Date().toISOString(),
-    purchaseId,
-    orderId
-  );
-
-  res.redirect(getPurchaseOrderRedirect(order));
-});
-
-app.post('/orders/client/:id/purchases/:purchaseId/delete', requireLogin, (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  const purchaseId = Number(req.params.purchaseId || 0);
-  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-  if (!order) return res.status(404).send('Commande introuvable');
-
-  db.prepare('DELETE FROM client_order_purchases WHERE id = ? AND client_order_id = ?').run(purchaseId, orderId);
-  res.redirect(getPurchaseOrderRedirect(order));
-});
-
 app.post('/pc-folders/:client/:order/:type/upload', requireLogin, pcUpload.single('file'), (req, res) => {
   const client = safeName(req.params.client);
   const order = safeName(req.params.order);
@@ -13592,6 +13512,13 @@ const clientOrderProfitabilityController = createClientOrderProfitabilityControl
   importMissingQuoteCostLines,
   actualCostTypes: projectProfitability.ACTUAL_COST_TYPES
 });
+const clientOrderPurchaseService = createClientOrderPurchaseService({ db });
+const clientOrderPurchasesController = createClientOrderPurchasesController({
+  purchaseService: clientOrderPurchaseService,
+  parseDecimalInput,
+  normalizePurchaseStatus,
+  getPurchaseOrderRedirect
+});
 
 registerClientOrderRoutes(app, {
   requireLogin,
@@ -13612,7 +13539,10 @@ registerClientOrderRoutes(app, {
     analyzeInvoice: handleAnalyzeClientOrderInvoice,
     analyzeExistingInvoice: handleAnalyzeExistingClientOrderInvoice,
     createInvoice: handleCreateClientOrderInvoice,
-    deleteInvoice: handleDeleteClientOrderInvoice
+    deleteInvoice: handleDeleteClientOrderInvoice,
+    addPurchase: clientOrderPurchasesController.addPurchase,
+    updatePurchase: clientOrderPurchasesController.updatePurchase,
+    deletePurchase: clientOrderPurchasesController.deletePurchase
   }
 });
 
