@@ -18,9 +18,15 @@ for (const removed of ['renderOrderActualDetails', 'renderOrderProfitabilityComp
 
 for (const heading of ['Résultat de la commande', '<h2>Budget de la commande</h2>', '<h2>Suivi des heures</h2>']) assert(server.includes(heading), `zone absente: ${heading}`);
 for (const state of ['Rentable', 'À surveiller', 'En perte', 'Budget incomplet']) assert(server.includes(state));
-assert(server.includes('round2(contractPrice - forecast.totalCost)'));
-assert(server.includes('(forecastMargin / contractPrice) * 100'));
-assert(server.includes('forecastData.lines.length === 0'));
+assert(server.includes("require('./lib/clientOrderFinancialSnapshot')"));
+assert(server.includes('financialSnapshot.margin.forecastAmount'));
+assert(server.includes('financialSnapshot.margin.forecastRate'));
+assert(server.includes('financialSnapshot.budget.total'));
+assert(server.includes('financialSnapshot.revenue.remainingToInvoiceExVat'));
+assert(server.includes('const financialSnapshots = new Map(orders.map'));
+assert(server.includes('const financialSnapshot = clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, orderDb.id);'));
+assert(server.includes('financialSnapshot.revenue.invoicedExVat'));
+assert(server.includes("financialSnapshot.sources.budget === 'none'"));
 
 assert(server.includes('id="order-budget"'));
 assert(server.includes('class="order-cost-group"'));

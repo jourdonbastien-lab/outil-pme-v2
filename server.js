@@ -34,6 +34,7 @@ const BetterSqlite3SessionStoreFactory = tryRequire('better-sqlite3-session-stor
 const quoteAiReview = require('./lib/quoteAiReview');
 const projectProfitability = require('./lib/projectProfitability');
 const clientOrderCostLines = require('./lib/clientOrderCostLines');
+const clientOrderFinancialSnapshot = require('./lib/clientOrderFinancialSnapshot');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -870,18 +871,6 @@ function validateExistingInvoiceFile(order, fileName) {
   };
 }
 
-function invoiceTotalsByOrderId() {
-  const map = new Map();
-  db.prepare(`
-    SELECT client_order_id, COALESCE(SUM(amount_ht), 0) AS total_ht
-    FROM client_order_invoices
-    GROUP BY client_order_id
-  `).all().forEach((row) => {
-    map.set(Number(row.client_order_id), Number(row.total_ht || 0));
-  });
-  return map;
-}
-
 function parseJsonObject(value, fallback = {}) {
   try {
     const parsed = JSON.parse(String(value || ''));
@@ -1096,8 +1085,8 @@ function renderOrderCostLine(order, line) {
   </article>`;
 }
 
-function renderClientOrderForecastCard(order, data) {
-  const summary = data.summary;
+function renderClientOrderForecastCard(order, data, financialSnapshot) {
+  const budget = financialSnapshot.budget;
   const metric = (label, value) => `<div><span>${label}</span><strong>${value}</strong></div>`;
   const laborLines = data.lines.filter((line) => line.line_type === 'labor');
   const materialLines = data.lines.filter((line) => line.line_type === 'material');
@@ -1115,27 +1104,26 @@ function renderClientOrderForecastCard(order, data) {
     <div class="modern-section-title"><span class="quote-ai-review-icon">${clientPageIcon('quotes')}</span><div><h2>Budget de la commande</h2><p>Le devis d’origine reste inchangé. Les lignes de ce budget sont indépendantes.</p></div></div>
     ${importMessage ? `<p class="order-budget-flash">${importMessage}</p>` : ''}
     <div class="order-forecast-summary">
-      ${metric('Main-d’œuvre prévue', formatEuroFr(summary.groups.labor.cost))}
-      ${metric('Matière prévue', formatEuroFr(summary.groups.material.cost))}
-      ${metric('Autres coûts prévus', formatEuroFr(summary.groups.other.cost))}
-      ${metric('Coût total prévu', formatEuroFr(summary.totalCost))}
-      ${metric('Heures prévues', `${summary.plannedHours.toFixed(2)} h`)}
+      ${metric('Main-d’œuvre prévue', formatEuroFr(budget.labor))}
+      ${metric('Matière prévue', formatEuroFr(budget.material))}
+      ${metric('Autres coûts prévus', formatEuroFr(round2(budget.subcontracting + budget.other)))}
+      ${metric('Coût total prévu', formatEuroFr(budget.total))}
+      ${metric('Heures prévues', `${financialSnapshot.hours.budgeted.toFixed(2)} h`)}
     </div>
     ${order.quote_id ? `<form method="POST" action="/orders/client/${order.id}/cost-lines/import-quote" class="order-import-quote" onsubmit="return confirm('Importer les lignes du devis #${order.quote_id} sans modifier le devis ?');"><button class="modern-secondary-btn" type="submit">Importer les lignes du devis</button><small>${data.quoteLines.length} ligne(s) disponible(s), doublons ignorés.</small></form>` : ''}
     <div class="order-cost-groups">
-      ${group('Main-d’œuvre', laborLines, summary.groups.labor.cost, `${summary.plannedHours.toFixed(2)} h`, 'Ajouter de la main-d’œuvre', 'labor', true)}
-      ${group('Matière', materialLines, summary.groups.material.cost, '', 'Ajouter de la matière', 'material', true)}
-      ${group('Autres coûts', otherLines, summary.groups.other.cost, '', 'Ajouter un autre coût', 'other')}
+      ${group('Main-d’œuvre', laborLines, budget.labor, `${financialSnapshot.hours.budgeted.toFixed(2)} h`, 'Ajouter de la main-d’œuvre', 'labor', true)}
+      ${group('Matière', materialLines, budget.material, '', 'Ajouter de la matière', 'material', true)}
+      ${group('Autres coûts', otherLines, round2(budget.subcontracting + budget.other), '', 'Ajouter un autre coût', 'other')}
     </div>
   </section>`;
 }
 
-function renderOrderProfitabilityOverview(order, forecastData, realData) {
-  const forecast = forecastData.summary;
-  const contractPrice = Number(order.price || 0);
-  const forecastMargin = round2(contractPrice - forecast.totalCost);
-  const marginRate = contractPrice > 0 ? round2((forecastMargin / contractPrice) * 100) : null;
-  const state = contractPrice <= 0 || forecastData.lines.length === 0
+function renderOrderProfitabilityOverview(order, financialSnapshot) {
+  const contractPrice = financialSnapshot.revenue.expectedExVat;
+  const forecastMargin = financialSnapshot.margin.forecastAmount;
+  const marginRate = contractPrice > 0 ? financialSnapshot.margin.forecastRate : null;
+  const state = contractPrice <= 0 || financialSnapshot.sources.budget === 'none'
     ? { label: 'Budget incomplet', className: 'is-incomplete' }
     : forecastMargin < 0
       ? { label: 'En perte', className: 'is-loss' }
@@ -1145,17 +1133,17 @@ function renderOrderProfitabilityOverview(order, forecastData, realData) {
   const item = (label, value, className = '') => `<div><span>${label}</span><strong class="${className}">${value}</strong></div>`;
   return `<section class="profitability-global-section"><div class="profitability-global-heading"><div><span>Résultat de la commande</span><h2>${state.label}</h2></div><strong class="profitability-state ${state.className}">${state.label}</strong></div><div class="profitability-global-card">
     ${item('Prix de vente HT', formatEuroFr(contractPrice))}
-    ${item('Coût total budgété', formatEuroFr(forecast.totalCost))}
+    ${item('Coût total budgété', formatEuroFr(financialSnapshot.budget.total))}
     ${item('Marge estimée', formatEuroFr(forecastMargin), forecastMargin < 0 ? 'profit-negative' : 'profit-positive')}
     ${item('Marge estimée', marginRate === null ? 'Non calculable' : `${marginRate.toFixed(1)} %`, marginRate === null ? 'profit-missing' : forecastMargin < 0 ? 'profit-negative' : 'profit-positive')}
-    ${item('Heures budgétées', `${forecast.plannedHours.toFixed(2)} h`)}
+    ${item('Heures budgétées', `${financialSnapshot.hours.budgeted.toFixed(2)} h`)}
   </div></section>`;
 }
 
-function renderOrderHoursTracking(order, forecastData, realData) {
-  const planned = forecastData.summary.plannedHours;
+function renderOrderHoursTracking(order, realData, financialSnapshot) {
+  const planned = financialSnapshot.hours.budgeted;
   const hasActualHours = realData.hours.length > 0;
-  const actual = hasActualHours ? realData.actual.actualHours : null;
+  const actual = hasActualHours ? financialSnapshot.hours.actual : null;
   const variance = actual === null ? null : round2(actual - planned);
   const folderUrl = clientOrderFolderUrl(order);
   return `<section class="pc-modern-panel order-hours-tracking">
@@ -1205,13 +1193,6 @@ function renderOrderProfitabilityComparison(forecastData, realData) {
       return `<article><h3>${label}</h3><div><span>Prévu</span><strong>${renderValue(planned, type)}</strong></div><div><span>Réel</span><strong class="${real === null ? 'profit-missing' : ''}">${renderValue(real, type)}</strong></div><div><span>Écart</span><strong class="${difference === null ? 'profit-missing' : difference > 0 ? 'profit-negative' : difference < 0 ? 'profit-positive' : ''}">${difference === null ? 'Non renseigné' : `${difference > 0 ? '+' : ''}${renderValue(difference, type)}`}</strong></div></article>`;
     }).join('')}
   </div></section>`;
-}
-
-function orderInvoiceSummary(order, totalsMap) {
-  const amountHt = Number(order.price || 0);
-  const invoicedHt = Number(totalsMap.get(Number(order.id)) || 0);
-  const remainingHt = Math.max(0, round2(amountHt - invoicedHt));
-  return { amountHt, invoicedHt: round2(invoicedHt), remainingHt };
 }
 
 async function extractTextFromPdfBuffer(buffer) {
@@ -6947,8 +6928,11 @@ app.get('/orders/clients', requireLogin, (req, res) => {
   const availableQuotes = isAtelier ? [] : db.prepare("SELECT id, title, client_name, status FROM quotes WHERE status != 'Supprimé' ORDER BY id DESC").all();
   const quoteOptions = (selectedId = null) => `<option value="">Aucun devis lié</option>${availableQuotes.map((quote) => `<option value="${quote.id}" ${Number(selectedId) === Number(quote.id) ? 'selected' : ''}>#${quote.id} · ${escHtml(quote.client_name || '')} · ${escHtml(quote.title || 'Sans titre')}</option>`).join('')}`;
 
-  const invoiceTotals = invoiceTotalsByOrderId();
-  const totalAmount = orders.reduce((sum, o) => sum + orderInvoiceSummary(o, invoiceTotals).remainingHt, 0);
+  const financialSnapshots = new Map(orders.map((order) => [
+    Number(order.id),
+    clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, order.id)
+  ]));
+  const totalAmount = orders.reduce((sum, order) => sum + financialSnapshots.get(Number(order.id)).revenue.remainingToInvoiceExVat, 0);
   const chantierHoursByOrderId = new Map();
   const legacyChantierHoursTotals = new Map();
   db
@@ -7045,7 +7029,11 @@ app.get('/orders/clients', requireLogin, (req, res) => {
 
             const dateLabel = (o.date || '').slice(0, 10);
             const chantierPrice = Number(o.price || 0);
-            const invoiceSummary = orderInvoiceSummary(o, invoiceTotals);
+            const financialSnapshot = financialSnapshots.get(Number(o.id));
+            const invoiceSummary = {
+              invoicedHt: financialSnapshot.revenue.invoicedExVat,
+              remainingHt: financialSnapshot.revenue.remainingToInvoiceExVat
+            };
             const chantierVatRate = parseOptionalVatRate(o.vat_rate);
             const chantierPriceTtc = chantierVatRate !== null ? round2(chantierPrice * (1 + chantierVatRate / 100)) : null;
             const chantierPriceLabel = chantierPrice > 0 ? `${formatEuroFr(chantierPrice)} HT` : 'Non renseigné';
@@ -8373,14 +8361,15 @@ app.get('/orders/client/:orderId/profitability', requireLogin, (req, res) => {
   const forecastData = clientOrderForecastData(order);
   forecastData.importStatus = req.query.importStatus;
   const realData = projectProfitabilityForOrder(order);
+  const financialSnapshot = clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, order.id);
   const content = `<div class="pc-modern-page order-profitability-page">
     <section class="pc-modern-hero order-profitability-hero">
       <div><span>Commande #${order.id}</span><h1>Budget de la commande</h1><p>${escHtml(order.name || 'Client')} · ${escHtml(order.description || `Commande_${order.id}`)}</p></div>
       <div class="pc-modern-actions"><span class="order-profitability-status">${escHtml(order.chantier_status || order.status || 'En cours')}</span><strong>${formatEuroFr(order.price)} HT</strong><a class="modern-cancel-link" href="${clientOrderFolderUrl(order)}">← Retour à la commande</a></div>
     </section>
-    ${renderOrderProfitabilityOverview(order, forecastData, realData)}
-    ${renderClientOrderForecastCard(order, forecastData)}
-    ${renderOrderHoursTracking(order, forecastData, realData)}
+    ${renderOrderProfitabilityOverview(order, financialSnapshot)}
+    ${renderClientOrderForecastCard(order, forecastData, financialSnapshot)}
+    ${renderOrderHoursTracking(order, realData, financialSnapshot)}
   </div>`;
   return res.send(pageTemplate(req, `Budget - ${order.description || order.id}`, content));
 });
@@ -8390,7 +8379,8 @@ app.get('/api/orders/:id/profitability', requireLogin, (req, res) => {
   const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
   if (!order) return res.status(404).json({ success: false, error: 'Commande introuvable' });
   const result = projectProfitabilityForOrder(order);
-  return res.json({ success: true, orderId, forecast: result.forecast, actual: result.actual, costs: result.costs });
+  const financialSnapshot = clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, orderId);
+  return res.json({ success: true, orderId, forecast: result.forecast, actual: result.actual, costs: result.costs, financialSnapshot });
 });
 
 app.post('/api/orders/:id/actual-costs', requireLogin, (req, res) => {
@@ -9360,8 +9350,9 @@ const list = files.length
         const invoices = db
           .prepare('SELECT * FROM client_order_invoices WHERE client_order_id = ? ORDER BY invoice_date DESC, id DESC')
           .all(orderDb.id);
-        const totalInvoiced = invoices.reduce((sum, invoice) => sum + Number(invoice.amount_ht || 0), 0);
-        const remaining = Math.max(0, round2(Number(orderDb.price || 0) - totalInvoiced));
+        const financialSnapshot = clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, orderDb.id);
+        const totalInvoiced = financialSnapshot.revenue.invoicedExVat;
+        const remaining = financialSnapshot.revenue.remainingToInvoiceExVat;
         const invoiceCards = invoices.length
           ? invoices.map((invoice) => {
               const openUrl = `/pc-file/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}/${encodeURIComponent(invoice.stored_file_name || '')}`;
@@ -9394,7 +9385,7 @@ const list = files.length
               ${pcFolderIcon('Factures', 'clients-title-icon')}
               <div>
                 <h2>Factures EBP</h2>
-                <p>Commande HT : ${escHtml(formatEuroFr(orderDb.price || 0))} · Déjà facturé : ${escHtml(formatEuroFr(totalInvoiced))} · Reste : ${escHtml(formatEuroFr(remaining))}</p>
+                <p>Commande HT : ${escHtml(formatEuroFr(financialSnapshot.revenue.expectedExVat))} · Déjà facturé : ${escHtml(formatEuroFr(totalInvoiced))} · Reste : ${escHtml(formatEuroFr(remaining))}</p>
               </div>
             </div>
             <form method="POST" action="/orders/client/${orderDb.id}/invoices/analyze" enctype="multipart/form-data" class="pc-modern-upload-form">
