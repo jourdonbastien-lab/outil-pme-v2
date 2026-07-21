@@ -33,6 +33,18 @@ assert.throws(() => costs.validateLine({ line_type: 'material', designation: 'Tu
 assert.throws(() => costs.validateLine({ line_type: 'invalid', designation: 'Test' }), /Type de ligne/);
 assert.strictEqual(costs.validateLine({ line_type: 'other', designation: 'X'.repeat(300), quantity: 1 }).designation.length, 255);
 
+const importedLabor = costs.quoteLineToCostLine({ id: 1, label: 'Pose sur chantier', qty: 8, unit: 'h', hourly_cost: 42, unit_price: 65 });
+assert.strictEqual(importedLabor.line_type, 'labor');
+assert.strictEqual(importedLabor.planned_minutes, 480);
+assert.strictEqual(importedLabor.hourly_cost_ht, 42);
+const importedMaterial = costs.quoteLineToCostLine({ id: 2, label: 'Tube acier', qty: 12, unit: 'ml', cost_unit: 7.5, unit_price: 14 });
+assert.strictEqual(importedMaterial.line_type, 'material');
+assert.strictEqual(importedMaterial.unit_cost_ht, 7.5);
+const importedOther = costs.quoteLineToCostLine({ id: 3, label: 'Thermolaquage', qty: 1, unit: 'forfait', cost_unit: 450 });
+assert.strictEqual(importedOther.line_type, 'other');
+assert.strictEqual(costs.quoteLineToCostLine({ label: 'Tôle', qty: 4, cost_total: 100 }).unit_cost_ht, 25);
+assert.strictEqual(costs.quoteLineToCostLine({ label: 'Fourniture inconnue', qty: 1 }).incomplete_cost, true);
+
 const server = fs.readFileSync('server.js', 'utf8');
 const css = fs.readFileSync('public/style.css', 'utf8');
 assert(server.includes('CREATE TABLE IF NOT EXISTS client_order_cost_lines'));
@@ -47,9 +59,13 @@ for (const route of [
 ]) assert(server.includes(route), `route absente: ${route}`);
 assert(server.includes('WHERE id = ? AND client_order_id = ?'), 'isolation commande/ligne absente');
 assert(server.includes('INSERT OR IGNORE INTO client_order_cost_lines'), 'import anti-doublon absent');
-assert(server.includes('Le prix contractuel reste inchangé'));
+assert(server.includes('client_order_cost_line_exclusions'), 'mémoire des suppressions absente');
+assert(server.includes('importMissingQuoteCostLines(clientOrderId, quoteId)'), 'import à l’acceptation du devis absent');
+assert(server.includes('if (quoteId) importMissingQuoteCostLines(Number(orderId), quoteId)'), 'import à la création manuelle liée absent');
+assert(server.includes("source_type, source_quote_line_id"));
+assert(server.includes('Le devis d’origine reste inchangé'));
 assert(server.includes('Aucune matière ni main-d’œuvre renseignée'));
-assert(css.includes('.order-forecast-columns'));
+assert(css.includes('.order-cost-groups'));
 assert(css.includes('@media(max-width:600px)'));
 assert(css.includes('min-height:48px'));
 

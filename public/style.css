@@ -8206,6 +8206,7 @@ body.sketchpad-drawing{
 .order-actual-comparison span{background:#f8fafc;border:1px solid #e5e7eb;}
 .order-import-quote{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:14px;padding:12px;border:1px solid #fed7aa;border-radius:14px;background:#fff7ed;}
 .order-import-quote button{min-height:44px;}.order-import-quote small{color:#9a3412;font-weight:750;}
+.order-budget-flash{margin:14px 0 0;padding:11px 13px;border:1px solid #fed7aa;border-radius:12px;background:#fff7ed;color:#9a3412;font-weight:800}
 .order-forecast-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px;}
 .order-forecast-columns>article,.order-forecast-other{min-width:0;padding:16px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;}
 .order-forecast-columns h3,.order-forecast-other h3{margin:0 0 12px;color:#101827;}
@@ -8229,10 +8230,11 @@ body.sketchpad-drawing{
 .order-cost-form .order-cost-wide,.order-cost-form button{grid-column:1/-1;}.order-cost-form button{justify-self:start;min-height:44px;}
 .order-cost-add{margin-top:12px;}.order-cost-add>summary{display:flex;align-items:center;width:max-content;min-height:44px;list-style:none;cursor:pointer;}
 .order-cost-advanced{padding:10px;border:1px solid #e5e7eb;border-radius:11px}.order-cost-advanced>summary{min-height:44px;display:flex;align-items:center;color:#475569;font-weight:800;cursor:pointer}.order-cost-advanced>label{margin-top:8px}
+.order-hours-tracking{margin-top:18px}.order-hours-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}.order-hours-summary>div{min-width:0;padding:14px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc}.order-hours-summary span{display:block;color:#667085;font-size:12px;font-weight:800}.order-hours-summary strong{display:block;margin-top:5px;color:#101827;overflow-wrap:anywhere}.order-hours-link{display:inline-flex;margin-top:14px;min-height:44px}
 
 @media(max-width:900px){.profitability-main-columns{grid-template-columns:minmax(0,1fr)}.profitability-global-card,.profitability-real-grid,.profitability-comparison-grid,.order-forecast-summary{grid-template-columns:repeat(2,minmax(0,1fr));}.order-forecast-columns{grid-template-columns:minmax(0,1fr);}}
 @media(max-width:600px){
-  .profitability-global-card,.profitability-real-grid,.profitability-comparison-grid,.order-forecast-summary,.order-cost-form{grid-template-columns:minmax(0,1fr);}
+  .profitability-global-card,.profitability-real-grid,.profitability-comparison-grid,.order-forecast-summary,.order-cost-form,.order-hours-summary{grid-template-columns:minmax(0,1fr);}
   .order-profitability-hero .pc-modern-actions{align-items:stretch;}.order-profitability-hero .pc-modern-actions>*{width:100%;}
   .order-cost-form .order-cost-wide,.order-cost-form button{grid-column:auto;}.order-cost-form button,.order-cost-add>summary,.order-import-quote button{width:100%;}
   .order-cost-line-card header{display:block;}.order-cost-line-card header>strong{display:block;margin-top:8px;text-align:left;white-space:normal;}

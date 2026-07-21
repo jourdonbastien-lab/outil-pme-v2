@@ -999,11 +999,41 @@ function renderProjectProfitabilityCard(order, data) {
 }
 
 function clientOrderDetailRedirect(order) {
-  return `/orders/client/${order.id}/profitability#order-forecast`;
+  return `/orders/client/${order.id}/profitability#order-budget`;
 }
 
 function clientOrderFolderUrl(order) {
   return `/pc-folders/${encodeURIComponent(safeName(order.name))}/${encodeURIComponent(clientOrderFolderName(order))}`;
+}
+
+function importMissingQuoteCostLines(clientOrderId, quoteId) {
+  const orderId = Number(clientOrderId || 0);
+  const linkedQuoteId = Number(quoteId || 0);
+  if (!Number.isInteger(orderId) || orderId <= 0 || !Number.isInteger(linkedQuoteId) || linkedQuoteId <= 0) {
+    return { imported: 0, available: 0 };
+  }
+  const quoteLines = db.prepare('SELECT * FROM quote_lines WHERE quote_id = ? ORDER BY position, id').all(linkedQuoteId);
+  const excluded = new Set(db.prepare('SELECT source_quote_line_id FROM client_order_cost_line_exclusions WHERE client_order_id = ?').all(orderId).map((row) => Number(row.source_quote_line_id)));
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO client_order_cost_lines
+      (client_order_id, line_type, category, designation, quantity, unit, unit_cost_ht, unit_sale_ht,
+       planned_minutes, hourly_cost_ht, hourly_sale_ht, notes, source_type, source_quote_line_id,
+       sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'quote', ?, ?, ?, ?)
+  `);
+  let imported = 0;
+  db.transaction(() => {
+    quoteLines.forEach((quoteLine, index) => {
+      if (excluded.has(Number(quoteLine.id))) return;
+      const line = clientOrderCostLines.quoteLineToCostLine(quoteLine);
+      const note = line.incomplete_cost ? 'Coût à compléter : le devis ne contient pas de coût d’achat fiable.' : null;
+      const result = insert.run(orderId, line.line_type, line.category, line.designation, line.quantity, line.unit,
+        line.unit_cost_ht, line.unit_sale_ht, line.planned_minutes, line.hourly_cost_ht, line.hourly_sale_ht,
+        note, quoteLine.id, Number(quoteLine.position || index), new Date().toISOString(), new Date().toISOString());
+      imported += Number(result.changes || 0);
+    });
+  })();
+  return { imported, available: quoteLines.length };
 }
 
 function clientOrderForecastData(order) {
@@ -1043,12 +1073,13 @@ function renderCostLineFields(lineType, line = {}) {
 
 function renderOrderCostLine(order, line) {
   const calculated = clientOrderCostLines.calculateLine(line);
-  const origin = line.source_type === 'quote' ? 'Devis' : 'Manuel';
+  const origin = line.source_type === 'quote' ? 'Issu du devis' : 'Ajout manuel';
   const detail = line.line_type === 'labor'
     ? `${calculated.hours.toFixed(2)} h`
     : line.line_type === 'other' ? '' : `${Number(line.quantity || 0).toFixed(2)} ${escHtml(line.unit || '')}`;
+  const costIncomplete = line.source_type === 'quote' && calculated.cost <= 0;
   return `<article class="order-cost-line-card">
-    <header><div><h4>${escHtml(line.designation)}</h4><p>${detail}${detail ? ' · ' : ''}Origine : ${origin}</p></div><strong>${formatEuroFr(calculated.cost)}</strong></header>
+    <header><div><h4>${escHtml(line.designation)}</h4><p>${detail}${detail ? ' · ' : ''}Origine : ${origin}${costIncomplete ? ' · Coût à compléter' : ''}</p></div><strong class="${costIncomplete ? 'profit-missing' : ''}">${formatEuroFr(calculated.cost)}</strong></header>
     <div class="order-cost-actions"><details><summary class="modern-secondary-btn">Modifier</summary><form method="POST" action="/orders/client/${order.id}/cost-lines/${line.id}/edit" class="order-cost-form"><input type="hidden" name="line_type" value="${line.line_type}">${renderCostLineFields(line.line_type, line)}<button class="clients-submit-btn" type="submit">Enregistrer</button></form></details>
     <form method="POST" action="/orders/client/${order.id}/cost-lines/${line.id}/duplicate"><button class="modern-secondary-btn" type="submit">Dupliquer</button></form>
     <form method="POST" action="/orders/client/${order.id}/cost-lines/${line.id}/delete" onsubmit="return confirm('Supprimer définitivement cette ligne prévisionnelle ?');"><button class="modern-danger-btn" type="submit">Supprimer</button></form></div>
@@ -1067,8 +1098,12 @@ function renderClientOrderForecastCard(order, data) {
     <summary><span><strong>${title}</strong><small>${extra ? `${extra} · ` : ''}${formatEuroFr(total)}</small></span><span class="order-cost-chevron" aria-hidden="true">⌄</span></summary>
     ${lineList(lines)}<details class="order-cost-add"><summary class="${primary ? 'clients-submit-btn' : 'modern-secondary-btn'}">+ ${addLabel}</summary><form method="POST" action="/orders/client/${order.id}/cost-lines" class="order-cost-form"><input type="hidden" name="line_type" value="${lineType}">${renderCostLineFields(lineType)}<button class="clients-submit-btn" type="submit">Ajouter</button></form></details>
   </details>`;
-  return `<section id="order-forecast" class="pc-modern-panel order-forecast-card">
-    <div class="modern-section-title"><span class="quote-ai-review-icon">${clientPageIcon('quotes')}</span><div><h2>Prévisionnel</h2><p>Le prix contractuel reste inchangé. Les détails restent repliés pour une lecture immédiate.</p></div></div>
+  const importStatus = String(data.importStatus || '');
+  const importedCount = importStatus.startsWith('imported-') ? Math.max(0, Number.parseInt(importStatus.slice(9), 10) || 0) : 0;
+  const importMessage = importedCount > 0 ? `${importedCount} ligne${importedCount > 1 ? 's' : ''} importée${importedCount > 1 ? 's' : ''}.` : importStatus === 'none' ? 'Aucune nouvelle ligne à importer.' : importStatus === 'no-quote' ? 'Aucun devis lié à cette commande.' : '';
+  return `<section id="order-budget" class="pc-modern-panel order-forecast-card">
+    <div class="modern-section-title"><span class="quote-ai-review-icon">${clientPageIcon('quotes')}</span><div><h2>Budget de la commande</h2><p>Le devis d’origine reste inchangé. Les lignes de ce budget sont indépendantes.</p></div></div>
+    ${importMessage ? `<p class="order-budget-flash">${importMessage}</p>` : ''}
     <div class="order-forecast-summary">
       ${metric('Main-d’œuvre prévue', formatEuroFr(summary.groups.labor.cost))}
       ${metric('Matière prévue', formatEuroFr(summary.groups.material.cost))}
@@ -1087,28 +1122,37 @@ function renderClientOrderForecastCard(order, data) {
 
 function renderOrderProfitabilityOverview(order, forecastData, realData) {
   const forecast = forecastData.summary;
-  const actual = realData.actual;
-  const hasActualCosts = realData.hours.length > 0 || realData.costs.length > 0;
   const contractPrice = Number(order.price || 0);
   const forecastMargin = round2(contractPrice - forecast.totalCost);
-  const actualMargin = hasActualCosts ? round2(contractPrice - actual.actualCost) : null;
-  const actualMarginRate = actualMargin !== null && contractPrice > 0 ? round2((actualMargin / contractPrice) * 100) : null;
-  const limitedOverrun = hasActualCosts && actual.actualCost > forecast.totalCost;
-  const state = actualMargin === null || contractPrice <= 0
-    ? { label: 'Données incomplètes', className: 'is-incomplete' }
-    : actualMargin < 0
+  const marginRate = contractPrice > 0 ? round2((forecastMargin / contractPrice) * 100) : null;
+  const state = contractPrice <= 0 || forecastData.lines.length === 0
+    ? { label: 'Budget incomplet', className: 'is-incomplete' }
+    : forecastMargin < 0
       ? { label: 'En perte', className: 'is-loss' }
-      : actualMarginRate < 10 || limitedOverrun
+      : marginRate < 10
         ? { label: 'À surveiller', className: 'is-warning' }
         : { label: 'Rentable', className: 'is-profitable' };
   const item = (label, value, className = '') => `<div><span>${label}</span><strong class="${className}">${value}</strong></div>`;
-  return `<section class="profitability-global-section"><div class="profitability-global-heading"><div><span>Résultat global</span><h2>${state.label}</h2></div><strong class="profitability-state ${state.className}">${state.label}</strong></div><div class="profitability-global-card">
+  return `<section class="profitability-global-section"><div class="profitability-global-heading"><div><span>Résultat de la commande</span><h2>${state.label}</h2></div><strong class="profitability-state ${state.className}">${state.label}</strong></div><div class="profitability-global-card">
     ${item('Prix de vente HT', formatEuroFr(contractPrice))}
-    ${item('Coût prévisionnel', formatEuroFr(forecast.totalCost))}
-    ${item('Coût réel', hasActualCosts ? formatEuroFr(actual.actualCost) : 'Non renseigné', hasActualCosts ? '' : 'profit-missing')}
-    ${item('Marge prévisionnelle', formatEuroFr(forecastMargin), forecastMargin < 0 ? 'profit-negative' : 'profit-positive')}
-    ${item('Marge réelle', actualMargin === null ? 'Non renseigné' : `${formatEuroFr(actualMargin)}${actualMarginRate === null ? '' : ` — ${actualMarginRate.toFixed(1)} %`}`, actualMargin === null || actualMarginRate === null ? 'profit-missing' : actualMargin < 0 ? 'profit-negative' : 'profit-positive')}
+    ${item('Coût total budgété', formatEuroFr(forecast.totalCost))}
+    ${item('Marge estimée', formatEuroFr(forecastMargin), forecastMargin < 0 ? 'profit-negative' : 'profit-positive')}
+    ${item('Marge estimée', marginRate === null ? 'Non calculable' : `${marginRate.toFixed(1)} %`, marginRate === null ? 'profit-missing' : forecastMargin < 0 ? 'profit-negative' : 'profit-positive')}
+    ${item('Heures budgétées', `${forecast.plannedHours.toFixed(2)} h`)}
   </div></section>`;
+}
+
+function renderOrderHoursTracking(order, forecastData, realData) {
+  const planned = forecastData.summary.plannedHours;
+  const hasActualHours = realData.hours.length > 0;
+  const actual = hasActualHours ? realData.actual.actualHours : null;
+  const variance = actual === null ? null : round2(actual - planned);
+  const folderUrl = clientOrderFolderUrl(order);
+  return `<section class="pc-modern-panel order-hours-tracking">
+    <div class="modern-section-title"><span class="quote-ai-review-icon">${pcFolderIcon('Heure chantier', 'clients-ui-icon')}</span><div><h2>Suivi des heures</h2><p>Les heures réalisées proviennent uniquement des pointages liés à la commande.</p></div></div>
+    <div class="order-hours-summary"><div><span>Heures prévues</span><strong>${planned.toFixed(2)} h</strong></div><div><span>Heures réalisées</span><strong class="${actual === null ? 'profit-missing' : ''}">${actual === null ? 'Aucune heure pointée' : `${actual.toFixed(2)} h`}</strong></div><div><span>Écart</span><strong class="${variance === null ? 'profit-missing' : variance > 0 ? 'profit-negative' : 'profit-positive'}">${variance === null ? 'Non calculable' : `${variance > 0 ? '+' : ''}${variance.toFixed(2)} h`}</strong></div></div>
+    <a class="modern-secondary-btn order-hours-link" href="${folderUrl}/Heure%20chantier">Voir les heures</a>
+  </section>`;
 }
 
 function renderOrderActualDetails(order, realData) {
@@ -1729,6 +1773,14 @@ function createSqliteTables(database) {
   `).run();
   database.prepare('CREATE INDEX IF NOT EXISTS idx_client_order_cost_lines_order_type ON client_order_cost_lines(client_order_id, line_type, sort_order, id)').run();
   database.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_client_order_cost_lines_quote_source ON client_order_cost_lines(client_order_id, source_quote_line_id) WHERE source_quote_line_id IS NOT NULL').run();
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS client_order_cost_line_exclusions (
+      client_order_id INTEGER NOT NULL,
+      source_quote_line_id INTEGER NOT NULL,
+      excluded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(client_order_id, source_quote_line_id)
+    )
+  `).run();
 
   database.prepare(`
     CREATE TABLE IF NOT EXISTS measurement_photo_files (
@@ -6740,6 +6792,8 @@ app.get('/orders/clients', requireLogin, (req, res) => {
     `
     )
     .all();
+  const availableQuotes = isAtelier ? [] : db.prepare("SELECT id, title, client_name, status FROM quotes WHERE status != 'Supprimé' ORDER BY id DESC").all();
+  const quoteOptions = (selectedId = null) => `<option value="">Aucun devis lié</option>${availableQuotes.map((quote) => `<option value="${quote.id}" ${Number(selectedId) === Number(quote.id) ? 'selected' : ''}>#${quote.id} · ${escHtml(quote.client_name || '')} · ${escHtml(quote.title || 'Sans titre')}</option>`).join('')}`;
 
   const invoiceTotals = invoiceTotalsByOrderId();
   const totalAmount = orders.reduce((sum, o) => sum + orderInvoiceSummary(o, invoiceTotals).remainingHt, 0);
@@ -7063,6 +7117,7 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                         <input type="number" name="chantier_progress" min="0" max="100" step="1" value="${escHtml(String(Number(o.chantier_progress || progress || 0)))}">
                       </div>
                     </label>
+                    ${!isAtelier ? `<label class="clients-field"><span>Devis lié</span><div class="clients-input-shell">${clientPageIcon('quotes')}<select name="quote_id">${quoteOptions(o.quote_id)}</select></div></label>` : ''}
                   </div>
                   <div class="modern-client-order-edit-actions">
                     <button type="submit" class="clients-submit-btn">${clientPageIcon('check', 'clients-submit-icon')} Enregistrer</button>
@@ -7173,6 +7228,8 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
                     <input type="date" name="chantier_end_date" />
                   </div>
                 </label>
+
+                ${!isAtelier ? `<label class="clients-field"><span>Devis lié (facultatif)</span><div class="clients-input-shell">${clientPageIcon('quotes')}<select name="quote_id">${quoteOptions()}</select></div></label>` : ''}
 
                 ${!isAtelier ? `
                 <label class="clients-field">
@@ -8003,6 +8060,8 @@ app.post('/orders/client', requireLogin, (req, res) => {
   const plannedHours = parsePositiveNumber(req.body.planned_hours);
   const chantierStartDate = String(req.body.chantier_start_date || '').trim() || null;
   const chantierEndDate = String(req.body.chantier_end_date || '').trim() || null;
+  const quoteId = parseOptionalId(req.body.quote_id);
+  if (quoteId && !db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)) return res.status(400).send('Devis lié introuvable');
 
   if (!name) return res.status(400).send('Nom client requis');
 
@@ -8021,10 +8080,11 @@ app.post('/orders/client', requireLogin, (req, res) => {
         chantier_status,
         chantier_start_date,
         chantier_end_date,
+        quote_id,
         status,
         created_at
       )
-	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'En cours', ?)
+	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'En cours', ?)
 	  `
     )
 	    .run(
@@ -8037,10 +8097,12 @@ app.post('/orders/client', requireLogin, (req, res) => {
         chantierStatus,
         chantierStartDate,
         chantierEndDate,
+        quoteId,
         new Date().toISOString()
       );
 
   const orderId = info.lastInsertRowid;
+  if (quoteId) importMissingQuoteCostLines(Number(orderId), quoteId);
 
 
 
@@ -8116,26 +8178,17 @@ app.post('/orders/client/:id/update', requireLogin, (req, res) => {
     } else {
       const priceHt = parseDecimalInput(req.body.price, 0);
       const vatRate = parseOptionalVatRate(req.body.vat_rate);
-      db.prepare(`
-        UPDATE client_orders
-        SET date = ?,
-            price = ?,
-            vat_rate = ?,
-            planned_hours = ?,
-            chantier_end_date = ?,
-            chantier_status = ?,
-            chantier_progress = ?
-        WHERE id = ?
-      `).run(
-        dateValue,
-        priceHt,
-        vatRate,
-        plannedHours,
-        chantierEndDate,
-        chantierStatus,
-        chantierProgress,
-        orderId
-      );
+      const quoteId = parseOptionalId(req.body.quote_id);
+      if (quoteId && !db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)) return res.redirect('/orders/clients?orderUpdate=error');
+      db.transaction(() => {
+        db.prepare(`
+          UPDATE client_orders
+          SET date = ?, price = ?, vat_rate = ?, planned_hours = ?, chantier_end_date = ?,
+              chantier_status = ?, chantier_progress = ?, quote_id = ?
+          WHERE id = ?
+        `).run(dateValue, priceHt, vatRate, plannedHours, chantierEndDate, chantierStatus, chantierProgress, quoteId, orderId);
+        if (quoteId && Number(existing.quote_id || 0) !== quoteId) importMissingQuoteCostLines(orderId, quoteId);
+      })();
     }
 
     return res.redirect('/orders/clients?orderUpdate=ok');
@@ -8156,20 +8209,18 @@ app.get('/orders/client/:orderId/profitability', requireLogin, (req, res) => {
   const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
   if (!order) return res.status(404).send('Commande introuvable');
   const forecastData = clientOrderForecastData(order);
+  forecastData.importStatus = req.query.importStatus;
   const realData = projectProfitabilityForOrder(order);
   const content = `<div class="pc-modern-page order-profitability-page">
     <section class="pc-modern-hero order-profitability-hero">
-      <div><span>Commande #${order.id}</span><h1>Rentabilité de la commande</h1><p>${escHtml(order.name || 'Client')} · ${escHtml(order.description || `Commande_${order.id}`)}</p></div>
+      <div><span>Commande #${order.id}</span><h1>Budget de la commande</h1><p>${escHtml(order.name || 'Client')} · ${escHtml(order.description || `Commande_${order.id}`)}</p></div>
       <div class="pc-modern-actions"><span class="order-profitability-status">${escHtml(order.chantier_status || order.status || 'En cours')}</span><strong>${formatEuroFr(order.price)} HT</strong><a class="modern-cancel-link" href="${clientOrderFolderUrl(order)}">← Retour à la commande</a></div>
     </section>
     ${renderOrderProfitabilityOverview(order, forecastData, realData)}
-    <div class="profitability-main-columns">
-      ${renderClientOrderForecastCard(order, forecastData)}
-      ${renderOrderActualDetails(order, realData)}
-    </div>
-    ${renderOrderProfitabilityComparison(forecastData, realData)}
+    ${renderClientOrderForecastCard(order, forecastData)}
+    ${renderOrderHoursTracking(order, forecastData, realData)}
   </div>`;
-  return res.send(pageTemplate(req, `Rentabilité - ${order.description || order.id}`, content));
+  return res.send(pageTemplate(req, `Budget - ${order.description || order.id}`, content));
 });
 
 app.get('/api/orders/:id/profitability', requireLogin, (req, res) => {
@@ -8289,7 +8340,10 @@ app.post('/orders/client/:orderId/cost-lines/:lineId/duplicate', requireLogin, (
 app.post('/orders/client/:orderId/cost-lines/:lineId/delete', requireLogin, (req, res) => {
   const order = requireClientOrderForCostLine(req, res);
   if (!order) return;
-  const result = db.prepare('DELETE FROM client_order_cost_lines WHERE id = ? AND client_order_id = ?').run(Number(req.params.lineId || 0), order.id);
+  const lineId = Number(req.params.lineId || 0);
+  const existing = db.prepare('SELECT source_quote_line_id FROM client_order_cost_lines WHERE id = ? AND client_order_id = ?').get(lineId, order.id);
+  if (existing?.source_quote_line_id) db.prepare('INSERT OR IGNORE INTO client_order_cost_line_exclusions (client_order_id, source_quote_line_id, excluded_at) VALUES (?, ?, ?)').run(order.id, existing.source_quote_line_id, new Date().toISOString());
+  const result = db.prepare('DELETE FROM client_order_cost_lines WHERE id = ? AND client_order_id = ?').run(lineId, order.id);
   if (!result.changes) return res.status(404).send('Ligne introuvable pour cette commande');
   return res.redirect(clientOrderDetailRedirect(order));
 });
@@ -8297,31 +8351,9 @@ app.post('/orders/client/:orderId/cost-lines/:lineId/delete', requireLogin, (req
 app.post('/orders/client/:orderId/cost-lines/import-quote', requireLogin, (req, res) => {
   const order = requireClientOrderForCostLine(req, res);
   if (!order) return;
-  if (!order.quote_id) return res.status(400).send('Cette commande n’est associée à aucun devis');
-  const quoteLines = db.prepare('SELECT * FROM quote_lines WHERE quote_id = ? ORDER BY position, id').all(order.quote_id);
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO client_order_cost_lines
-      (client_order_id, line_type, category, designation, quantity, unit, unit_cost_ht, unit_sale_ht,
-       planned_minutes, hourly_cost_ht, hourly_sale_ht, source_type, source_quote_line_id, sort_order, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'quote', ?, ?, ?, ?)
-  `);
-  db.transaction(() => {
-    quoteLines.forEach((line, index) => {
-      const unit = String(line.unit || '').toLocaleLowerCase('fr-FR');
-      const category = String(line.cost_category || line.category || '');
-      const isLabor = Number(line.hours || 0) > 0 || ['h', 'heure', 'heures'].includes(unit) || category.toLocaleLowerCase('fr-FR').includes('main-d');
-      const isOther = !isLabor && ['galvanisation', 'thermolaquage', 'sous-traitance', 'déplacement', 'location', 'divers'].some((word) => category.toLocaleLowerCase('fr-FR').includes(word));
-      const lineType = isLabor ? 'labor' : (isOther ? 'other' : 'material');
-      const hours = Number(line.hours || (isLabor ? line.qty : 0)) || 0;
-      insert.run(order.id, lineType, category || null, String(line.label || 'Ligne du devis').slice(0, 255),
-        isLabor ? 0 : Number(line.qty || 0), isLabor ? 'h' : String(line.unit || 'u'),
-        isLabor ? 0 : Number(line.cost_unit || 0), isLabor ? 0 : Number(line.unit_price || 0),
-        Math.round(hours * 60), isLabor ? Number(line.hourly_cost || line.cost_unit || 0) : 0,
-        isLabor ? Number(line.unit_price || 0) : 0, line.id, Number(line.position || index),
-        new Date().toISOString(), new Date().toISOString());
-    });
-  })();
-  return res.redirect(clientOrderDetailRedirect(order));
+  if (!order.quote_id) return res.redirect(`/orders/client/${order.id}/profitability?importStatus=no-quote#order-budget`);
+  const result = importMissingQuoteCostLines(order.id, order.quote_id);
+  return res.redirect(`/orders/client/${order.id}/profitability?importStatus=${result.imported > 0 ? `imported-${result.imported}` : 'none'}#order-budget`);
 });
 
 /* ===================== COMMANDES FOURNISSEURS ===================== */
@@ -12371,6 +12403,7 @@ console.log('orderTitle =', orderTitle);
     );
     const clientOrderId = Number(orderInsert.lastInsertRowid);
     saveProjectForecast({ ...quote, total_ht: totalWithMargin }, lines, clientOrderId);
+    importMissingQuoteCostLines(clientOrderId, quoteId);
     db.prepare("UPDATE quotes SET status = 'Accepté' WHERE id = ?").run(quoteId);
     return clientOrderId;
   });

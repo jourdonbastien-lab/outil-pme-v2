@@ -8,58 +8,43 @@ const css = fs.readFileSync('public/style.css', 'utf8');
 
 assert(server.includes("app.get('/orders/client/:orderId/profitability', requireLogin"));
 assert(server.includes('pc-profitability-access'));
-assert(server.includes("return `/orders/client/${order.id}/profitability#order-forecast`;"));
-
-const mainStart = server.indexOf("app.get('/pc-folders/:client/:order', requireLogin");
-const mainEnd = server.indexOf("app.post('/orders/client/:id/chantier'", mainStart);
-const mainRoute = server.slice(mainStart, mainEnd);
-assert(mainRoute.includes('profitabilityAccessCard'));
-assert(!mainRoute.includes('renderClientOrderForecastCard('));
-assert(!mainRoute.includes('renderProjectProfitabilityCard('));
+assert(server.includes("return `/orders/client/${order.id}/profitability#order-budget`;"));
 
 const routeStart = server.indexOf("app.get('/orders/client/:orderId/profitability'");
 const routeEnd = server.indexOf("app.get('/api/orders/:id/profitability'", routeStart);
 const route = server.slice(routeStart, routeEnd);
-for (const renderer of ['renderOrderProfitabilityOverview', 'renderClientOrderForecastCard', 'renderOrderActualDetails', 'renderOrderProfitabilityComparison']) {
-  assert(route.includes(renderer), `rendu absent: ${renderer}`);
-}
-assert(!route.includes('renderProjectProfitabilityCard('), 'ancien bloc comptable encore affiché');
-assert(route.includes('clientOrderFolderUrl(order)'));
+for (const renderer of ['renderOrderProfitabilityOverview', 'renderClientOrderForecastCard', 'renderOrderHoursTracking']) assert(route.includes(renderer));
+for (const removed of ['renderOrderActualDetails', 'renderOrderProfitabilityComparison', 'renderProjectProfitabilityCard']) assert(!route.includes(`${removed}(`), `ancienne zone encore rendue: ${removed}`);
 
-for (const heading of ['Résultat global', '<h2>Prévisionnel</h2>', '<h2>Réel</h2>', '<h2>Écarts</h2>']) {
-  assert(server.includes(heading), `zone absente: ${heading}`);
-}
-for (const state of ['Rentable', 'À surveiller', 'En perte', 'Données incomplètes']) assert(server.includes(state));
-assert(server.includes('(actualMargin / contractPrice) * 100'), 'marge réelle non fondée sur le prix contractuel');
-assert(server.includes('round2(contractPrice - actual.actualCost)'));
+for (const heading of ['Résultat de la commande', '<h2>Budget de la commande</h2>', '<h2>Suivi des heures</h2>']) assert(server.includes(heading), `zone absente: ${heading}`);
+for (const state of ['Rentable', 'À surveiller', 'En perte', 'Budget incomplet']) assert(server.includes(state));
+assert(server.includes('round2(contractPrice - forecast.totalCost)'));
+assert(server.includes('(forecastMargin / contractPrice) * 100'));
+assert(server.includes('forecastData.lines.length === 0'));
 
-assert(server.includes('class="order-cost-group"'), 'groupes prévisionnels non repliables');
-assert(!server.includes('class="order-cost-group" open'), 'groupes ouverts par défaut');
-for (const action of ['Modifier', 'Dupliquer', 'Supprimer', 'Importer les lignes du devis']) assert(server.includes(action));
-for (const link of ['/Heure%20chantier', '/Factures', '/Devis']) assert(server.includes(`href="${'${folderUrl}'}${link}`), `lien absent: ${link}`);
-assert(server.includes('Options avancées'));
-assert(server.includes("lineType === 'other'"));
+assert(server.includes('id="order-budget"'));
+assert(server.includes('class="order-cost-group"'));
+assert(!server.includes('class="order-cost-group" open'));
+for (const origin of ['Issu du devis', 'Ajout manuel']) assert(server.includes(origin));
+for (const action of ['Ajouter de la main-d’œuvre', 'Ajouter de la matière', 'Ajouter un autre coût', 'Modifier', 'Dupliquer', 'Supprimer']) assert(server.includes(action));
 
-const actualRendererStart = server.indexOf('function renderOrderActualDetails');
-const actualRendererEnd = server.indexOf('function renderOrderProfitabilityComparison', actualRendererStart);
-const actualRenderer = server.slice(actualRendererStart, actualRendererEnd);
-for (const forbidden of ['invoice_number', 'invoice_date', 'hoursByCategory', 'Reste à facturer', 'Facturé HT']) {
-  assert(!actualRenderer.includes(forbidden), `détail réel répété: ${forbidden}`);
-}
+const hoursStart = server.indexOf('function renderOrderHoursTracking');
+const hoursEnd = server.indexOf('function renderOrderActualDetails', hoursStart);
+const hoursRenderer = server.slice(hoursStart, hoursEnd);
+for (const label of ['Heures prévues', 'Heures réalisées', 'Écart', 'Voir les heures']) assert(hoursRenderer.includes(label));
+assert(!hoursRenderer.includes('laborCost'));
 
-const comparisonStart = server.indexOf('function renderOrderProfitabilityComparison');
-const comparisonEnd = server.indexOf('function orderInvoiceSummary', comparisonStart);
-const comparison = server.slice(comparisonStart, comparisonEnd);
-assert(comparison.includes("['Heures'"));
-assert(comparison.includes("['Main-d’œuvre'"));
-assert(comparison.includes("['Matière'"));
-assert(comparison.includes("['Coût total'"));
-assert(!comparison.includes("['Autres coûts'"));
-assert(!comparison.includes("['Marge'"));
+assert(server.includes('function importMissingQuoteCostLines'));
+assert(server.includes('INSERT OR IGNORE INTO client_order_cost_lines'));
+assert(server.includes('source_quote_line_id'));
+assert(server.includes('client_order_cost_line_exclusions'));
+assert(server.includes('`imported-${result.imported}`'));
+assert(server.includes('importStatus=no-quote'));
+assert(server.includes("name=\"quote_id\""), 'rattachement de devis absent des formulaires commande');
 
-for (const selector of ['.profitability-main-columns', '.profitability-global-section', '.order-cost-group', '.profitability-folder-links']) assert(css.includes(selector));
+for (const selector of ['.profitability-global-section', '.order-cost-group', '.order-hours-summary', '.order-budget-flash']) assert(css.includes(selector));
 assert(css.includes('env(safe-area-inset-bottom)'));
 assert(css.includes('@media(max-width:600px)'));
-assert(css.includes('grid-template-columns:minmax(0,1fr)'));
+assert(css.includes('.order-hours-summary{grid-template-columns:minmax(0,1fr)'));
 
-console.log('OK - page Rentabilité simplifiée');
+console.log('OK - budget unifié des commandes');
