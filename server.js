@@ -15,6 +15,7 @@ const googleSync = require('./lib/googleCalendarSync');
 const agendaEventRange = require('./lib/agendaEventRange');
 const measurementRoutes = require('./lib/measurementRoutes');
 const measurementPhotoFiles = require('./lib/measurementPhotoFiles');
+const incomingDocuments = require('./lib/incomingDocuments');
 const app = express();
 
 function tryRequire(moduleName) {
@@ -395,6 +396,10 @@ ensureDir(EBP_SCAN_DIR);
 ensureDir(EBP_SCAN_TMP_DIR);
 ensureDir(EBP_INCOMING_DIR);
 ensureDir(EBP_INCOMING_PROCESSED_DIR);
+const SCANNER_DIRS = incomingDocuments.ensureScannerDirectories(STORAGE_DIR);
+const SCANNER_IMPORT_ENABLED = String(process.env.SCANNER_IMPORT_ENABLED || 'true').toLowerCase() !== 'false';
+const SCANNER_IMPORT_INTERVAL_MS = Math.min(300000, Math.max(2000, parsePositiveInt(process.env.SCANNER_IMPORT_INTERVAL_MS, 10000)));
+const SCANNER_MAX_FILE_SIZE_BYTES = Math.min(100, Math.max(1, parsePositiveInt(process.env.SCANNER_MAX_FILE_SIZE_MB, 25))) * 1024 * 1024;
 
 const MEASUREMENTS_PUBLIC_DIR = path.join(__dirname, 'modules', 'measurements', 'public');
 const MEASUREMENT_SHEETS = {
@@ -1431,6 +1436,7 @@ function initializeSqlite(database) {
   }
 
   createSqliteTables(database);
+  incomingDocuments.migrateIncomingDocuments(database);
   runSqliteMigrations(ensureColumn);
   runSqliteNormalizations(database);
   initializeDefaultUsers(database);
@@ -3138,6 +3144,7 @@ function pageTemplate(req, title, content) {
         { href: '/tasks', label: 'Tâches', icon: 'tasks' },
         { href: '/orders/clients', label: 'Commandes clients', icon: 'clientOrders' },
         { href: '/orders/suppliers', label: 'Commandes fournisseurs', icon: 'supplierOrders' },
+        { href: '/documents-entrants', label: 'Documents entrants', icon: 'quotes' },
         { href: '/outils/prises-cotes', label: 'Prises de cotes', icon: 'measurements' },
         { href: '/outils/logibarre', label: 'LogiBarre', icon: 'logibarre' },
         { href: '/outils/logitole', label: 'LogiTôle', icon: 'logitole' },
@@ -3265,6 +3272,11 @@ ${isAtelier ? `
   <a href="/devis"
      class="${req.path.startsWith('/devis') ? 'active' : ''}">
      ${navIcon('quotes')}<span class="nav-label">Devis</span>
+  </a>
+
+  <a href="/documents-entrants"
+     class="${req.path.startsWith('/documents-entrants') ? 'active' : ''}">
+     ${navIcon('quotes')}<span class="nav-label">Documents entrants</span>
   </a>
 
   <a href="/materials"
@@ -6777,6 +6789,139 @@ app.post('/clients/delete', requireLogin, (req, res) => {
   res.redirect('/clients');
 
 });
+/* ===================== DOCUMENTS ENTRANTS ===================== */
+
+async function analyzeIncomingDocumentFile(filePath, mimeType) {
+  const analysis = await analyzeEbpFile(filePath, mimeType);
+  if (!String(analysis.text || '').trim() && analysis.warning) throw new Error(String(analysis.warning).slice(0, 500));
+  return analysis;
+}
+
+const scannerImporter = incomingDocuments.createScannerImporter({
+  database: db,
+  dirs: SCANNER_DIRS,
+  intervalMs: SCANNER_IMPORT_INTERVAL_MS,
+  maxFileSizeBytes: SCANNER_MAX_FILE_SIZE_BYTES,
+  analyzeFile: analyzeIncomingDocumentFile,
+  logger: console
+});
+
+function incomingDocumentById(rawId) {
+  const id = Number(rawId || 0);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  return db.prepare('SELECT * FROM incoming_documents WHERE id = ?').get(id) || null;
+}
+
+function incomingDocumentFile(row) {
+  const storedName = path.basename(String(row?.stored_name || ''));
+  if (!storedName) throw new Error('Fichier document invalide');
+  const expected = incomingDocuments.safeResolveInside(SCANNER_DIRS.documents, storedName);
+  if (path.resolve(String(row.stored_path || '')) !== path.resolve(expected)) throw new Error('Chemin document incohérent');
+  if (!fs.existsSync(expected) || !fs.statSync(expected).isFile()) throw new Error('Fichier document introuvable');
+  return expected;
+}
+
+app.get('/documents-entrants', requireAdmin, (req, res) => {
+  const allowedStatuses = new Set(['', ...incomingDocuments.STATUSES]);
+  const allowedTypes = new Set(['', ...incomingDocuments.DOCUMENT_TYPES]);
+  const status = allowedStatuses.has(String(req.query.status || '')) ? String(req.query.status || '') : '';
+  const type = allowedTypes.has(String(req.query.type || '')) ? String(req.query.type || '') : '';
+  const period = ['7', '30', '90'].includes(String(req.query.period || '')) ? Number(req.query.period) : null;
+  const search = String(req.query.search || '').trim().slice(0, 120);
+  const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
+  const pageSize = 20;
+  const where = [];
+  const params = [];
+  if (status) { where.push('status = ?'); params.push(status); }
+  if (type) { where.push('document_type = ?'); params.push(type); }
+  if (period) { where.push("received_at >= datetime('now', ?)"); params.push(`-${period} days`); }
+  if (search) { where.push("(original_name LIKE ? OR supplier_name LIKE ? OR document_number LIKE ?)"); const term = `%${search}%`; params.push(term, term, term); }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const total = Number(db.prepare(`SELECT COUNT(*) AS count FROM incoming_documents ${whereSql}`).get(...params)?.count || 0);
+  const rows = db.prepare(`SELECT * FROM incoming_documents ${whereSql} ORDER BY received_at DESC, id DESC LIMIT ? OFFSET ?`).all(...params, pageSize, (page - 1) * pageSize);
+  const counts = db.prepare(`SELECT
+    SUM(CASE WHEN status = 'nouveau' THEN 1 ELSE 0 END) AS nouveaux,
+    SUM(CASE WHEN document_type = 'a_classer' AND status != 'rejete' THEN 1 ELSE 0 END) AS a_classer,
+    SUM(CASE WHEN status = 'erreur' THEN 1 ELSE 0 END) AS erreurs FROM incoming_documents`).get();
+  const options = (values, selected) => values.map((value) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${escHtml(value.replaceAll('_', ' '))}</option>`).join('');
+  const cards = rows.length ? rows.map((doc) => `<article class="incoming-document-card">
+    <header><div><span class="incoming-status is-${escHtml(doc.status)}">${escHtml(doc.status)}</span><h2>${escHtml(doc.original_name)}</h2><p>${formatDateTimeLabel(doc.received_at)} · ${formatFileSize(doc.file_size)} · ${escHtml(doc.source)}</p></div><strong>${doc.amount_ttc == null ? '—' : formatEuroFr(doc.amount_ttc)}</strong></header>
+    <div class="incoming-document-meta"><span>Type <strong>${escHtml(doc.document_type.replaceAll('_', ' '))}</strong></span><span>Fournisseur <strong>${escHtml(doc.supplier_name || '—')}</strong></span><span>Numéro <strong>${escHtml(doc.document_number || '—')}</strong></span></div>
+    ${doc.error_message ? `<p class="incoming-error">${escHtml(doc.error_message)}</p>` : ''}
+    <div class="incoming-document-actions"><a class="modern-secondary-btn" href="/documents-entrants/${doc.id}/file">Ouvrir</a><a class="modern-secondary-btn" href="/documents-entrants/${doc.id}/file?download=1">Télécharger</a>
+      <form method="POST" action="/documents-entrants/${doc.id}/reanalyze"><button class="modern-secondary-btn" type="submit">Relancer l’analyse</button></form>
+      <details><summary class="clients-submit-btn">Classer</summary><form method="POST" action="/documents-entrants/${doc.id}/classify" class="incoming-classify-form">
+        <label><span>Type</span><select name="document_type">${options(incomingDocuments.DOCUMENT_TYPES, doc.document_type)}</select></label><label><span>Fournisseur</span><input name="supplier_name" maxlength="255" value="${escHtml(doc.supplier_name || '')}"></label><label><span>Numéro</span><input name="document_number" maxlength="120" value="${escHtml(doc.document_number || '')}"></label><label><span>Date</span><input type="date" name="document_date" value="${escHtml(doc.document_date || '')}"></label><label><span>HT</span><input name="amount_ht" inputmode="decimal" value="${doc.amount_ht ?? ''}"></label><label><span>TVA</span><input name="amount_tva" inputmode="decimal" value="${doc.amount_tva ?? ''}"></label><label><span>TTC</span><input name="amount_ttc" inputmode="decimal" value="${doc.amount_ttc ?? ''}"></label><label class="incoming-wide"><span>Notes</span><textarea name="notes">${escHtml(doc.notes || '')}</textarea></label><button class="clients-submit-btn incoming-wide" type="submit">Valider le classement</button></form></details>
+      <form method="POST" action="/documents-entrants/${doc.id}/reject" onsubmit="return confirm('Rejeter ce document sans supprimer son fichier ?')"><input type="hidden" name="reason" value="Rejet manuel"><button class="modern-danger-btn" type="submit">Rejeter</button></form>
+    </div></article>`).join('') : '<p class="empty">Aucun document entrant pour ces filtres.</p>';
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const query = new URLSearchParams({ status, type, period: period || '', search }).toString();
+  return res.send(pageTemplate(req, 'Documents entrants', `<div class="modern-page incoming-documents-page">
+    <section class="modern-list-head"><div class="clients-create-head">${clientPageIcon('quotes', 'clients-title-icon')}<div><h1>Documents entrants</h1><span>Scans Ricoh et imports manuels à classer</span></div></div></section>
+    <section class="incoming-summary"><div><strong>${Number(counts.nouveaux || 0)}</strong><span>Nouveaux</span></div><div><strong>${Number(counts.a_classer || 0)}</strong><span>À classer</span></div><div><strong>${Number(counts.erreurs || 0)}</strong><span>Erreurs</span></div></section>
+    <details class="clients-create-card incoming-upload"><summary class="clients-submit-btn">Importer un document</summary><form method="POST" action="/documents-entrants/upload" enctype="multipart/form-data"><input type="file" name="document" accept="application/pdf,image/jpeg,image/png" required><button class="clients-submit-btn" type="submit">Importer</button><small>PDF, JPG ou PNG · ${Math.round(SCANNER_MAX_FILE_SIZE_BYTES / 1024 / 1024)} Mo maximum</small></form></details>
+    <form class="incoming-filters" method="GET"><select name="status"><option value="">Tous les statuts</option>${options(incomingDocuments.STATUSES, status)}</select><select name="type"><option value="">Tous les types</option>${options(incomingDocuments.DOCUMENT_TYPES, type)}</select><select name="period"><option value="">Toute période</option><option value="7" ${period === 7 ? 'selected' : ''}>7 jours</option><option value="30" ${period === 30 ? 'selected' : ''}>30 jours</option><option value="90" ${period === 90 ? 'selected' : ''}>90 jours</option></select><input name="search" value="${escHtml(search)}" placeholder="Fournisseur, numéro, fichier"><button class="modern-secondary-btn">Filtrer</button></form>
+    <section class="incoming-document-list">${cards}</section><nav class="incoming-pagination"><span>Page ${page} / ${pages}</span>${page > 1 ? `<a href="?${query}&page=${page - 1}">Précédent</a>` : ''}${page < pages ? `<a href="?${query}&page=${page + 1}">Suivant</a>` : ''}</nav>
+  </div>`));
+});
+
+app.get('/documents-entrants/:id/file', requireAdmin, (req, res) => {
+  const row = incomingDocumentById(req.params.id);
+  if (!row) return res.status(404).send('Document introuvable');
+  try {
+    const filePath = incomingDocumentFile(row);
+    const disposition = req.query.download === '1' ? 'attachment' : 'inline';
+    res.setHeader('Content-Type', row.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodeURIComponent(path.basename(row.original_name))}`);
+    return res.sendFile(filePath);
+  } catch (error) { return res.status(404).send(escHtml(error.message)); }
+});
+
+app.post('/documents-entrants/upload', requireAdmin, (req, res) => {
+  scannerDocumentUpload.single('document')(req, res, async (uploadError) => {
+    if (uploadError || !req.file) return res.status(400).send(escHtml(uploadError?.message || 'Document manquant'));
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    const incomingName = `${Date.now()}-${crypto.randomBytes(5).toString('hex')}${ext}`;
+    const incomingPath = incomingDocuments.safeResolveInside(SCANNER_DIRS.incoming, incomingName);
+    try {
+      fs.writeFileSync(incomingPath, req.file.buffer, { flag: 'wx' });
+      await incomingDocuments.importDocument({ database: db, dirs: SCANNER_DIRS, sourcePath: incomingPath, originalName: req.file.originalname, source: 'upload', analyzeFile: analyzeIncomingDocumentFile, activeAnalyses: scannerImporter.activeAnalyses, maxFileSizeBytes: SCANNER_MAX_FILE_SIZE_BYTES });
+      return res.redirect('/documents-entrants');
+    } catch (error) { if (fs.existsSync(incomingPath)) fs.unlinkSync(incomingPath); return res.status(400).send(escHtml(error.message)); }
+  });
+});
+
+app.post('/documents-entrants/:id/classify', requireAdmin, (req, res) => {
+  const row = incomingDocumentById(req.params.id);
+  if (!row) return res.status(404).send('Document introuvable');
+  const type = String(req.body.document_type || '');
+  if (!incomingDocuments.DOCUMENT_TYPES.includes(type)) return res.status(400).send('Type de document invalide');
+  const clean = (value, max) => String(value || '').trim().slice(0, max) || null;
+  const amount = (value) => { if (String(value ?? '').trim() === '') return null; const number = Number(String(value).replace(',', '.')); if (!Number.isFinite(number) || number < 0) throw new Error('Montant invalide'); return round2(number); };
+  const date = clean(req.body.document_date, 10);
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).send('Date invalide');
+  try {
+    const now = new Date().toISOString();
+    db.prepare(`UPDATE incoming_documents SET document_type = ?, supplier_name = ?, document_number = ?, document_date = ?, amount_ht = ?, amount_tva = ?, amount_ttc = ?, notes = ?, status = 'classe', classified_at = ?, classified_by = ?, updated_at = ? WHERE id = ?`)
+      .run(type, clean(req.body.supplier_name, 255), clean(req.body.document_number, 120), date, amount(req.body.amount_ht), amount(req.body.amount_tva), amount(req.body.amount_ttc), clean(req.body.notes, 4000), now, req.session.user.id, now, row.id);
+    return res.redirect('/documents-entrants');
+  } catch (error) { return res.status(400).send(escHtml(error.message)); }
+});
+
+app.post('/documents-entrants/:id/reanalyze', requireAdmin, async (req, res) => {
+  const row = incomingDocumentById(req.params.id);
+  if (!row) return res.status(404).send('Document introuvable');
+  try { incomingDocumentFile(row); const result = await incomingDocuments.analyzeDocument(db, row, analyzeIncomingDocumentFile, scannerImporter.activeAnalyses); if (result.busy) return res.status(409).send('Analyse déjà en cours'); return res.redirect('/documents-entrants'); }
+  catch (error) { return res.status(400).send(escHtml(error.message)); }
+});
+
+app.post('/documents-entrants/:id/reject', requireAdmin, (req, res) => {
+  const row = incomingDocumentById(req.params.id);
+  if (!row) return res.status(404).send('Document introuvable');
+  db.prepare("UPDATE incoming_documents SET status = 'rejete', notes = ?, updated_at = ? WHERE id = ?").run(String(req.body.reason || 'Rejet manuel').trim().slice(0, 1000), new Date().toISOString(), row.id);
+  return res.redirect('/documents-entrants?status=rejete');
+});
+
 /* ===================== COMMANDES CLIENTS ===================== */
 
 app.get('/orders/clients', requireLogin, (req, res) => {
@@ -8201,6 +8346,16 @@ app.post('/orders/client/:id/update', requireLogin, (req, res) => {
 app.post('/orders/client/done', requireLogin, (req, res) => {
   db.prepare("UPDATE client_orders SET status = 'Terminée' WHERE id = ?").run(req.body.id);
   res.redirect('/orders/clients');
+});
+const scannerDocumentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: SCANNER_MAX_FILE_SIZE_BYTES, files: 1 },
+  fileFilter(req, file, cb) {
+    const ext = path.extname(String(file.originalname || '')).toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    if (incomingDocuments.ALLOWED_EXTENSIONS.has(ext) && incomingDocuments.MIME_BY_EXT[ext] === mime) return cb(null, true);
+    cb(new Error('Format non supporté. Utilisez PDF, JPG ou PNG.'));
+  }
 });
 
 app.get('/orders/client/:orderId/profitability', requireLogin, (req, res) => {
@@ -13679,6 +13834,22 @@ purgeExpiredLocalAgendaEventsSafely();
 const agendaPurgeTimer = setInterval(purgeExpiredLocalAgendaEventsSafely, 60 * 60 * 1000);
 if (typeof agendaPurgeTimer.unref === 'function') agendaPurgeTimer.unref();
 
-app.listen(PORT, HOST, () => {
+if (SCANNER_IMPORT_ENABLED) scannerImporter.start();
+else console.log('[scanner-import] service désactivé par SCANNER_IMPORT_ENABLED=false');
+
+const httpServer = app.listen(PORT, HOST, () => {
   console.log(`Serveur démarré sur ${HOST}:${PORT}`);
 });
+
+let shuttingDown = false;
+function shutdownServer(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[scanner-import] arrêt demandé (${signal})`);
+  scannerImporter.stop();
+  clearInterval(agendaPurgeTimer);
+  httpServer.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+process.once('SIGTERM', () => shutdownServer('SIGTERM'));
+process.once('SIGINT', () => shutdownServer('SIGINT'));
