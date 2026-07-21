@@ -60,6 +60,11 @@ function envNumber(name, defaultValue) {
   return Number.isFinite(value) && value > 0 ? value : defaultValue;
 }
 
+function parsePositiveInt(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const NODE_ENV = process.env.NODE_ENV || 'development';
