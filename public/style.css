@@ -8179,6 +8179,47 @@ body.sketchpad-drawing{
   overscroll-behavior:none;
 }
 
+/* Prévisionnel saisi directement dans une commande client */
+.order-forecast-card{margin-top:18px;overflow:hidden;}
+.order-forecast-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:18px;}
+.order-forecast-summary>div{min-width:0;padding:12px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;}
+.order-forecast-summary span{display:block;color:#667085;font-size:12px;font-weight:800;}
+.order-forecast-summary strong{display:block;margin-top:5px;color:#101827;overflow-wrap:anywhere;}
+.order-contract-comparison,.order-actual-comparison{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+.order-contract-comparison span,.order-actual-comparison span{flex:1 1 260px;padding:12px;border-radius:12px;background:#eff6ff;color:#1e3a5f;}
+.order-actual-comparison span{background:#f8fafc;border:1px solid #e5e7eb;}
+.order-import-quote{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:14px;padding:12px;border:1px solid #fed7aa;border-radius:14px;background:#fff7ed;}
+.order-import-quote button{min-height:44px;}.order-import-quote small{color:#9a3412;font-weight:750;}
+.order-forecast-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px;}
+.order-forecast-columns>article,.order-forecast-other{min-width:0;padding:16px;border:1px solid #e5e7eb;border-radius:18px;background:#fff;}
+.order-forecast-columns h3,.order-forecast-other h3{margin:0 0 12px;color:#101827;}
+.order-forecast-other{margin-top:14px;}
+.order-cost-lines{display:grid;gap:10px;margin-bottom:12px;}
+.order-cost-line-card{min-width:0;padding:13px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;}
+.order-cost-line-card header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+.order-cost-line-card h4{margin:5px 0 3px;color:#101827;}.order-cost-line-card p{margin:0;color:#667085;line-height:1.45;overflow-wrap:anywhere;}
+.order-cost-line-card header>strong{color:#166534;text-align:right;white-space:nowrap;}
+.order-cost-origin{display:inline-flex;min-height:26px;align-items:center;padding:4px 8px;border-radius:999px;background:#dcfce7;color:#166534;font-size:11px;font-weight:900;}
+.order-cost-origin.is-quote{background:#dbeafe;color:#1e40af;}
+.order-cost-line-totals{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}.order-cost-line-totals span{padding:7px 9px;border-radius:9px;background:#fff;color:#475569;}
+.order-cost-notes{margin-top:9px!important;padding-top:9px;border-top:1px dashed #d8dde6;}
+.order-cost-actions{display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-top:12px;}.order-cost-actions form{margin:0;}.order-cost-actions button,.order-cost-actions summary{min-height:44px;}
+.order-cost-actions details{flex:1 1 100%;}.order-cost-actions details>summary{width:max-content;list-style:none;cursor:pointer;}
+.order-cost-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px;padding:12px;border:1px solid #e5e7eb;border-radius:14px;background:#fff;}
+.order-cost-form label{display:block;min-width:0;}.order-cost-form label span{display:block;margin-bottom:5px;color:#475569;font-size:12px;font-weight:800;}
+.order-cost-form input,.order-cost-form select,.order-cost-form textarea{width:100%;min-width:0;min-height:48px;padding:10px;border:1px solid #d8dde6;border-radius:11px;background:#fff;font:inherit;}
+.order-cost-form textarea{min-height:90px;resize:vertical;}.order-cost-form input:focus,.order-cost-form select:focus,.order-cost-form textarea:focus{border-color:#f97316;outline:3px solid rgba(249,115,22,.14);}
+.order-cost-form .order-cost-wide,.order-cost-form button{grid-column:1/-1;}.order-cost-form button{justify-self:start;min-height:44px;}
+.order-cost-add{margin-top:12px;}.order-cost-add>summary{display:flex;align-items:center;width:max-content;min-height:44px;list-style:none;cursor:pointer;}
+
+@media(max-width:900px){.order-forecast-summary{grid-template-columns:repeat(2,minmax(0,1fr));}.order-forecast-columns{grid-template-columns:minmax(0,1fr);}}
+@media(max-width:600px){
+  .order-forecast-summary,.order-cost-form{grid-template-columns:minmax(0,1fr);}
+  .order-cost-form .order-cost-wide,.order-cost-form button{grid-column:auto;}.order-cost-form button,.order-cost-add>summary,.order-import-quote button{width:100%;}
+  .order-cost-line-card header{display:block;}.order-cost-line-card header>strong{display:block;margin-top:8px;text-align:left;white-space:normal;}
+  .order-cost-actions{display:grid;grid-template-columns:minmax(0,1fr);}.order-cost-actions details,.order-cost-actions form,.order-cost-actions button,.order-cost-actions summary{width:100%!important;}
+}
+
 @media (max-width:768px){
   .quote-lightbox{
     padding:18px 12px calc(18px + env(safe-area-inset-bottom));

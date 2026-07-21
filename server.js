@@ -32,6 +32,7 @@ const sharp = tryRequire('sharp');
 const BetterSqlite3SessionStoreFactory = tryRequire('better-sqlite3-session-store');
 const quoteAiReview = require('./lib/quoteAiReview');
 const projectProfitability = require('./lib/projectProfitability');
+const clientOrderCostLines = require('./lib/clientOrderCostLines');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -997,6 +998,89 @@ function renderProjectProfitabilityCard(order, data) {
     </section>`;
 }
 
+function clientOrderDetailRedirect(order) {
+  return `/pc-folders/${encodeURIComponent(safeName(order.name))}/${encodeURIComponent(clientOrderFolderName(order))}#order-forecast`;
+}
+
+function clientOrderForecastData(order) {
+  const lines = db.prepare('SELECT * FROM client_order_cost_lines WHERE client_order_id = ? ORDER BY sort_order, id').all(order.id);
+  const actualMinutes = Number(db.prepare(`
+    SELECT COALESCE(SUM(minutes_total), 0) AS total FROM chantier_hours
+    WHERE client_order_id = ? OR (client_order_id IS NULL AND client = ? AND order_name = ?)
+  `).get(order.id, safeName(order.name), clientOrderFolderName(order))?.total || 0);
+  const actualMaterialRows = db.prepare("SELECT amount_ht FROM project_actual_costs WHERE client_order_id = ? AND cost_type = 'material'").all(order.id);
+  const actualMaterialCost = actualMaterialRows.length ? actualMaterialRows.reduce((sum, row) => sum + Number(row.amount_ht || 0), 0) : null;
+  const quoteLines = order.quote_id
+    ? db.prepare('SELECT * FROM quote_lines WHERE quote_id = ? ORDER BY position, id').all(order.quote_id)
+    : [];
+  return { lines, quoteLines, summary: clientOrderCostLines.summarize(lines, order.price, actualMinutes, actualMaterialCost) };
+}
+
+function renderCostLineFields(lineType, line = {}) {
+  const value = (name) => escHtml(line[name] == null ? '' : String(line[name]));
+  const common = `
+    <label><span>Désignation</span><input name="designation" maxlength="255" value="${value('designation')}" required></label>
+    <label><span>Catégorie</span>${lineType === 'labor'
+      ? `<select name="category">${clientOrderCostLines.LABOR_CATEGORIES.map((category) => `<option value="${escHtml(category)}" ${line.category === category ? 'selected' : ''}>${escHtml(category)}</option>`).join('')}</select>`
+      : `<input name="category" maxlength="100" value="${value('category')}" placeholder="Matière, galvanisation…">`}</label>`;
+  const financial = lineType === 'labor'
+    ? `<label><span>Heures prévues</span><input name="planned_hours" inputmode="decimal" value="${escHtml(line.planned_minutes == null ? '' : String(Number(line.planned_minutes) / 60))}" required></label>
+       <label><span>Coût horaire HT</span><input name="hourly_cost_ht" inputmode="decimal" value="${value('hourly_cost_ht')}" required></label>
+       <label><span>Vente horaire HT</span><input name="hourly_sale_ht" inputmode="decimal" value="${value('hourly_sale_ht')}" required></label>`
+    : `<label><span>Quantité</span><input name="quantity" inputmode="decimal" value="${value('quantity') || '1'}" required></label>
+       <label><span>Unité</span><select name="unit">${clientOrderCostLines.MATERIAL_UNITS.map((unit) => `<option value="${escHtml(unit)}" ${line.unit === unit ? 'selected' : ''}>${escHtml(unit)}</option>`).join('')}</select></label>
+       <label><span>Prix d’achat unitaire HT</span><input name="unit_cost_ht" inputmode="decimal" value="${value('unit_cost_ht')}" required></label>
+       <label><span>Prix de vente unitaire HT</span><input name="unit_sale_ht" inputmode="decimal" value="${value('unit_sale_ht')}" required></label>
+       <label><span>Fournisseur</span><input name="supplier" maxlength="255" value="${value('supplier')}"></label>`;
+  return `${common}${financial}<label class="order-cost-wide"><span>Notes</span><textarea name="notes" maxlength="2000">${escHtml(line.notes || '')}</textarea></label>`;
+}
+
+function renderOrderCostLine(order, line) {
+  const calculated = clientOrderCostLines.calculateLine(line);
+  const origin = line.source_type === 'quote' ? 'Issu du devis' : 'Ajout manuel';
+  const detail = line.line_type === 'labor'
+    ? `${calculated.hours.toFixed(2)} h · ${formatEuroFr(line.hourly_cost_ht)}/h coût · ${formatEuroFr(line.hourly_sale_ht)}/h vente`
+    : `${Number(line.quantity || 0).toFixed(2)} ${escHtml(line.unit || '')} · ${formatEuroFr(line.unit_cost_ht)} achat · ${formatEuroFr(line.unit_sale_ht)} vente`;
+  return `<article class="order-cost-line-card">
+    <header><div><span class="order-cost-origin ${line.source_type === 'quote' ? 'is-quote' : ''}">${origin}</span><h4>${escHtml(line.designation)}</h4><p>${detail}</p></div><strong>${formatEuroFr(calculated.margin)} de marge</strong></header>
+    <div class="order-cost-line-totals"><span>Coût <strong>${formatEuroFr(calculated.cost)}</strong></span><span>Vente <strong>${formatEuroFr(calculated.sale)}</strong></span></div>
+    ${line.notes ? `<p class="order-cost-notes">${escHtml(line.notes)}</p>` : ''}
+    <div class="order-cost-actions"><details><summary class="modern-secondary-btn">Modifier</summary><form method="POST" action="/orders/client/${order.id}/cost-lines/${line.id}/edit" class="order-cost-form"><input type="hidden" name="line_type" value="${line.line_type}">${renderCostLineFields(line.line_type, line)}<button class="clients-submit-btn" type="submit">Enregistrer</button></form></details>
+    <form method="POST" action="/orders/client/${order.id}/cost-lines/${line.id}/duplicate"><button class="modern-secondary-btn" type="submit">Dupliquer</button></form>
+    <form method="POST" action="/orders/client/${order.id}/cost-lines/${line.id}/delete" onsubmit="return confirm('Supprimer définitivement cette ligne prévisionnelle ?');"><button class="modern-danger-btn" type="submit">Supprimer</button></form></div>
+  </article>`;
+}
+
+function renderClientOrderForecastCard(order, data) {
+  const summary = data.summary;
+  const metric = (label, value, className = '') => `<div><span>${label}</span><strong class="${className}">${value}</strong></div>`;
+  const percent = (value) => value == null ? 'Non calculable' : `${Number(value).toFixed(2)} %`;
+  const laborLines = data.lines.filter((line) => line.line_type === 'labor');
+  const materialLines = data.lines.filter((line) => line.line_type === 'material');
+  const otherLines = data.lines.filter((line) => line.line_type === 'other');
+  const empty = '<p class="profitability-empty">Aucune matière ni main-d’œuvre renseignée</p>';
+  const lineList = (lines) => lines.length ? `<div class="order-cost-lines">${lines.map((line) => renderOrderCostLine(order, line)).join('')}</div>` : empty;
+  return `<section id="order-forecast" class="pc-modern-panel order-forecast-card">
+    <div class="modern-section-title"><span class="quote-ai-review-icon">${clientPageIcon('quotes')}</span><div><h2>Prévisionnel de la commande</h2><p>Le prix contractuel reste inchangé. Ces lignes servent uniquement au calcul prévisionnel.</p></div></div>
+    <div class="order-forecast-summary">
+      ${metric('Coût matière', formatEuroFr(summary.groups.material.cost))}${metric('Vente matière', formatEuroFr(summary.groups.material.sale))}
+      ${metric('Coût main-d’œuvre', formatEuroFr(summary.groups.labor.cost))}${metric('Vente main-d’œuvre', formatEuroFr(summary.groups.labor.sale))}
+      ${metric('Autres coûts', formatEuroFr(summary.groups.other.cost))}${metric('Coût de revient total', formatEuroFr(summary.totalCost))}
+      ${metric('Vente prévisionnelle', formatEuroFr(summary.totalSale))}${metric('Marge prévisionnelle', formatEuroFr(summary.margin), summary.margin < 0 ? 'profit-negative' : 'profit-positive')}
+      ${metric('Taux de marge', percent(summary.marginRate))}${metric('Taux de marque', percent(summary.markupRate))}${metric('Heures prévues', `${summary.plannedHours.toFixed(2)} h`)}
+      ${metric('Écart au prix contractuel', `${summary.contractVariance >= 0 ? '+' : ''}${formatEuroFr(summary.contractVariance)}`, summary.contractVariance < 0 ? 'profit-negative' : 'profit-positive')}
+    </div>
+    <div class="order-contract-comparison"><span>Prix contractuel HT <strong>${formatEuroFr(summary.contractPrice)}</strong></span><span>Prévisionnel calculé <strong>${formatEuroFr(summary.totalSale)}</strong></span></div>
+    <div class="order-actual-comparison"><span>Main-d’œuvre : ${summary.plannedHours.toFixed(2)} h prévues / ${summary.actualHours.toFixed(2)} h pointées / écart ${summary.hoursVariance >= 0 ? '+' : ''}${summary.hoursVariance.toFixed(2)} h</span><span>Matière : prévue ${formatEuroFr(summary.groups.material.cost)} / réelle ${summary.actualMaterialCost == null ? 'Coût réel non renseigné' : formatEuroFr(summary.actualMaterialCost)}</span></div>
+    ${order.quote_id ? `<form method="POST" action="/orders/client/${order.id}/cost-lines/import-quote" class="order-import-quote" onsubmit="return confirm('Importer les lignes du devis #${order.quote_id} sans modifier le devis ?');"><button class="modern-secondary-btn" type="submit">Importer les lignes du devis</button><small>${data.quoteLines.length} ligne(s) disponible(s), doublons ignorés.</small></form>` : ''}
+    <div class="order-forecast-columns">
+      <article><h3>Main-d’œuvre</h3>${lineList(laborLines)}<details class="order-cost-add"><summary class="clients-submit-btn">+ Ajouter de la main-d’œuvre</summary><form method="POST" action="/orders/client/${order.id}/cost-lines" class="order-cost-form"><input type="hidden" name="line_type" value="labor">${renderCostLineFields('labor')}<button class="clients-submit-btn" type="submit">Ajouter</button></form></details></article>
+      <article><h3>Matière</h3>${lineList(materialLines)}<details class="order-cost-add"><summary class="clients-submit-btn">+ Ajouter de la matière</summary><form method="POST" action="/orders/client/${order.id}/cost-lines" class="order-cost-form"><input type="hidden" name="line_type" value="material">${renderCostLineFields('material')}<button class="clients-submit-btn" type="submit">Ajouter</button></form></details></article>
+    </div>
+    <article class="order-forecast-other"><h3>Autres coûts</h3>${lineList(otherLines)}<details class="order-cost-add"><summary class="modern-secondary-btn">+ Ajouter un autre coût</summary><form method="POST" action="/orders/client/${order.id}/cost-lines" class="order-cost-form"><input type="hidden" name="line_type" value="other">${renderCostLineFields('other')}<button class="clients-submit-btn" type="submit">Ajouter</button></form></details></article>
+  </section>`;
+}
+
 function orderInvoiceSummary(order, totalsMap) {
   const amountHt = Number(order.price || 0);
   const invoicedHt = Number(totalsMap.get(Number(order.id)) || 0);
@@ -1546,6 +1630,33 @@ function createSqliteTables(database) {
   `).run();
   database.prepare('CREATE INDEX IF NOT EXISTS idx_project_actual_costs_order ON project_actual_costs(client_order_id, cost_date, id)').run();
   database.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_project_actual_costs_supplier_invoice ON project_actual_costs(supplier_invoice_id) WHERE supplier_invoice_id IS NOT NULL').run();
+
+  database.prepare(`
+    CREATE TABLE IF NOT EXISTS client_order_cost_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_order_id INTEGER NOT NULL,
+      line_type TEXT NOT NULL,
+      category TEXT,
+      designation TEXT NOT NULL,
+      quantity REAL NOT NULL DEFAULT 1,
+      unit TEXT,
+      unit_cost_ht REAL NOT NULL DEFAULT 0,
+      unit_sale_ht REAL NOT NULL DEFAULT 0,
+      planned_minutes INTEGER NOT NULL DEFAULT 0,
+      hourly_cost_ht REAL NOT NULL DEFAULT 0,
+      hourly_sale_ht REAL NOT NULL DEFAULT 0,
+      supplier TEXT,
+      notes TEXT,
+      source_type TEXT NOT NULL DEFAULT 'manual',
+      source_quote_line_id INTEGER,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(client_order_id) REFERENCES client_orders(id)
+    )
+  `).run();
+  database.prepare('CREATE INDEX IF NOT EXISTS idx_client_order_cost_lines_order_type ON client_order_cost_lines(client_order_id, line_type, sort_order, id)').run();
+  database.prepare('CREATE UNIQUE INDEX IF NOT EXISTS idx_client_order_cost_lines_quote_source ON client_order_cost_lines(client_order_id, source_quote_line_id) WHERE source_quote_line_id IS NOT NULL').run();
 
   database.prepare(`
     CREATE TABLE IF NOT EXISTS measurement_photo_files (
@@ -8008,6 +8119,116 @@ app.post('/api/orders/:id/actual-costs/:costId/delete', requireLogin, (req, res)
   return res.json({ success: true });
 });
 
+function requireClientOrderForCostLine(req, res) {
+  const orderId = Number(req.params.orderId || 0);
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    res.status(400).send('Identifiant de commande invalide');
+    return null;
+  }
+  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
+  if (!order) {
+    res.status(404).send('Commande introuvable');
+    return null;
+  }
+  return order;
+}
+
+app.post('/orders/client/:orderId/cost-lines', requireLogin, (req, res) => {
+  const order = requireClientOrderForCostLine(req, res);
+  if (!order) return;
+  try {
+    const line = clientOrderCostLines.validateLine({ ...req.body, source_type: 'manual' });
+    db.prepare(`
+      INSERT INTO client_order_cost_lines
+        (client_order_id, line_type, category, designation, quantity, unit, unit_cost_ht, unit_sale_ht,
+         planned_minutes, hourly_cost_ht, hourly_sale_ht, supplier, notes, source_type, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?)
+    `).run(order.id, line.line_type, line.category, line.designation, line.quantity, line.unit,
+      line.unit_cost_ht, line.unit_sale_ht, line.planned_minutes, line.hourly_cost_ht,
+      line.hourly_sale_ht, line.supplier, line.notes, new Date().toISOString(), new Date().toISOString());
+    return res.redirect(clientOrderDetailRedirect(order));
+  } catch (error) {
+    return res.status(400).send(escHtml(error.message || 'Ligne invalide'));
+  }
+});
+
+app.post('/orders/client/:orderId/cost-lines/:lineId/edit', requireLogin, (req, res) => {
+  const order = requireClientOrderForCostLine(req, res);
+  if (!order) return;
+  const lineId = Number(req.params.lineId || 0);
+  const existing = db.prepare('SELECT * FROM client_order_cost_lines WHERE id = ? AND client_order_id = ?').get(lineId, order.id);
+  if (!existing) return res.status(404).send('Ligne introuvable pour cette commande');
+  try {
+    const line = clientOrderCostLines.validateLine({ ...req.body, source_type: existing.source_type });
+    db.prepare(`
+      UPDATE client_order_cost_lines SET line_type = ?, category = ?, designation = ?, quantity = ?, unit = ?,
+        unit_cost_ht = ?, unit_sale_ht = ?, planned_minutes = ?, hourly_cost_ht = ?, hourly_sale_ht = ?,
+        supplier = ?, notes = ?, updated_at = ? WHERE id = ? AND client_order_id = ?
+    `).run(line.line_type, line.category, line.designation, line.quantity, line.unit, line.unit_cost_ht,
+      line.unit_sale_ht, line.planned_minutes, line.hourly_cost_ht, line.hourly_sale_ht,
+      line.supplier, line.notes, new Date().toISOString(), lineId, order.id);
+    return res.redirect(clientOrderDetailRedirect(order));
+  } catch (error) {
+    return res.status(400).send(escHtml(error.message || 'Ligne invalide'));
+  }
+});
+
+app.post('/orders/client/:orderId/cost-lines/:lineId/duplicate', requireLogin, (req, res) => {
+  const order = requireClientOrderForCostLine(req, res);
+  if (!order) return;
+  const source = db.prepare('SELECT * FROM client_order_cost_lines WHERE id = ? AND client_order_id = ?').get(Number(req.params.lineId || 0), order.id);
+  if (!source) return res.status(404).send('Ligne introuvable pour cette commande');
+  db.prepare(`
+    INSERT INTO client_order_cost_lines
+      (client_order_id, line_type, category, designation, quantity, unit, unit_cost_ht, unit_sale_ht,
+       planned_minutes, hourly_cost_ht, hourly_sale_ht, supplier, notes, source_type, source_quote_line_id,
+       sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', NULL, ?, ?, ?)
+  `).run(order.id, source.line_type, source.category, `${source.designation} (copie)`.slice(0, 255),
+    source.quantity, source.unit, source.unit_cost_ht, source.unit_sale_ht, source.planned_minutes,
+    source.hourly_cost_ht, source.hourly_sale_ht, source.supplier, source.notes, source.sort_order,
+    new Date().toISOString(), new Date().toISOString());
+  return res.redirect(clientOrderDetailRedirect(order));
+});
+
+app.post('/orders/client/:orderId/cost-lines/:lineId/delete', requireLogin, (req, res) => {
+  const order = requireClientOrderForCostLine(req, res);
+  if (!order) return;
+  const result = db.prepare('DELETE FROM client_order_cost_lines WHERE id = ? AND client_order_id = ?').run(Number(req.params.lineId || 0), order.id);
+  if (!result.changes) return res.status(404).send('Ligne introuvable pour cette commande');
+  return res.redirect(clientOrderDetailRedirect(order));
+});
+
+app.post('/orders/client/:orderId/cost-lines/import-quote', requireLogin, (req, res) => {
+  const order = requireClientOrderForCostLine(req, res);
+  if (!order) return;
+  if (!order.quote_id) return res.status(400).send('Cette commande n’est associée à aucun devis');
+  const quoteLines = db.prepare('SELECT * FROM quote_lines WHERE quote_id = ? ORDER BY position, id').all(order.quote_id);
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO client_order_cost_lines
+      (client_order_id, line_type, category, designation, quantity, unit, unit_cost_ht, unit_sale_ht,
+       planned_minutes, hourly_cost_ht, hourly_sale_ht, source_type, source_quote_line_id, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'quote', ?, ?, ?, ?)
+  `);
+  db.transaction(() => {
+    quoteLines.forEach((line, index) => {
+      const unit = String(line.unit || '').toLocaleLowerCase('fr-FR');
+      const category = String(line.cost_category || line.category || '');
+      const isLabor = Number(line.hours || 0) > 0 || ['h', 'heure', 'heures'].includes(unit) || category.toLocaleLowerCase('fr-FR').includes('main-d');
+      const isOther = !isLabor && ['galvanisation', 'thermolaquage', 'sous-traitance', 'déplacement', 'location', 'divers'].some((word) => category.toLocaleLowerCase('fr-FR').includes(word));
+      const lineType = isLabor ? 'labor' : (isOther ? 'other' : 'material');
+      const hours = Number(line.hours || (isLabor ? line.qty : 0)) || 0;
+      insert.run(order.id, lineType, category || null, String(line.label || 'Ligne du devis').slice(0, 255),
+        isLabor ? 0 : Number(line.qty || 0), isLabor ? 'h' : String(line.unit || 'u'),
+        isLabor ? 0 : Number(line.cost_unit || 0), isLabor ? 0 : Number(line.unit_price || 0),
+        Math.round(hours * 60), isLabor ? Number(line.hourly_cost || line.cost_unit || 0) : 0,
+        isLabor ? Number(line.unit_price || 0) : 0, line.id, Number(line.position || index),
+        new Date().toISOString(), new Date().toISOString());
+    });
+  })();
+  return res.redirect(clientOrderDetailRedirect(order));
+});
+
 /* ===================== COMMANDES FOURNISSEURS ===================== */
 
 app.get('/orders/suppliers', requireLogin, (req, res) => {
@@ -8486,6 +8707,9 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
   const profitabilityCard = orderDb
     ? renderProjectProfitabilityCard(orderDb, projectProfitabilityForOrder(orderDb))
     : '';
+  const directForecastCard = orderDb
+    ? renderClientOrderForecastCard(orderDb, clientOrderForecastData(orderDb))
+    : '';
 
   const chantierHeroControl = orderDb
     ? (() => {
@@ -8540,6 +8764,7 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
         ${cards}
       </section>
 
+      ${directForecastCard}
       ${profitabilityCard}
 
       <section class="pc-modern-panel measurement-linked-section">
