@@ -1024,31 +1024,31 @@ function renderCostLineFields(lineType, line = {}) {
   const value = (name) => escHtml(line[name] == null ? '' : String(line[name]));
   const common = `
     <label><span>Désignation</span><input name="designation" maxlength="255" value="${value('designation')}" required></label>
-    <label><span>Catégorie</span>${lineType === 'labor'
+    ${lineType === 'other' ? '' : `<label><span>Catégorie</span>${lineType === 'labor'
       ? `<select name="category">${clientOrderCostLines.LABOR_CATEGORIES.map((category) => `<option value="${escHtml(category)}" ${line.category === category ? 'selected' : ''}>${escHtml(category)}</option>`).join('')}</select>`
-      : `<input name="category" maxlength="100" value="${value('category')}" placeholder="Matière, galvanisation…">`}</label>`;
+      : `<input name="category" maxlength="100" value="${value('category')}" placeholder="Matière, galvanisation…">`}</label>`}`;
   const financial = lineType === 'labor'
     ? `<label><span>Heures prévues</span><input name="planned_hours" inputmode="decimal" value="${escHtml(line.planned_minutes == null ? '' : String(Number(line.planned_minutes) / 60))}" required></label>
        <label><span>Coût horaire HT</span><input name="hourly_cost_ht" inputmode="decimal" value="${value('hourly_cost_ht')}" required></label>
-       <label><span>Vente horaire HT</span><input name="hourly_sale_ht" inputmode="decimal" value="${value('hourly_sale_ht')}" required></label>`
-    : `<label><span>Quantité</span><input name="quantity" inputmode="decimal" value="${value('quantity') || '1'}" required></label>
+       <details class="order-cost-advanced order-cost-wide"><summary>Options avancées</summary><label><span>Vente horaire HT</span><input name="hourly_sale_ht" inputmode="decimal" value="${value('hourly_sale_ht')}"></label></details>`
+    : lineType === 'other'
+      ? `<input type="hidden" name="quantity" value="1"><input type="hidden" name="unit" value="forfait"><input type="hidden" name="unit_sale_ht" value="${value('unit_sale_ht') || '0'}"><label><span>Montant prévu HT</span><input name="unit_cost_ht" inputmode="decimal" value="${value('unit_cost_ht')}" required></label>`
+      : `<label><span>Quantité</span><input name="quantity" inputmode="decimal" value="${value('quantity') || '1'}" required></label>
        <label><span>Unité</span><select name="unit">${clientOrderCostLines.MATERIAL_UNITS.map((unit) => `<option value="${escHtml(unit)}" ${line.unit === unit ? 'selected' : ''}>${escHtml(unit)}</option>`).join('')}</select></label>
        <label><span>Prix d’achat unitaire HT</span><input name="unit_cost_ht" inputmode="decimal" value="${value('unit_cost_ht')}" required></label>
-       <label><span>Prix de vente unitaire HT</span><input name="unit_sale_ht" inputmode="decimal" value="${value('unit_sale_ht')}" required></label>
-       <label><span>Fournisseur</span><input name="supplier" maxlength="255" value="${value('supplier')}"></label>`;
+       <label><span>Fournisseur</span><input name="supplier" maxlength="255" value="${value('supplier')}"></label>
+       <details class="order-cost-advanced order-cost-wide"><summary>Options avancées</summary><label><span>Prix de vente unitaire HT</span><input name="unit_sale_ht" inputmode="decimal" value="${value('unit_sale_ht')}"></label></details>`;
   return `${common}${financial}<label class="order-cost-wide"><span>Notes</span><textarea name="notes" maxlength="2000">${escHtml(line.notes || '')}</textarea></label>`;
 }
 
 function renderOrderCostLine(order, line) {
   const calculated = clientOrderCostLines.calculateLine(line);
-  const origin = line.source_type === 'quote' ? 'Issu du devis' : 'Ajout manuel';
+  const origin = line.source_type === 'quote' ? 'Devis' : 'Manuel';
   const detail = line.line_type === 'labor'
-    ? `${calculated.hours.toFixed(2)} h · ${formatEuroFr(line.hourly_cost_ht)}/h coût · ${formatEuroFr(line.hourly_sale_ht)}/h vente`
-    : `${Number(line.quantity || 0).toFixed(2)} ${escHtml(line.unit || '')} · ${formatEuroFr(line.unit_cost_ht)} achat · ${formatEuroFr(line.unit_sale_ht)} vente`;
+    ? `${calculated.hours.toFixed(2)} h`
+    : line.line_type === 'other' ? '' : `${Number(line.quantity || 0).toFixed(2)} ${escHtml(line.unit || '')}`;
   return `<article class="order-cost-line-card">
-    <header><div><span class="order-cost-origin ${line.source_type === 'quote' ? 'is-quote' : ''}">${origin}</span><h4>${escHtml(line.designation)}</h4><p>${detail}</p></div><strong>${formatEuroFr(calculated.margin)} de marge</strong></header>
-    <div class="order-cost-line-totals"><span>Coût <strong>${formatEuroFr(calculated.cost)}</strong></span><span>Vente <strong>${formatEuroFr(calculated.sale)}</strong></span></div>
-    ${line.notes ? `<p class="order-cost-notes">${escHtml(line.notes)}</p>` : ''}
+    <header><div><h4>${escHtml(line.designation)}</h4><p>${detail}${detail ? ' · ' : ''}Origine : ${origin}</p></div><strong>${formatEuroFr(calculated.cost)}</strong></header>
     <div class="order-cost-actions"><details><summary class="modern-secondary-btn">Modifier</summary><form method="POST" action="/orders/client/${order.id}/cost-lines/${line.id}/edit" class="order-cost-form"><input type="hidden" name="line_type" value="${line.line_type}">${renderCostLineFields(line.line_type, line)}<button class="clients-submit-btn" type="submit">Enregistrer</button></form></details>
     <form method="POST" action="/orders/client/${order.id}/cost-lines/${line.id}/duplicate"><button class="modern-secondary-btn" type="submit">Dupliquer</button></form>
     <form method="POST" action="/orders/client/${order.id}/cost-lines/${line.id}/delete" onsubmit="return confirm('Supprimer définitivement cette ligne prévisionnelle ?');"><button class="modern-danger-btn" type="submit">Supprimer</button></form></div>
@@ -1057,31 +1057,31 @@ function renderOrderCostLine(order, line) {
 
 function renderClientOrderForecastCard(order, data) {
   const summary = data.summary;
-  const metric = (label, value, className = '') => `<div><span>${label}</span><strong class="${className}">${value}</strong></div>`;
-  const percent = (value) => value == null ? 'Non calculable' : `${Number(value).toFixed(2)} %`;
+  const metric = (label, value) => `<div><span>${label}</span><strong>${value}</strong></div>`;
   const laborLines = data.lines.filter((line) => line.line_type === 'labor');
   const materialLines = data.lines.filter((line) => line.line_type === 'material');
   const otherLines = data.lines.filter((line) => line.line_type === 'other');
   const empty = '<p class="profitability-empty">Aucune matière ni main-d’œuvre renseignée</p>';
   const lineList = (lines) => lines.length ? `<div class="order-cost-lines">${lines.map((line) => renderOrderCostLine(order, line)).join('')}</div>` : empty;
+  const group = (title, lines, total, extra, addLabel, lineType, primary = false) => `<details class="order-cost-group">
+    <summary><span><strong>${title}</strong><small>${extra ? `${extra} · ` : ''}${formatEuroFr(total)}</small></span><span class="order-cost-chevron" aria-hidden="true">⌄</span></summary>
+    ${lineList(lines)}<details class="order-cost-add"><summary class="${primary ? 'clients-submit-btn' : 'modern-secondary-btn'}">+ ${addLabel}</summary><form method="POST" action="/orders/client/${order.id}/cost-lines" class="order-cost-form"><input type="hidden" name="line_type" value="${lineType}">${renderCostLineFields(lineType)}<button class="clients-submit-btn" type="submit">Ajouter</button></form></details>
+  </details>`;
   return `<section id="order-forecast" class="pc-modern-panel order-forecast-card">
-    <div class="modern-section-title"><span class="quote-ai-review-icon">${clientPageIcon('quotes')}</span><div><h2>Prévisionnel de la commande</h2><p>Le prix contractuel reste inchangé. Ces lignes servent uniquement au calcul prévisionnel.</p></div></div>
+    <div class="modern-section-title"><span class="quote-ai-review-icon">${clientPageIcon('quotes')}</span><div><h2>Prévisionnel</h2><p>Le prix contractuel reste inchangé. Les détails restent repliés pour une lecture immédiate.</p></div></div>
     <div class="order-forecast-summary">
-      ${metric('Coût matière', formatEuroFr(summary.groups.material.cost))}${metric('Vente matière', formatEuroFr(summary.groups.material.sale))}
-      ${metric('Coût main-d’œuvre', formatEuroFr(summary.groups.labor.cost))}${metric('Vente main-d’œuvre', formatEuroFr(summary.groups.labor.sale))}
-      ${metric('Autres coûts', formatEuroFr(summary.groups.other.cost))}${metric('Coût de revient total', formatEuroFr(summary.totalCost))}
-      ${metric('Vente prévisionnelle', formatEuroFr(summary.totalSale))}${metric('Marge prévisionnelle', formatEuroFr(summary.margin), summary.margin < 0 ? 'profit-negative' : 'profit-positive')}
-      ${metric('Taux de marge', percent(summary.marginRate))}${metric('Taux de marque', percent(summary.markupRate))}${metric('Heures prévues', `${summary.plannedHours.toFixed(2)} h`)}
-      ${metric('Écart au prix contractuel', `${summary.contractVariance >= 0 ? '+' : ''}${formatEuroFr(summary.contractVariance)}`, summary.contractVariance < 0 ? 'profit-negative' : 'profit-positive')}
+      ${metric('Main-d’œuvre prévue', formatEuroFr(summary.groups.labor.cost))}
+      ${metric('Matière prévue', formatEuroFr(summary.groups.material.cost))}
+      ${metric('Autres coûts prévus', formatEuroFr(summary.groups.other.cost))}
+      ${metric('Coût total prévu', formatEuroFr(summary.totalCost))}
+      ${metric('Heures prévues', `${summary.plannedHours.toFixed(2)} h`)}
     </div>
-    <div class="order-contract-comparison"><span>Prix contractuel HT <strong>${formatEuroFr(summary.contractPrice)}</strong></span><span>Prévisionnel calculé <strong>${formatEuroFr(summary.totalSale)}</strong></span></div>
-    <div class="order-actual-comparison"><span>Main-d’œuvre : ${summary.plannedHours.toFixed(2)} h prévues / ${summary.actualHours.toFixed(2)} h pointées / écart ${summary.hoursVariance >= 0 ? '+' : ''}${summary.hoursVariance.toFixed(2)} h</span><span>Matière : prévue ${formatEuroFr(summary.groups.material.cost)} / réelle ${summary.actualMaterialCost == null ? 'Coût réel non renseigné' : formatEuroFr(summary.actualMaterialCost)}</span></div>
     ${order.quote_id ? `<form method="POST" action="/orders/client/${order.id}/cost-lines/import-quote" class="order-import-quote" onsubmit="return confirm('Importer les lignes du devis #${order.quote_id} sans modifier le devis ?');"><button class="modern-secondary-btn" type="submit">Importer les lignes du devis</button><small>${data.quoteLines.length} ligne(s) disponible(s), doublons ignorés.</small></form>` : ''}
-    <div class="order-forecast-columns">
-      <article><h3>Main-d’œuvre</h3>${lineList(laborLines)}<details class="order-cost-add"><summary class="clients-submit-btn">+ Ajouter de la main-d’œuvre</summary><form method="POST" action="/orders/client/${order.id}/cost-lines" class="order-cost-form"><input type="hidden" name="line_type" value="labor">${renderCostLineFields('labor')}<button class="clients-submit-btn" type="submit">Ajouter</button></form></details></article>
-      <article><h3>Matière</h3>${lineList(materialLines)}<details class="order-cost-add"><summary class="clients-submit-btn">+ Ajouter de la matière</summary><form method="POST" action="/orders/client/${order.id}/cost-lines" class="order-cost-form"><input type="hidden" name="line_type" value="material">${renderCostLineFields('material')}<button class="clients-submit-btn" type="submit">Ajouter</button></form></details></article>
+    <div class="order-cost-groups">
+      ${group('Main-d’œuvre', laborLines, summary.groups.labor.cost, `${summary.plannedHours.toFixed(2)} h`, 'Ajouter de la main-d’œuvre', 'labor', true)}
+      ${group('Matière', materialLines, summary.groups.material.cost, '', 'Ajouter de la matière', 'material', true)}
+      ${group('Autres coûts', otherLines, summary.groups.other.cost, '', 'Ajouter un autre coût', 'other')}
     </div>
-    <article class="order-forecast-other"><h3>Autres coûts</h3>${lineList(otherLines)}<details class="order-cost-add"><summary class="modern-secondary-btn">+ Ajouter un autre coût</summary><form method="POST" action="/orders/client/${order.id}/cost-lines" class="order-cost-form"><input type="hidden" name="line_type" value="other">${renderCostLineFields('other')}<button class="clients-submit-btn" type="submit">Ajouter</button></form></details></article>
   </section>`;
 }
 
@@ -1089,40 +1089,46 @@ function renderOrderProfitabilityOverview(order, forecastData, realData) {
   const forecast = forecastData.summary;
   const actual = realData.actual;
   const hasActualCosts = realData.hours.length > 0 || realData.costs.length > 0;
-  const hasRevenue = realData.invoices.length > 0;
-  const forecastMargin = round2(Number(order.price || 0) - forecast.totalCost);
-  const actualMargin = hasActualCosts && hasRevenue ? actual.margin : null;
-  const actualMarginOnCost = actualMargin !== null && actual.actualCost > 0 ? round2((actualMargin / actual.actualCost) * 100) : null;
+  const contractPrice = Number(order.price || 0);
+  const forecastMargin = round2(contractPrice - forecast.totalCost);
+  const actualMargin = hasActualCosts ? round2(contractPrice - actual.actualCost) : null;
+  const actualMarginRate = actualMargin !== null && contractPrice > 0 ? round2((actualMargin / contractPrice) * 100) : null;
+  const limitedOverrun = hasActualCosts && actual.actualCost > forecast.totalCost;
+  const state = actualMargin === null || contractPrice <= 0
+    ? { label: 'Données incomplètes', className: 'is-incomplete' }
+    : actualMargin < 0
+      ? { label: 'En perte', className: 'is-loss' }
+      : actualMarginRate < 10 || limitedOverrun
+        ? { label: 'À surveiller', className: 'is-warning' }
+        : { label: 'Rentable', className: 'is-profitable' };
   const item = (label, value, className = '') => `<div><span>${label}</span><strong class="${className}">${value}</strong></div>`;
-  return `<section class="profitability-global-card">
-    ${item('Prix contractuel HT', formatEuroFr(order.price))}
+  return `<section class="profitability-global-section"><div class="profitability-global-heading"><div><span>Résultat global</span><h2>${state.label}</h2></div><strong class="profitability-state ${state.className}">${state.label}</strong></div><div class="profitability-global-card">
+    ${item('Prix de vente HT', formatEuroFr(contractPrice))}
     ${item('Coût prévisionnel', formatEuroFr(forecast.totalCost))}
-    ${item('Coût réel', hasActualCosts ? formatEuroFr(actual.actualCost) : 'Donnée réelle non renseignée', hasActualCosts ? '' : 'profit-missing')}
+    ${item('Coût réel', hasActualCosts ? formatEuroFr(actual.actualCost) : 'Non renseigné', hasActualCosts ? '' : 'profit-missing')}
     ${item('Marge prévisionnelle', formatEuroFr(forecastMargin), forecastMargin < 0 ? 'profit-negative' : 'profit-positive')}
-    ${item('Marge réelle', actualMargin === null ? 'Donnée réelle non renseignée' : formatEuroFr(actualMargin), actualMargin === null ? 'profit-missing' : actualMargin < 0 ? 'profit-negative' : 'profit-positive')}
-    ${item('Rentabilité réelle', actualMarginOnCost === null ? 'Non calculable' : `${actualMarginOnCost.toFixed(2)} %`, actualMarginOnCost === null ? 'profit-missing' : actualMarginOnCost < 0 ? 'profit-negative' : 'profit-positive')}
-  </section>`;
+    ${item('Marge réelle', actualMargin === null ? 'Non renseigné' : `${formatEuroFr(actualMargin)}${actualMarginRate === null ? '' : ` — ${actualMarginRate.toFixed(1)} %`}`, actualMargin === null || actualMarginRate === null ? 'profit-missing' : actualMargin < 0 ? 'profit-negative' : 'profit-positive')}
+  </div></section>`;
 }
 
 function renderOrderActualDetails(order, realData) {
   const actual = realData.actual;
   const hasHours = realData.hours.length > 0;
   const hasCosts = realData.costs.length > 0;
-  const invoiceTotal = realData.invoices.reduce((sum, invoice) => sum + Number(invoice.amount_ht || 0), 0);
-  const remaining = Math.max(0, round2(Number(order.price || 0) - invoiceTotal));
-  const hourDetails = hasHours
-    ? Object.entries(actual.hoursByCategory).filter(([, hours]) => Number(hours) > 0).map(([category, hours]) => `<span>${escHtml(category)} <strong>${Number(hours).toFixed(2)} h</strong></span>`).join('')
-    : '<span class="profit-missing">Donnée réelle non renseignée</span>';
-  const invoiceDetails = realData.invoices.length
-    ? realData.invoices.map((invoice) => `<article><div><strong>${escHtml(invoice.invoice_number || 'Facture sans numéro')}</strong><span>${escHtml(invoice.invoice_date || '')}</span></div><strong>${formatEuroFr(invoice.amount_ht)}</strong></article>`).join('')
-    : '<p class="profit-missing">Donnée réelle non renseignée</p>';
+  const material = hasCosts ? actual.costsByType.material : null;
+  const other = hasCosts ? round2(actual.purchasesCost - actual.costsByType.material) : null;
+  const folderUrl = clientOrderFolderUrl(order);
+  const value = (amount) => amount === null ? '<strong class="profit-missing">Non renseigné</strong>' : `<strong>${formatEuroFr(amount)}</strong>`;
   return `<section class="pc-modern-panel profitability-real-section">
-    <div class="modern-section-title"><span class="quote-ai-review-icon">${pcFolderIcon('Rentabilité', 'clients-ui-icon')}</span><div><h2>Réel du chantier</h2><p>Uniquement à partir des pointages, coûts et factures réellement rattachés.</p></div></div>
-    <div class="profitability-real-grid">
-      <article><h3>Main-d’œuvre réelle</h3><div class="profitability-real-metrics"><span>Heures pointées <strong>${hasHours ? `${actual.actualHours.toFixed(2)} h` : 'Donnée réelle non renseignée'}</strong></span><span>Coût estimé <strong>${hasHours ? formatEuroFr(actual.laborCost) : 'Donnée réelle non renseignée'}</strong></span></div><div class="profitability-hour-details">${hourDetails}</div></article>
-      <article><h3>Dépenses réelles</h3><div class="profitability-real-metrics"><span>Matière <strong>${hasCosts ? formatEuroFr(actual.costsByType.material) : 'Donnée réelle non renseignée'}</strong></span><span>Sous-traitance <strong>${hasCosts ? formatEuroFr(actual.costsByType.subcontracting) : 'Donnée réelle non renseignée'}</strong></span><span>Autres dépenses <strong>${hasCosts ? formatEuroFr(round2(actual.purchasesCost - actual.costsByType.material - actual.costsByType.subcontracting)) : 'Donnée réelle non renseignée'}</strong></span></div></article>
-      <article><h3>Facturation</h3><div class="profitability-real-metrics"><span>Contractuel HT <strong>${formatEuroFr(order.price)}</strong></span><span>Facturé HT <strong>${realData.invoices.length ? formatEuroFr(invoiceTotal) : 'Donnée réelle non renseignée'}</strong></span><span>Reste à facturer <strong>${formatEuroFr(remaining)}</strong></span></div><div class="profitability-invoice-list">${invoiceDetails}</div></article>
+    <div class="modern-section-title"><span class="quote-ai-review-icon">${pcFolderIcon('Rentabilité', 'clients-ui-icon')}</span><div><h2>Réel</h2><p>Totaux issus uniquement des données rattachées à cette commande.</p></div></div>
+    <div class="profitability-real-grid profitability-real-summary">
+      <article><span>Main-d’œuvre réelle</span>${value(hasHours ? actual.laborCost : null)}</article>
+      <article><span>Matière réelle</span>${value(material)}</article>
+      <article><span>Autres coûts réels</span>${value(other)}</article>
+      <article><span>Coût réel total</span>${value(hasHours || hasCosts ? actual.actualCost : null)}</article>
+      <article><span>Heures réalisées</span><strong class="${hasHours ? '' : 'profit-missing'}">${hasHours ? `${actual.actualHours.toFixed(2)} h` : 'Non renseigné'}</strong></article>
     </div>
+    <nav class="profitability-folder-links" aria-label="Consulter les données détaillées"><a href="${folderUrl}/Heure%20chantier">Voir les heures</a><a href="${folderUrl}/Factures">Voir les factures</a><a href="${folderUrl}/Devis">Voir les devis</a></nav>
   </section>`;
 }
 
@@ -1131,22 +1137,18 @@ function renderOrderProfitabilityComparison(forecastData, realData) {
   const actual = realData.actual;
   const hasHours = realData.hours.length > 0;
   const hasCosts = realData.costs.length > 0;
-  const hasRevenue = realData.invoices.length > 0;
   const actualMaterial = hasCosts ? actual.costsByType.material : null;
-  const actualOther = hasCosts ? round2(actual.purchasesCost - actual.costsByType.material) : null;
   const rows = [
     ['Heures', forecast.plannedHours, hasHours ? actual.actualHours : null, 'hours'],
     ['Main-d’œuvre', forecast.groups.labor.cost, hasHours ? actual.laborCost : null, 'money'],
     ['Matière', forecast.groups.material.cost, actualMaterial, 'money'],
-    ['Autres coûts', forecast.groups.other.cost, actualOther, 'money'],
-    ['Coût total', forecast.totalCost, hasHours || hasCosts ? actual.actualCost : null, 'money'],
-    ['Marge', round2(forecast.totalSale - forecast.totalCost), hasRevenue && (hasHours || hasCosts) ? actual.margin : null, 'money']
+    ['Coût total', forecast.totalCost, hasHours || hasCosts ? actual.actualCost : null, 'money']
   ];
   const renderValue = (value, type) => value === null ? 'Donnée non renseignée' : type === 'hours' ? `${Number(value).toFixed(2)} h` : formatEuroFr(value);
-  return `<section class="pc-modern-panel profitability-comparison-section"><div class="modern-section-title"><span class="quote-ai-review-icon">${pcFolderIcon('Rentabilité', 'clients-ui-icon')}</span><div><h2>Comparaison prévisionnel / réel</h2><p>Les écarts négatifs signalent un dépassement ou une perte de marge.</p></div></div><div class="profitability-comparison-grid">
+  return `<section class="pc-modern-panel profitability-comparison-section"><div class="modern-section-title"><span class="quote-ai-review-icon">${pcFolderIcon('Rentabilité', 'clients-ui-icon')}</span><div><h2>Écarts</h2><p>Un dépassement de coût apparaît en rouge.</p></div></div><div class="profitability-comparison-grid">
     ${rows.map(([label, planned, real, type]) => {
-      const difference = real === null ? null : round2(Number(planned || 0) - Number(real || 0));
-      return `<article><h3>${label}</h3><div><span>Prévu</span><strong>${renderValue(planned, type)}</strong></div><div><span>Réel</span><strong class="${real === null ? 'profit-missing' : ''}">${renderValue(real, type)}</strong></div><div><span>Écart</span><strong class="${difference === null ? 'profit-missing' : difference < 0 ? 'profit-negative' : difference > 0 ? 'profit-positive' : ''}">${difference === null ? 'Non calculable' : `${difference > 0 ? '+' : ''}${renderValue(difference, type)}`}</strong></div></article>`;
+      const difference = real === null ? null : round2(Number(real || 0) - Number(planned || 0));
+      return `<article><h3>${label}</h3><div><span>Prévu</span><strong>${renderValue(planned, type)}</strong></div><div><span>Réel</span><strong class="${real === null ? 'profit-missing' : ''}">${renderValue(real, type)}</strong></div><div><span>Écart</span><strong class="${difference === null ? 'profit-missing' : difference > 0 ? 'profit-negative' : difference < 0 ? 'profit-positive' : ''}">${difference === null ? 'Non renseigné' : `${difference > 0 ? '+' : ''}${renderValue(difference, type)}`}</strong></div></article>`;
     }).join('')}
   </div></section>`;
 }
@@ -8161,9 +8163,10 @@ app.get('/orders/client/:orderId/profitability', requireLogin, (req, res) => {
       <div class="pc-modern-actions"><span class="order-profitability-status">${escHtml(order.chantier_status || order.status || 'En cours')}</span><strong>${formatEuroFr(order.price)} HT</strong><a class="modern-cancel-link" href="${clientOrderFolderUrl(order)}">← Retour à la commande</a></div>
     </section>
     ${renderOrderProfitabilityOverview(order, forecastData, realData)}
-    ${renderClientOrderForecastCard(order, forecastData)}
-    ${renderOrderActualDetails(order, realData)}
-    ${renderProjectProfitabilityCard(order, realData)}
+    <div class="profitability-main-columns">
+      ${renderClientOrderForecastCard(order, forecastData)}
+      ${renderOrderActualDetails(order, realData)}
+    </div>
     ${renderOrderProfitabilityComparison(forecastData, realData)}
   </div>`;
   return res.send(pageTemplate(req, `Rentabilité - ${order.description || order.id}`, content));
