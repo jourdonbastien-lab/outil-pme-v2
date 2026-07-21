@@ -35,6 +35,7 @@ const quoteAiReview = require('./lib/quoteAiReview');
 const projectProfitability = require('./lib/projectProfitability');
 const clientOrderCostLines = require('./lib/clientOrderCostLines');
 const clientOrderFinancialSnapshot = require('./lib/clientOrderFinancialSnapshot');
+const { registerClientOrderRoutes } = require('./routes/clientOrders');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -8190,7 +8191,7 @@ app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
   }
 });
 
-app.post('/orders/client', requireLogin, (req, res) => {
+const handleCreateClientOrder = (req, res) => {
   const name = String(req.body.name || '').trim();
   const description = String(req.body.description || '').trim();
   const date = String(req.body.date || '').trim();
@@ -8276,9 +8277,9 @@ ensureDir(internalDir);
   ensureStandardSubfolders(pcOrderDir);
 
   res.redirect('/orders/clients');
-});
+};
 
-app.post('/orders/client/:id/update', requireLogin, (req, res) => {
+const handleUpdateClientOrder = (req, res) => {
   try {
     const orderId = Number(req.params.id || 0);
     if (!Number.isFinite(orderId) || orderId <= 0) {
@@ -8336,12 +8337,12 @@ app.post('/orders/client/:id/update', requireLogin, (req, res) => {
     console.error('Erreur modification commande client', e);
     return res.redirect('/orders/clients?orderUpdate=error');
   }
-});
+};
 
-app.post('/orders/client/done', requireLogin, (req, res) => {
+const handleCompleteClientOrder = (req, res) => {
   db.prepare("UPDATE client_orders SET status = 'Terminée' WHERE id = ?").run(req.body.id);
   res.redirect('/orders/clients');
-});
+};
 const scannerDocumentUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: SCANNER_MAX_FILE_SIZE_BYTES, files: 1 },
@@ -8353,7 +8354,7 @@ const scannerDocumentUpload = multer({
   }
 });
 
-app.get('/orders/client/:orderId/profitability', requireLogin, (req, res) => {
+const handleClientOrderProfitabilityPage = (req, res) => {
   const orderId = Number(req.params.orderId || 0);
   if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).send('Identifiant de commande invalide');
   const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
@@ -8372,18 +8373,18 @@ app.get('/orders/client/:orderId/profitability', requireLogin, (req, res) => {
     ${renderOrderHoursTracking(order, realData, financialSnapshot)}
   </div>`;
   return res.send(pageTemplate(req, `Budget - ${order.description || order.id}`, content));
-});
+};
 
-app.get('/api/orders/:id/profitability', requireLogin, (req, res) => {
+const handleClientOrderProfitabilityApi = (req, res) => {
   const orderId = Number(req.params.id || 0);
   const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
   if (!order) return res.status(404).json({ success: false, error: 'Commande introuvable' });
   const result = projectProfitabilityForOrder(order);
   const financialSnapshot = clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, orderId);
   return res.json({ success: true, orderId, forecast: result.forecast, actual: result.actual, costs: result.costs, financialSnapshot });
-});
+};
 
-app.post('/api/orders/:id/actual-costs', requireLogin, (req, res) => {
+const handleCreateClientOrderActualCost = (req, res) => {
   const orderId = Number(req.params.id || 0);
   const order = db.prepare('SELECT id FROM client_orders WHERE id = ?').get(orderId);
   if (!order) return res.status(404).json({ success: false, error: 'Commande introuvable' });
@@ -8407,15 +8408,15 @@ app.post('/api/orders/:id/actual-costs', requireLogin, (req, res) => {
     console.error('Erreur ajout coût réel', error);
     return res.status(500).json({ success: false, error: 'Enregistrement impossible' });
   }
-});
+};
 
-app.post('/api/orders/:id/actual-costs/:costId/delete', requireLogin, (req, res) => {
+const handleDeleteClientOrderActualCost = (req, res) => {
   const orderId = Number(req.params.id || 0);
   const costId = Number(req.params.costId || 0);
   const result = db.prepare('DELETE FROM project_actual_costs WHERE id = ? AND client_order_id = ?').run(costId, orderId);
   if (!result.changes) return res.status(404).json({ success: false, error: 'Coût introuvable pour cette commande' });
   return res.json({ success: true });
-});
+};
 
 function requireClientOrderForCostLine(req, res) {
   const orderId = Number(req.params.orderId || 0);
@@ -8431,7 +8432,7 @@ function requireClientOrderForCostLine(req, res) {
   return order;
 }
 
-app.post('/orders/client/:orderId/cost-lines', requireLogin, (req, res) => {
+const handleCreateClientOrderCostLine = (req, res) => {
   const order = requireClientOrderForCostLine(req, res);
   if (!order) return;
   try {
@@ -8448,9 +8449,9 @@ app.post('/orders/client/:orderId/cost-lines', requireLogin, (req, res) => {
   } catch (error) {
     return res.status(400).send(escHtml(error.message || 'Ligne invalide'));
   }
-});
+};
 
-app.post('/orders/client/:orderId/cost-lines/:lineId/edit', requireLogin, (req, res) => {
+const handleEditClientOrderCostLine = (req, res) => {
   const order = requireClientOrderForCostLine(req, res);
   if (!order) return;
   const lineId = Number(req.params.lineId || 0);
@@ -8469,9 +8470,9 @@ app.post('/orders/client/:orderId/cost-lines/:lineId/edit', requireLogin, (req, 
   } catch (error) {
     return res.status(400).send(escHtml(error.message || 'Ligne invalide'));
   }
-});
+};
 
-app.post('/orders/client/:orderId/cost-lines/:lineId/duplicate', requireLogin, (req, res) => {
+const handleDuplicateClientOrderCostLine = (req, res) => {
   const order = requireClientOrderForCostLine(req, res);
   if (!order) return;
   const source = db.prepare('SELECT * FROM client_order_cost_lines WHERE id = ? AND client_order_id = ?').get(Number(req.params.lineId || 0), order.id);
@@ -8487,9 +8488,9 @@ app.post('/orders/client/:orderId/cost-lines/:lineId/duplicate', requireLogin, (
     source.hourly_cost_ht, source.hourly_sale_ht, source.supplier, source.notes, source.sort_order,
     new Date().toISOString(), new Date().toISOString());
   return res.redirect(clientOrderDetailRedirect(order));
-});
+};
 
-app.post('/orders/client/:orderId/cost-lines/:lineId/delete', requireLogin, (req, res) => {
+const handleDeleteClientOrderCostLine = (req, res) => {
   const order = requireClientOrderForCostLine(req, res);
   if (!order) return;
   const lineId = Number(req.params.lineId || 0);
@@ -8498,15 +8499,15 @@ app.post('/orders/client/:orderId/cost-lines/:lineId/delete', requireLogin, (req
   const result = db.prepare('DELETE FROM client_order_cost_lines WHERE id = ? AND client_order_id = ?').run(lineId, order.id);
   if (!result.changes) return res.status(404).send('Ligne introuvable pour cette commande');
   return res.redirect(clientOrderDetailRedirect(order));
-});
+};
 
-app.post('/orders/client/:orderId/cost-lines/import-quote', requireLogin, (req, res) => {
+const handleImportClientOrderQuoteCostLines = (req, res) => {
   const order = requireClientOrderForCostLine(req, res);
   if (!order) return;
   if (!order.quote_id) return res.redirect(`/orders/client/${order.id}/profitability?importStatus=no-quote#order-budget`);
   const result = importMissingQuoteCostLines(order.id, order.quote_id);
   return res.redirect(`/orders/client/${order.id}/profitability?importStatus=${result.imported > 0 ? `imported-${result.imported}` : 'none'}#order-budget`);
-});
+};
 
 /* ===================== COMMANDES FOURNISSEURS ===================== */
 
@@ -9059,7 +9060,7 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
   res.send(pageTemplate(req, `Commande : ${order}`, content));
 });
 
-app.post('/orders/client/:id/chantier', requireLogin, (req, res) => {
+const handleUpdateClientOrderChantier = (req, res) => {
   const orderId = Number(req.params.id || 0);
   const existing = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
   if (!existing) return res.status(404).send('Commande introuvable');
@@ -9105,7 +9106,7 @@ app.post('/orders/client/:id/chantier', requireLogin, (req, res) => {
 
   const orderFolderName = safeName(existing.description && existing.description.trim() !== '' ? existing.description : `Commande_${existing.id}`);
   res.redirect(`/pc-folders/${encodeURIComponent(safeName(existing.name))}/${encodeURIComponent(orderFolderName)}`);
-});
+};
 
 app.get('/pc-folders/:client/:order/:type', requireLogin, (req, res) => {
   const client = safeName(req.params.client);
@@ -9449,7 +9450,7 @@ const list = files.length
   res.send(pageTemplate(req, `${type} - ${order}`, content));
 });
 
-app.post('/orders/client/:id/invoices/analyze', requireLogin, (req, res) => {
+const handleAnalyzeClientOrderInvoice = (req, res) => {
   const orderId = Number(req.params.id || 0);
   const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
   if (!order) return res.status(404).send('Commande introuvable');
@@ -9474,9 +9475,9 @@ app.post('/orders/client/:id/invoices/analyze', requireLogin, (req, res) => {
       return res.redirect(`${fallbackUrl}?error=${encodeURIComponent(e.message || 'Analyse facture impossible')}`);
     }
   });
-});
+};
 
-app.post('/orders/client/:id/invoices/analyze-existing', requireLogin, async (req, res) => {
+const handleAnalyzeExistingClientOrderInvoice = async (req, res) => {
   const orderId = Number(req.params.id || 0);
   const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
   if (!order) return res.status(404).send('Commande introuvable');
@@ -9493,9 +9494,9 @@ app.post('/orders/client/:id/invoices/analyze-existing', requireLogin, async (re
   } catch (e) {
     return res.redirect(`${fallbackUrl}?error=${encodeURIComponent(e.message || 'Analyse facture impossible')}`);
   }
-});
+};
 
-app.post('/orders/client/:id/invoices/create', requireLogin, (req, res) => {
+const handleCreateClientOrderInvoice = (req, res) => {
   const orderId = Number(req.params.id || 0);
   const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
   if (!order) return res.status(404).send('Commande introuvable');
@@ -9580,9 +9581,9 @@ app.post('/orders/client/:id/invoices/create', requireLogin, (req, res) => {
   } catch (e) {
     return res.status(500).send(`Erreur creation facture EBP: ${escHtml(e.message || 'inconnue')}`);
   }
-});
+};
 
-app.post('/orders/client/:id/invoices/:invoiceId/delete', requireLogin, (req, res) => {
+const handleDeleteClientOrderInvoice = (req, res) => {
   const orderId = Number(req.params.id || 0);
   const invoiceId = Number(req.params.invoiceId || 0);
   const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
@@ -9603,7 +9604,7 @@ app.post('/orders/client/:id/invoices/:invoiceId/delete', requireLogin, (req, re
   }
 
   return res.redirect(getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures'));
-});
+};
 
 app.post('/orders/client/:id/purchases', requireLogin, (req, res) => {
   const orderId = Number(req.params.id || 0);
@@ -13824,6 +13825,29 @@ app.post('/agenda/delete', requireLogin, async (req, res) => {
 
   db.prepare('DELETE FROM events WHERE id = ?').run(req.body.id);
   res.json({ success: true });
+});
+
+registerClientOrderRoutes(app, {
+  requireLogin,
+  handlers: {
+    create: handleCreateClientOrder,
+    update: handleUpdateClientOrder,
+    done: handleCompleteClientOrder,
+    updateChantier: handleUpdateClientOrderChantier,
+    profitabilityPage: handleClientOrderProfitabilityPage,
+    profitabilityApi: handleClientOrderProfitabilityApi,
+    createActualCost: handleCreateClientOrderActualCost,
+    deleteActualCost: handleDeleteClientOrderActualCost,
+    createCostLine: handleCreateClientOrderCostLine,
+    editCostLine: handleEditClientOrderCostLine,
+    duplicateCostLine: handleDuplicateClientOrderCostLine,
+    deleteCostLine: handleDeleteClientOrderCostLine,
+    importQuoteCostLines: handleImportClientOrderQuoteCostLines,
+    analyzeInvoice: handleAnalyzeClientOrderInvoice,
+    analyzeExistingInvoice: handleAnalyzeExistingClientOrderInvoice,
+    createInvoice: handleCreateClientOrderInvoice,
+    deleteInvoice: handleDeleteClientOrderInvoice
+  }
 });
 
 /* ===================== START ===================== */

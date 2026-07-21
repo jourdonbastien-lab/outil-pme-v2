@@ -46,17 +46,18 @@ assert.strictEqual(costs.quoteLineToCostLine({ label: 'Tôle', qty: 4, cost_tota
 assert.strictEqual(costs.quoteLineToCostLine({ label: 'Fourniture inconnue', qty: 1 }).incomplete_cost, true);
 
 const server = fs.readFileSync('server.js', 'utf8');
+const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const css = fs.readFileSync('public/style.css', 'utf8');
 assert(server.includes('CREATE TABLE IF NOT EXISTS client_order_cost_lines'));
 assert(server.includes('idx_client_order_cost_lines_order_type'));
 assert(server.includes('idx_client_order_cost_lines_quote_source'));
 for (const route of [
-  "app.post('/orders/client/:orderId/cost-lines', requireLogin",
-  "app.post('/orders/client/:orderId/cost-lines/:lineId/edit', requireLogin",
-  "app.post('/orders/client/:orderId/cost-lines/:lineId/duplicate', requireLogin",
-  "app.post('/orders/client/:orderId/cost-lines/:lineId/delete', requireLogin",
-  "app.post('/orders/client/:orderId/cost-lines/import-quote', requireLogin"
-]) assert(server.includes(route), `route absente: ${route}`);
+  "post('/orders/client/:orderId/cost-lines', 'createCostLine')",
+  "post('/orders/client/:orderId/cost-lines/:lineId/edit', 'editCostLine')",
+  "post('/orders/client/:orderId/cost-lines/:lineId/duplicate', 'duplicateCostLine')",
+  "post('/orders/client/:orderId/cost-lines/:lineId/delete', 'deleteCostLine')",
+  "post('/orders/client/:orderId/cost-lines/import-quote', 'importQuoteCostLines')"
+]) assert(clientOrderRoutes.includes(route), `route absente: ${route}`);
 assert(server.includes('WHERE id = ? AND client_order_id = ?'), 'isolation commande/ligne absente');
 assert(server.includes('INSERT OR IGNORE INTO client_order_cost_lines'), 'import anti-doublon absent');
 assert(server.includes('client_order_cost_line_exclusions'), 'mémoire des suppressions absente');

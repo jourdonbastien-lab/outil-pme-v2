@@ -152,13 +152,14 @@ assert.strictEqual(actual.hourVariance, 12);
 assert.strictEqual(actual.hourVariancePct, 40);
 
 const server = fs.readFileSync('server.js', 'utf8');
+const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 for (const schema of ['quote_profitability_forecasts', 'project_profitability_forecasts', 'project_actual_costs']) {
   assert(server.includes(`CREATE TABLE IF NOT EXISTS ${schema}`), `migration absente: ${schema}`);
 }
 assert(server.includes("ensureColumn('chantier_hours', 'category'"));
 assert(server.includes("ensureColumn('client_orders', 'quote_id'"));
 assert(server.includes('saveProjectForecast({ ...quote, total_ht: totalWithMargin }, lines, clientOrderId)'));
-assert(server.includes("app.get('/api/orders/:id/profitability', requireLogin"));
+assert(clientOrderRoutes.includes("get('/api/orders/:id/profitability', 'profitabilityApi')"));
 assert(server.includes("app.get('/api/devis/:id/profitability', requireLogin"));
 assert(server.includes("app.post('/api/devis/:id/profitability', requireLogin"));
 assert(server.includes("app.post('/api/devis/:id/profitability/analyze', requireLogin"));
@@ -168,7 +169,7 @@ for (const column of ['analysis_json', 'manual_adjustments_json', 'reliability_l
 for (const column of ['cost_unit', 'cost_total', 'margin_pct', 'hours', 'hourly_cost', 'cost_category', 'cost_source']) {
   assert(server.includes(`ensureColumn('quote_lines', '${column}'`), `migration ligne absente: ${column}`);
 }
-assert(server.includes("app.post('/api/orders/:id/actual-costs', requireLogin"));
+assert(clientOrderRoutes.includes("post('/api/orders/:id/actual-costs', 'createActualCost')"));
 assert(server.includes('Rentabilité prévisionnelle'));
 assert(server.includes('Rentabilité du chantier'));
 assert(server.includes('Réanalyser le devis'));

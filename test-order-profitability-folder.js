@@ -4,14 +4,15 @@ const assert = require('assert');
 const fs = require('fs');
 
 const server = fs.readFileSync('server.js', 'utf8');
+const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const css = fs.readFileSync('public/style.css', 'utf8');
 
-assert(server.includes("app.get('/orders/client/:orderId/profitability', requireLogin"));
+assert(clientOrderRoutes.includes("get('/orders/client/:orderId/profitability', 'profitabilityPage')"));
 assert(server.includes('pc-profitability-access'));
 assert(server.includes("return `/orders/client/${order.id}/profitability#order-budget`;"));
 
-const routeStart = server.indexOf("app.get('/orders/client/:orderId/profitability'");
-const routeEnd = server.indexOf("app.get('/api/orders/:id/profitability'", routeStart);
+const routeStart = server.indexOf('const handleClientOrderProfitabilityPage');
+const routeEnd = server.indexOf('const handleClientOrderProfitabilityApi', routeStart);
 const route = server.slice(routeStart, routeEnd);
 for (const renderer of ['renderOrderProfitabilityOverview', 'renderClientOrderForecastCard', 'renderOrderHoursTracking']) assert(route.includes(renderer));
 for (const removed of ['renderOrderActualDetails', 'renderOrderProfitabilityComparison', 'renderProjectProfitabilityCard']) assert(!route.includes(`${removed}(`), `ancienne zone encore rendue: ${removed}`);
