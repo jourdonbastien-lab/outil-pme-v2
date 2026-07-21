@@ -3044,6 +3044,7 @@ function mobileNavIcon(name) {
     clientOrders: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h8M8 15h5"/>',
     supplierOrders: '<path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><path d="M6.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17.5 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
     quotes: '<path d="M7 3h7l4 4v14H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h4M9 12h6M9 16h6"/>',
+    documents: '<path d="M6 3h8l4 4v14H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h4M8 12h7M8 16h7"/><path d="M3 7v12"/>',
     measurements: '<path d="M4 17 17 4l3 3L7 20z"/><path d="m14 7 3 3M11 10l2 2M8 13l3 3"/>',
     materials: '<path d="M4 8 12 4l8 4-8 4z"/><path d="m4 12 8 4 8-4"/><path d="m4 16 8 4 8-4"/>',
     logibarre: '<path d="M4 14h16"/><path d="M6 10h12"/><path d="M8 18h8"/><path d="M5 14v3M19 11v3"/>',
@@ -3116,6 +3117,8 @@ function pageTemplate(req, title, content) {
 
   const isAtelier =
     req.session?.user?.role === 'atelier';
+  // DIAGNOSTIC TEMPORAIRE RÔLE MOBILE — supprimer avec le bloc HTML portant la même mention.
+  const showMobileRoleDiagnostic = req.session?.user?.role === 'admin';
   const isActivePath = (exactOrPrefix) => {
     if (exactOrPrefix.endsWith('*')) return req.path.startsWith(exactOrPrefix.slice(0, -1));
     return req.path === exactOrPrefix;
@@ -3340,6 +3343,8 @@ ${isAtelier ? `
     <div class="mobile-sheet-links">
       ${renderSheetLinks(mobileMoreLinks)}
     </div>
+    <!-- DIAGNOSTIC TEMPORAIRE RÔLE MOBILE — suppression facile après diagnostic. -->
+    ${showMobileRoleDiagnostic ? `<p class="mobile-role-diagnostic" data-mobile-role-diagnostic>Rôle : ${escHtml(req.session.user.role)}</p>` : ''}
     <button type="button" class="mobile-sheet-cancel" data-mobile-close>Annuler</button>
   </section>
 <script>

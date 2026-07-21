@@ -11293,6 +11293,9 @@ body.sketchpad-drawing{
 .quote-line-editor-actions .clients-submit-btn{background:#f97316;}
 .quote-line-editor-actions button[aria-busy="true"]{cursor:wait;opacity:.72;}
 
+/* DIAGNOSTIC TEMPORAIRE RÔLE MOBILE — supprimer après diagnostic. */
+.mobile-role-diagnostic{margin:12px 0 4px;padding:9px 12px;border:1px dashed #f97316;border-radius:10px;background:#fff7ed;color:#9a3412;font-size:12px;font-weight:850;text-align:center;}
+
 @media(max-width:600px){
   .quote-line-editor-page{padding:14px 16px calc(92px + env(safe-area-inset-bottom));}
   .quote-line-editor-hero{grid-template-columns:auto minmax(0,1fr);padding:15px;border-radius:18px;}
