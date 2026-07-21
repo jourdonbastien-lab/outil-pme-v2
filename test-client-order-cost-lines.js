@@ -47,6 +47,7 @@ assert.strictEqual(costs.quoteLineToCostLine({ label: 'Fourniture inconnue', qty
 
 const server = fs.readFileSync('server.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
+const profitabilityController = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
 const css = fs.readFileSync('public/style.css', 'utf8');
 assert(server.includes('CREATE TABLE IF NOT EXISTS client_order_cost_lines'));
 assert(server.includes('idx_client_order_cost_lines_order_type'));
@@ -58,9 +59,9 @@ for (const route of [
   "post('/orders/client/:orderId/cost-lines/:lineId/delete', 'deleteCostLine')",
   "post('/orders/client/:orderId/cost-lines/import-quote', 'importQuoteCostLines')"
 ]) assert(clientOrderRoutes.includes(route), `route absente: ${route}`);
-assert(server.includes('WHERE id = ? AND client_order_id = ?'), 'isolation commande/ligne absente');
+assert(profitabilityController.includes('WHERE id = ? AND client_order_id = ?'), 'isolation commande/ligne absente');
 assert(server.includes('INSERT OR IGNORE INTO client_order_cost_lines'), 'import anti-doublon absent');
-assert(server.includes('client_order_cost_line_exclusions'), 'mémoire des suppressions absente');
+assert(profitabilityController.includes('client_order_cost_line_exclusions'), 'mémoire des suppressions absente');
 assert(server.includes('importMissingQuoteCostLines(clientOrderId, quoteId)'), 'import à l’acceptation du devis absent');
 assert(server.includes('if (quoteId) importMissingQuoteCostLines(Number(orderId), quoteId)'), 'import à la création manuelle liée absent');
 assert(server.includes("source_type, source_quote_line_id"));

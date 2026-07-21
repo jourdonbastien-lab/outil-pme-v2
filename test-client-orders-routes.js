@@ -4,6 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const routesSource = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const serverSource = fs.readFileSync('server.js', 'utf8');
+const controllerSource = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
 const { registerClientOrderRoutes } = require('./routes/clientOrders');
 
 assert.strictEqual(typeof registerClientOrderRoutes, 'function');
@@ -57,7 +58,9 @@ assert(serverSource.includes("app.get('/pc-folders/:client/:order/:type', requir
 assert(serverSource.includes("type === 'Factures'"), 'branche Factures absente');
 assert(serverSource.includes('registerClientOrderRoutes(app, {'));
 assert(serverSource.includes('clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot'));
-assert(serverSource.includes('financialSnapshot }'), 'structure JSON Rentabilité modifiée');
+assert(controllerSource.includes('financialSnapshot }'), 'structure JSON Rentabilité modifiée');
+assert(!serverSource.includes('const handleClientOrderProfitabilityPage'));
+assert(serverSource.includes('clientOrderProfitabilityController.showProfitability'));
 
 for (const [, path] of expected) {
   assert(!serverSource.includes(`app.get('${path}'`) && !serverSource.includes(`app.post('${path}'`), `route extraite encore enregistrée dans server.js: ${path}`);

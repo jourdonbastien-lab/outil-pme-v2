@@ -5,15 +5,16 @@ const fs = require('fs');
 
 const server = fs.readFileSync('server.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
+const profitabilityController = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
 const css = fs.readFileSync('public/style.css', 'utf8');
 
 assert(clientOrderRoutes.includes("get('/orders/client/:orderId/profitability', 'profitabilityPage')"));
 assert(server.includes('pc-profitability-access'));
 assert(server.includes("return `/orders/client/${order.id}/profitability#order-budget`;"));
 
-const routeStart = server.indexOf('const handleClientOrderProfitabilityPage');
-const routeEnd = server.indexOf('const handleClientOrderProfitabilityApi', routeStart);
-const route = server.slice(routeStart, routeEnd);
+const routeStart = profitabilityController.indexOf('function showProfitability');
+const routeEnd = profitabilityController.indexOf('function getProfitabilityApi', routeStart);
+const route = profitabilityController.slice(routeStart, routeEnd);
 for (const renderer of ['renderOrderProfitabilityOverview', 'renderClientOrderForecastCard', 'renderOrderHoursTracking']) assert(route.includes(renderer));
 for (const removed of ['renderOrderActualDetails', 'renderOrderProfitabilityComparison', 'renderProjectProfitabilityCard']) assert(!route.includes(`${removed}(`), `ancienne zone encore rendue: ${removed}`);
 
@@ -44,9 +45,9 @@ assert(!hoursRenderer.includes('laborCost'));
 assert(server.includes('function importMissingQuoteCostLines'));
 assert(server.includes('INSERT OR IGNORE INTO client_order_cost_lines'));
 assert(server.includes('source_quote_line_id'));
-assert(server.includes('client_order_cost_line_exclusions'));
-assert(server.includes('`imported-${result.imported}`'));
-assert(server.includes('importStatus=no-quote'));
+assert(profitabilityController.includes('client_order_cost_line_exclusions'));
+assert(profitabilityController.includes('`imported-${result.imported}`'));
+assert(profitabilityController.includes('importStatus=no-quote'));
 assert(server.includes("name=\"quote_id\""), 'rattachement de devis absent des formulaires commande');
 
 for (const selector of ['.profitability-global-section', '.order-cost-group', '.order-hours-summary', '.order-budget-flash']) assert(css.includes(selector));

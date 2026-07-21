@@ -13,6 +13,14 @@ function registerClientOrderRoutes(app, dependencies) {
   if (!app || typeof app.get !== 'function' || typeof app.post !== 'function') throw new TypeError('Application Express invalide.');
   if (typeof requireLogin !== 'function') throw new TypeError('Middleware requireLogin manquant.');
   if (!handlers || typeof handlers !== 'object') throw new TypeError('Gestionnaires de commandes clients manquants.');
+  for (const name of [
+    'create', 'update', 'done', 'updateChantier', 'profitabilityPage', 'profitabilityApi',
+    'createActualCost', 'deleteActualCost', 'createCostLine', 'editCostLine',
+    'duplicateCostLine', 'deleteCostLine', 'importQuoteCostLines', 'analyzeInvoice',
+    'analyzeExistingInvoice', 'createInvoice', 'deleteInvoice'
+  ]) {
+    if (typeof handlers[name] !== 'function') throw new TypeError(`Gestionnaire ${name} manquant.`);
+  }
 
   const post = (route, name) => app.post(route, requireLogin, handlers[name]);
   const get = (route, name) => app.get(route, requireLogin, handlers[name]);
