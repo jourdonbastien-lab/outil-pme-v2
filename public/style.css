@@ -8180,6 +8180,19 @@ body.sketchpad-drawing{
 }
 
 /* Prévisionnel saisi directement dans une commande client */
+.order-profitability-page{padding-bottom:calc(96px + env(safe-area-inset-bottom));}
+.order-profitability-hero .pc-modern-actions{align-items:flex-end;}.order-profitability-hero .pc-modern-actions>strong{color:#fff;font-size:20px;}
+.order-profitability-status{display:inline-flex;align-items:center;min-height:32px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.14);color:#fff;font-weight:850;}
+.profitability-global-card{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px;padding:18px;border-radius:20px;background:#0f172a;box-shadow:0 14px 30px rgba(15,23,42,.14);}
+.profitability-global-card>div{min-width:0;padding:13px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:rgba(255,255,255,.06);}
+.profitability-global-card span{display:block;color:#cbd5e1;font-size:12px;font-weight:800;}.profitability-global-card strong{display:block;margin-top:5px;color:#fff;overflow-wrap:anywhere;}
+.profit-missing{color:#6b7280!important;font-style:italic;}
+.profitability-real-section,.profitability-comparison-section{margin-top:18px;}
+.profitability-real-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px;}
+.profitability-real-grid>article{min-width:0;padding:15px;border:1px solid #e5e7eb;border-radius:16px;background:#fff;}.profitability-real-grid h3{margin:0 0 11px;color:#101827;}
+.profitability-real-metrics{display:grid;gap:8px}.profitability-real-metrics span,.profitability-hour-details span{display:flex;justify-content:space-between;gap:10px;padding:9px;border-radius:10px;background:#f8fafc;color:#667085;}.profitability-real-metrics strong,.profitability-hour-details strong{color:#101827;text-align:right;}
+.profitability-hour-details{display:grid;gap:6px;margin-top:9px;}.profitability-invoice-list{display:grid;gap:7px;margin-top:10px;}.profitability-invoice-list article{display:flex;justify-content:space-between;gap:10px;padding:9px;border-radius:10px;background:#f8fafc;}.profitability-invoice-list span{display:block;color:#667085;font-size:12px;}
+.profitability-comparison-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px;}.profitability-comparison-grid article{min-width:0;padding:15px;border:1px solid #e5e7eb;border-radius:16px;background:#fff;}.profitability-comparison-grid h3{margin:0 0 10px;color:#101827;}.profitability-comparison-grid article>div{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #eef0f3;}.profitability-comparison-grid span{color:#667085;}.profitability-comparison-grid strong{text-align:right;overflow-wrap:anywhere;}
 .order-forecast-card{margin-top:18px;overflow:hidden;}
 .order-forecast-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:18px;}
 .order-forecast-summary>div{min-width:0;padding:12px;border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;}
@@ -8212,9 +8225,10 @@ body.sketchpad-drawing{
 .order-cost-form .order-cost-wide,.order-cost-form button{grid-column:1/-1;}.order-cost-form button{justify-self:start;min-height:44px;}
 .order-cost-add{margin-top:12px;}.order-cost-add>summary{display:flex;align-items:center;width:max-content;min-height:44px;list-style:none;cursor:pointer;}
 
-@media(max-width:900px){.order-forecast-summary{grid-template-columns:repeat(2,minmax(0,1fr));}.order-forecast-columns{grid-template-columns:minmax(0,1fr);}}
+@media(max-width:900px){.profitability-global-card,.profitability-real-grid,.profitability-comparison-grid,.order-forecast-summary{grid-template-columns:repeat(2,minmax(0,1fr));}.order-forecast-columns{grid-template-columns:minmax(0,1fr);}}
 @media(max-width:600px){
-  .order-forecast-summary,.order-cost-form{grid-template-columns:minmax(0,1fr);}
+  .profitability-global-card,.profitability-real-grid,.profitability-comparison-grid,.order-forecast-summary,.order-cost-form{grid-template-columns:minmax(0,1fr);}
+  .order-profitability-hero .pc-modern-actions{align-items:stretch;}.order-profitability-hero .pc-modern-actions>*{width:100%;}
   .order-cost-form .order-cost-wide,.order-cost-form button{grid-column:auto;}.order-cost-form button,.order-cost-add>summary,.order-import-quote button{width:100%;}
   .order-cost-line-card header{display:block;}.order-cost-line-card header>strong{display:block;margin-top:8px;text-align:left;white-space:normal;}
   .order-cost-actions{display:grid;grid-template-columns:minmax(0,1fr);}.order-cost-actions details,.order-cost-actions form,.order-cost-actions button,.order-cost-actions summary{width:100%!important;}

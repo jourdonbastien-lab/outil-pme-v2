@@ -999,7 +999,11 @@ function renderProjectProfitabilityCard(order, data) {
 }
 
 function clientOrderDetailRedirect(order) {
-  return `/pc-folders/${encodeURIComponent(safeName(order.name))}/${encodeURIComponent(clientOrderFolderName(order))}#order-forecast`;
+  return `/orders/client/${order.id}/profitability#order-forecast`;
+}
+
+function clientOrderFolderUrl(order) {
+  return `/pc-folders/${encodeURIComponent(safeName(order.name))}/${encodeURIComponent(clientOrderFolderName(order))}`;
 }
 
 function clientOrderForecastData(order) {
@@ -1079,6 +1083,72 @@ function renderClientOrderForecastCard(order, data) {
     </div>
     <article class="order-forecast-other"><h3>Autres coûts</h3>${lineList(otherLines)}<details class="order-cost-add"><summary class="modern-secondary-btn">+ Ajouter un autre coût</summary><form method="POST" action="/orders/client/${order.id}/cost-lines" class="order-cost-form"><input type="hidden" name="line_type" value="other">${renderCostLineFields('other')}<button class="clients-submit-btn" type="submit">Ajouter</button></form></details></article>
   </section>`;
+}
+
+function renderOrderProfitabilityOverview(order, forecastData, realData) {
+  const forecast = forecastData.summary;
+  const actual = realData.actual;
+  const hasActualCosts = realData.hours.length > 0 || realData.costs.length > 0;
+  const hasRevenue = realData.invoices.length > 0;
+  const forecastMargin = round2(Number(order.price || 0) - forecast.totalCost);
+  const actualMargin = hasActualCosts && hasRevenue ? actual.margin : null;
+  const actualMarginOnCost = actualMargin !== null && actual.actualCost > 0 ? round2((actualMargin / actual.actualCost) * 100) : null;
+  const item = (label, value, className = '') => `<div><span>${label}</span><strong class="${className}">${value}</strong></div>`;
+  return `<section class="profitability-global-card">
+    ${item('Prix contractuel HT', formatEuroFr(order.price))}
+    ${item('Coût prévisionnel', formatEuroFr(forecast.totalCost))}
+    ${item('Coût réel', hasActualCosts ? formatEuroFr(actual.actualCost) : 'Donnée réelle non renseignée', hasActualCosts ? '' : 'profit-missing')}
+    ${item('Marge prévisionnelle', formatEuroFr(forecastMargin), forecastMargin < 0 ? 'profit-negative' : 'profit-positive')}
+    ${item('Marge réelle', actualMargin === null ? 'Donnée réelle non renseignée' : formatEuroFr(actualMargin), actualMargin === null ? 'profit-missing' : actualMargin < 0 ? 'profit-negative' : 'profit-positive')}
+    ${item('Rentabilité réelle', actualMarginOnCost === null ? 'Non calculable' : `${actualMarginOnCost.toFixed(2)} %`, actualMarginOnCost === null ? 'profit-missing' : actualMarginOnCost < 0 ? 'profit-negative' : 'profit-positive')}
+  </section>`;
+}
+
+function renderOrderActualDetails(order, realData) {
+  const actual = realData.actual;
+  const hasHours = realData.hours.length > 0;
+  const hasCosts = realData.costs.length > 0;
+  const invoiceTotal = realData.invoices.reduce((sum, invoice) => sum + Number(invoice.amount_ht || 0), 0);
+  const remaining = Math.max(0, round2(Number(order.price || 0) - invoiceTotal));
+  const hourDetails = hasHours
+    ? Object.entries(actual.hoursByCategory).filter(([, hours]) => Number(hours) > 0).map(([category, hours]) => `<span>${escHtml(category)} <strong>${Number(hours).toFixed(2)} h</strong></span>`).join('')
+    : '<span class="profit-missing">Donnée réelle non renseignée</span>';
+  const invoiceDetails = realData.invoices.length
+    ? realData.invoices.map((invoice) => `<article><div><strong>${escHtml(invoice.invoice_number || 'Facture sans numéro')}</strong><span>${escHtml(invoice.invoice_date || '')}</span></div><strong>${formatEuroFr(invoice.amount_ht)}</strong></article>`).join('')
+    : '<p class="profit-missing">Donnée réelle non renseignée</p>';
+  return `<section class="pc-modern-panel profitability-real-section">
+    <div class="modern-section-title"><span class="quote-ai-review-icon">${pcFolderIcon('Rentabilité', 'clients-ui-icon')}</span><div><h2>Réel du chantier</h2><p>Uniquement à partir des pointages, coûts et factures réellement rattachés.</p></div></div>
+    <div class="profitability-real-grid">
+      <article><h3>Main-d’œuvre réelle</h3><div class="profitability-real-metrics"><span>Heures pointées <strong>${hasHours ? `${actual.actualHours.toFixed(2)} h` : 'Donnée réelle non renseignée'}</strong></span><span>Coût estimé <strong>${hasHours ? formatEuroFr(actual.laborCost) : 'Donnée réelle non renseignée'}</strong></span></div><div class="profitability-hour-details">${hourDetails}</div></article>
+      <article><h3>Dépenses réelles</h3><div class="profitability-real-metrics"><span>Matière <strong>${hasCosts ? formatEuroFr(actual.costsByType.material) : 'Donnée réelle non renseignée'}</strong></span><span>Sous-traitance <strong>${hasCosts ? formatEuroFr(actual.costsByType.subcontracting) : 'Donnée réelle non renseignée'}</strong></span><span>Autres dépenses <strong>${hasCosts ? formatEuroFr(round2(actual.purchasesCost - actual.costsByType.material - actual.costsByType.subcontracting)) : 'Donnée réelle non renseignée'}</strong></span></div></article>
+      <article><h3>Facturation</h3><div class="profitability-real-metrics"><span>Contractuel HT <strong>${formatEuroFr(order.price)}</strong></span><span>Facturé HT <strong>${realData.invoices.length ? formatEuroFr(invoiceTotal) : 'Donnée réelle non renseignée'}</strong></span><span>Reste à facturer <strong>${formatEuroFr(remaining)}</strong></span></div><div class="profitability-invoice-list">${invoiceDetails}</div></article>
+    </div>
+  </section>`;
+}
+
+function renderOrderProfitabilityComparison(forecastData, realData) {
+  const forecast = forecastData.summary;
+  const actual = realData.actual;
+  const hasHours = realData.hours.length > 0;
+  const hasCosts = realData.costs.length > 0;
+  const hasRevenue = realData.invoices.length > 0;
+  const actualMaterial = hasCosts ? actual.costsByType.material : null;
+  const actualOther = hasCosts ? round2(actual.purchasesCost - actual.costsByType.material) : null;
+  const rows = [
+    ['Heures', forecast.plannedHours, hasHours ? actual.actualHours : null, 'hours'],
+    ['Main-d’œuvre', forecast.groups.labor.cost, hasHours ? actual.laborCost : null, 'money'],
+    ['Matière', forecast.groups.material.cost, actualMaterial, 'money'],
+    ['Autres coûts', forecast.groups.other.cost, actualOther, 'money'],
+    ['Coût total', forecast.totalCost, hasHours || hasCosts ? actual.actualCost : null, 'money'],
+    ['Marge', round2(forecast.totalSale - forecast.totalCost), hasRevenue && (hasHours || hasCosts) ? actual.margin : null, 'money']
+  ];
+  const renderValue = (value, type) => value === null ? 'Donnée non renseignée' : type === 'hours' ? `${Number(value).toFixed(2)} h` : formatEuroFr(value);
+  return `<section class="pc-modern-panel profitability-comparison-section"><div class="modern-section-title"><span class="quote-ai-review-icon">${pcFolderIcon('Rentabilité', 'clients-ui-icon')}</span><div><h2>Comparaison prévisionnel / réel</h2><p>Les écarts négatifs signalent un dépassement ou une perte de marge.</p></div></div><div class="profitability-comparison-grid">
+    ${rows.map(([label, planned, real, type]) => {
+      const difference = real === null ? null : round2(Number(planned || 0) - Number(real || 0));
+      return `<article><h3>${label}</h3><div><span>Prévu</span><strong>${renderValue(planned, type)}</strong></div><div><span>Réel</span><strong class="${real === null ? 'profit-missing' : ''}">${renderValue(real, type)}</strong></div><div><span>Écart</span><strong class="${difference === null ? 'profit-missing' : difference < 0 ? 'profit-negative' : difference > 0 ? 'profit-positive' : ''}">${difference === null ? 'Non calculable' : `${difference > 0 ? '+' : ''}${renderValue(difference, type)}`}</strong></div></article>`;
+    }).join('')}
+  </div></section>`;
 }
 
 function orderInvoiceSummary(order, totalsMap) {
@@ -2957,6 +3027,7 @@ function pcFolderIcon(name, className = 'pc-modern-icon') {
     Photos: '<path d="M4 7h4l1.5-2h5L16 7h4v12H4z"/><path d="M12 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"/>',
     Commandes: '<path d="M5 5h5l2 2h7a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8 12h8M8 15h5"/>',
     'Heure chantier': '<path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"/><path d="M12 7v5l3 2"/>',
+    Rentabilité: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/><path d="m4 8 6-5 6 7 5-5"/>',
     file: '<path d="M7 3h7l4 4v14H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h4"/>',
     image: '<path d="M4 5h16v14H4z"/><path d="m7 15 3-3 3 3 2-2 3 3"/><path d="M8.5 9.5h.01"/>',
     dxf: '<path d="M4 17 17 4l3 3L7 20z"/><path d="m14 7 3 3M11 10l2 2M8 13l3 3"/>',
@@ -8077,6 +8148,27 @@ app.post('/orders/client/done', requireLogin, (req, res) => {
   res.redirect('/orders/clients');
 });
 
+app.get('/orders/client/:orderId/profitability', requireLogin, (req, res) => {
+  const orderId = Number(req.params.orderId || 0);
+  if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).send('Identifiant de commande invalide');
+  const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
+  if (!order) return res.status(404).send('Commande introuvable');
+  const forecastData = clientOrderForecastData(order);
+  const realData = projectProfitabilityForOrder(order);
+  const content = `<div class="pc-modern-page order-profitability-page">
+    <section class="pc-modern-hero order-profitability-hero">
+      <div><span>Commande #${order.id}</span><h1>Rentabilité de la commande</h1><p>${escHtml(order.name || 'Client')} · ${escHtml(order.description || `Commande_${order.id}`)}</p></div>
+      <div class="pc-modern-actions"><span class="order-profitability-status">${escHtml(order.chantier_status || order.status || 'En cours')}</span><strong>${formatEuroFr(order.price)} HT</strong><a class="modern-cancel-link" href="${clientOrderFolderUrl(order)}">← Retour à la commande</a></div>
+    </section>
+    ${renderOrderProfitabilityOverview(order, forecastData, realData)}
+    ${renderClientOrderForecastCard(order, forecastData)}
+    ${renderOrderActualDetails(order, realData)}
+    ${renderProjectProfitabilityCard(order, realData)}
+    ${renderOrderProfitabilityComparison(forecastData, realData)}
+  </div>`;
+  return res.send(pageTemplate(req, `Rentabilité - ${order.description || order.id}`, content));
+});
+
 app.get('/api/orders/:id/profitability', requireLogin, (req, res) => {
   const orderId = Number(req.params.id || 0);
   const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
@@ -8704,12 +8796,13 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
   const linkedMeasurements = orderDb
     ? db.prepare('SELECT * FROM measurements WHERE client_order_id = ? ORDER BY updated_at DESC, id DESC').all(orderDb.id)
     : [];
-  const profitabilityCard = orderDb
-    ? renderProjectProfitabilityCard(orderDb, projectProfitabilityForOrder(orderDb))
-    : '';
-  const directForecastCard = orderDb
-    ? renderClientOrderForecastCard(orderDb, clientOrderForecastData(orderDb))
-    : '';
+  const profitabilityAccessCard = orderDb ? `
+    <article class="pc-modern-card pc-profitability-access">
+      <a class="pc-modern-card-link" href="/orders/client/${orderDb.id}/profitability" aria-label="Ouvrir Rentabilité"></a>
+      ${pcFolderIcon('Rentabilité')}
+      <div class="pc-modern-main"><strong>Rentabilité</strong><span>Prévisionnel et réel</span></div>
+      <span class="pc-modern-open">Ouvrir</span>
+    </article>` : '';
 
   const chantierHeroControl = orderDb
     ? (() => {
@@ -8761,11 +8854,8 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
       </section>
 
       <section class="pc-modern-grid">
-        ${cards}
+        ${cards}${profitabilityAccessCard}
       </section>
-
-      ${directForecastCard}
-      ${profitabilityCard}
 
       <section class="pc-modern-panel measurement-linked-section">
         <div class="modern-section-title">
