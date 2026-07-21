@@ -45,11 +45,8 @@ assert.deepStrictEqual(actualAdminHrefs, expectedAdminHrefs, 'ordre du menu admi
 assert(adminSheet.includes('href="/documents-entrants"'), 'Documents entrants absent pour un administrateur');
 assert(adminSheet.indexOf('href="/devis"') < adminSheet.indexOf('href="/documents-entrants"'));
 assert(adminSheet.indexOf('href="/documents-entrants"') < adminSheet.indexOf('href="/orders/clients"'));
-assert(adminSheet.includes('data-mobile-role-diagnostic'), 'diagnostic du rôle absent pour admin');
-assert(adminSheet.includes('Rôle : admin'), 'rôle administrateur incorrect dans le diagnostic');
 
 const atelierSheet = moreSheet(pageTemplate(requestFor('atelier'), 'Test atelier', '<p>Test</p>'));
 assert(!atelierSheet.includes('href="/documents-entrants"'), 'Documents entrants ne doit pas être visible pour atelier');
-assert(!atelierSheet.includes('data-mobile-role-diagnostic'), 'diagnostic du rôle ne doit pas être visible pour atelier');
 
 console.log('OK - navigation mobile par rôle');

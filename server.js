@@ -3117,8 +3117,6 @@ function pageTemplate(req, title, content) {
 
   const isAtelier =
     req.session?.user?.role === 'atelier';
-  // DIAGNOSTIC TEMPORAIRE RÔLE MOBILE — supprimer avec le bloc HTML portant la même mention.
-  const showMobileRoleDiagnostic = req.session?.user?.role === 'admin';
   const isActivePath = (exactOrPrefix) => {
     if (exactOrPrefix.endsWith('*')) return req.path.startsWith(exactOrPrefix.slice(0, -1));
     return req.path === exactOrPrefix;
@@ -3343,8 +3341,6 @@ ${isAtelier ? `
     <div class="mobile-sheet-links">
       ${renderSheetLinks(mobileMoreLinks)}
     </div>
-    <!-- DIAGNOSTIC TEMPORAIRE RÔLE MOBILE — suppression facile après diagnostic. -->
-    ${showMobileRoleDiagnostic ? `<p class="mobile-role-diagnostic" data-mobile-role-diagnostic>Rôle : ${escHtml(req.session.user.role)}</p>` : ''}
     <button type="button" class="mobile-sheet-cancel" data-mobile-close>Annuler</button>
   </section>
 <script>
