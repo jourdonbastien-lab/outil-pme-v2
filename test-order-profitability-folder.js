@@ -8,10 +8,12 @@ const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const profitabilityController = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
 const profitabilityView = fs.readFileSync('views/clientOrderProfitabilityView.js', 'utf8');
 const invoicesController = fs.readFileSync('controllers/clientOrderInvoicesController.js', 'utf8');
+const clientOrdersController = fs.readFileSync('controllers/clientOrdersController.js', 'utf8');
+const clientOrderFolderView = fs.readFileSync('views/clientOrderFolderView.js', 'utf8');
 const css = fs.readFileSync('public/style.css', 'utf8');
 
 assert(clientOrderRoutes.includes("get('/orders/client/:orderId/profitability', 'profitabilityPage')"));
-assert(server.includes('pc-profitability-access'));
+assert(clientOrderFolderView.includes('pc-profitability-access'));
 assert(server.includes("return `/orders/client/${order.id}/profitability#order-budget`;"));
 
 const routeStart = profitabilityController.indexOf('function showProfitability');
@@ -26,10 +28,10 @@ assert(server.includes("require('./lib/clientOrderFinancialSnapshot')"));
 assert(profitabilityView.includes('financialSnapshot.margin.forecastAmount'));
 assert(profitabilityView.includes('financialSnapshot.margin.forecastRate'));
 assert(profitabilityView.includes('financialSnapshot.budget.total'));
-assert(server.includes('financialSnapshot.revenue.remainingToInvoiceExVat'));
-assert(server.includes('const financialSnapshots = new Map(orders.map'));
+assert(clientOrdersController.includes('snapshot.revenue.remainingToInvoiceExVat'));
+assert(clientOrdersController.includes('const financialSnapshots = new Map(orders.map'));
 assert(invoicesController.includes('getClientOrderFinancialSnapshot'));
-assert(server.includes('financialSnapshot.revenue.invoicedExVat'));
+assert(clientOrdersController.includes('snapshot.revenue.invoicedExVat'));
 assert(profitabilityView.includes("financialSnapshot.sources.budget === 'none'"));
 
 assert(profitabilityView.includes('id="order-budget"'));

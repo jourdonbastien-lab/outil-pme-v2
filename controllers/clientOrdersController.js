@@ -2,14 +2,122 @@
 
 function createClientOrdersController(deps) {
   const {
-    orderService, renderListPage, parseOptionalVatRate, normalizeChantierStatus,
+    orderService, renderListView, pageTemplate, parseOptionalVatRate, normalizeChantierStatus,
     parsePositiveNumber, parseOptionalId, parseDecimalInput, isoDate,
-    importMissingQuoteCostLines, ensureOrderFolders, safeName, getProgressFromChantierStatus
+    importMissingQuoteCostLines, ensureOrderFolders, safeName, getProgressFromChantierStatus,
+    getFinancialSnapshot, listClientFolders, formatEuroFr, roundAmount,
+    chantierStatusClass, chantierStatusOptions, escapeHtml, clientPageIcon, pcFolderIcon
   } = deps;
   if (!orderService) throw new TypeError('Service commandes clients manquant.');
-  if (typeof renderListPage !== 'function') throw new TypeError('Rendu liste commandes manquant.');
+  if (typeof renderListView !== 'function') throw new TypeError('Vue liste commandes manquante.');
 
-  const listClientOrders = (req, res) => renderListPage(req, res);
+  function listClientOrders(req, res) {
+    const isWorkshop = req.session?.user?.role === 'atelier';
+    const orders = orderService.listActiveOrders();
+    const availableQuotes = isWorkshop ? [] : orderService.listAvailableQuotes();
+    const financialSnapshots = new Map(orders.map((order) => [
+      Number(order.id), getFinancialSnapshot(order.id)
+    ]));
+    const totalAmount = orders.reduce((sum, order) =>
+      sum + financialSnapshots.get(Number(order.id)).revenue.remainingToInvoiceExVat, 0);
+
+    const hoursByOrderId = new Map();
+    const legacyHours = new Map();
+    orderService.listHoursTotals().forEach((row) => {
+      const minutes = Number(row.total_minutes || 0);
+      const orderId = Number(row.client_order_id || 0);
+      if (Number.isFinite(orderId) && orderId > 0) {
+        hoursByOrderId.set(orderId, (hoursByOrderId.get(orderId) || 0) + minutes);
+      } else {
+        legacyHours.set(`${String(row.client || '')}\u0000${String(row.order_name || '')}`, minutes);
+      }
+    });
+
+    const buildPoseTitle = (order) => {
+      const name = String(order.description || '').trim() || `Commande #${order.id}`;
+      return `Pose - ${String(order.name || '').trim()} - ${name}`;
+    };
+    const poseEvents = orderService.listPoseEvents();
+    const poseByOrderId = new Map();
+    orders.forEach((order) => {
+      if (normalizeChantierStatus(order.chantier_status) !== 'En pose') return;
+      const title = buildPoseTitle(order);
+      const event = poseEvents.find((item) => String(item.title || '') === title || String(item.title || '').startsWith(`${title} · `));
+      if (event) poseByOrderId.set(Number(order.id), event);
+    });
+
+    const today = isoDate();
+    const cardModels = orders.map((order) => {
+      const clientFolder = safeName(order.name);
+      const orderFolder = safeName(order.description && order.description.trim() !== '' ? order.description : `Commande_${order.id}`);
+      const folderUrl = `/pc-folders/${encodeURIComponent(clientFolder)}/${encodeURIComponent(orderFolder)}`;
+      const amountHt = Number(order.price || 0);
+      const snapshot = financialSnapshots.get(Number(order.id));
+      const vatRate = parseOptionalVatRate(order.vat_rate);
+      const amountTtc = vatRate !== null ? roundAmount(amountHt * (1 + vatRate / 100)) : null;
+      const actualMinutes = (hoursByOrderId.get(Number(order.id)) || 0)
+        + (legacyHours.get(`${clientFolder}\u0000${orderFolder}`) || 0);
+      const actualHours = actualMinutes / 60;
+      const plannedHours = Number(order.planned_hours || 0);
+      const chantierStatus = normalizeChantierStatus(order.chantier_status);
+      const progress = getProgressFromChantierStatus(chantierStatus);
+      const plannedEndDate = String(order.chantier_end_date || '').slice(0, 10);
+      return {
+        order,
+        statusLabel: order.status || 'En cours',
+        chantierStatus,
+        chantierStatusClass: chantierStatusClass(chantierStatus),
+        progress,
+        actualHours,
+        plannedHours,
+        isOverHours: plannedHours > 0 && actualHours > plannedHours,
+        plannedEndDate,
+        isLate: Boolean(plannedEndDate && plannedEndDate < today),
+        isPoseStatus: chantierStatus === 'En pose',
+        poseEvent: poseByOrderId.get(Number(order.id)) || null,
+        poseAgendaTitle: buildPoseTitle(order),
+        folderUrl,
+        hoursUrl: `${folderUrl}/Heure%20chantier`,
+        dateLabel: String(order.date || '').slice(0, 10),
+        amountHtLabel: amountHt > 0 ? `${formatEuroFr(amountHt)} HT` : 'Non renseigné',
+        invoicedHtLabel: formatEuroFr(snapshot.revenue.invoicedExVat),
+        remainingHtLabel: formatEuroFr(snapshot.revenue.remainingToInvoiceExVat),
+        vatLabel: vatRate !== null ? `TVA : ${vatRate} %` : 'TVA non renseignée',
+        vatRate,
+        amountTtcLabel: amountHt > 0 && amountTtc !== null ? `${formatEuroFr(amountTtc)} TTC` : 'TTC non calculé',
+        editPriceValue: amountHt > 0 ? amountHt.toFixed(2) : ''
+      };
+    });
+
+    const poseStatus = String(req.query.poseAgendaStatus || '').trim();
+    const poseOrderId = Number(req.query.poseAgendaOrderId || 0);
+    const poseAgendaFlash = poseStatus === 'created'
+      ? 'Événement de pose ajouté à l’agenda.'
+      : poseStatus === 'exists'
+        ? (poseOrderId > 0 ? `Un événement de pose existe déjà pour la commande #${poseOrderId}.` : 'Un événement de pose existe déjà pour cette commande.')
+        : poseStatus === 'error' ? 'Impossible d’ajouter l’événement de pose. Vérifiez les champs.' : '';
+    const orderUpdateStatus = String(req.query.orderUpdate || '').trim();
+    const orderUpdateFlash = orderUpdateStatus === 'ok' ? 'Commande mise à jour.'
+      : orderUpdateStatus === 'notfound' ? 'Commande introuvable.'
+        : orderUpdateStatus === 'error' ? 'Impossible de mettre à jour la commande.' : '';
+    const html = renderListView({
+      orders: cardModels,
+      isAtelier: isWorkshop,
+      totalAmount,
+      formatEuroFr,
+      clientPageIcon,
+      pcFolderIcon,
+      poseAgendaFlash,
+      orderUpdateFlash,
+      orderUpdateStatus,
+      escapeHtml,
+      preClient: String(req.query.client || '').trim(),
+      chantierStatusOptions,
+      availableQuotes,
+      clientFolders: listClientFolders()
+    });
+    return res.send(pageTemplate(req, 'Commandes clients', html));
+  }
   function createClientOrder(req, res) {
     const name = String(req.body.name || '').trim();
     const description = String(req.body.description || '').trim();

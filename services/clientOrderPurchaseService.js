@@ -4,6 +4,9 @@ function createClientOrderPurchaseService({ db } = {}) {
   if (!db || typeof db.prepare !== 'function') throw new Error('createClientOrderPurchaseService: db is required');
 
   return {
+    listPurchasesByOrderId(orderId) {
+      return db.prepare('SELECT * FROM client_order_purchases WHERE client_order_id = ? ORDER BY id DESC').all(orderId);
+    },
     getOrder(orderId) {
       return db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
     },

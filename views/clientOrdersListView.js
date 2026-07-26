@@ -1,9 +1,18 @@
 'use strict';
+const { renderClientOrderCard, renderQuoteOptions } = require('./clientOrderCardView');
 
 function renderClientOrdersListView(data) {
-  const { orders, isAtelier, totalAmount, formatEuroFr, clientPageIcon, poseAgendaFlash,
+  const { orders, isAtelier, totalAmount, formatEuroFr, clientPageIcon, pcFolderIcon, poseAgendaFlash,
     orderUpdateFlash, orderUpdateStatus, escapeHtml: escHtml, preClient,
-    chantierStatusOptions, quoteOptions, pcFoldersOptions, cards } = data;
+    chantierStatusOptions, availableQuotes = [], clientFolders = [] } = data;
+  const pcFoldersOptions = clientFolders.map((name) => `<option value="${escHtml(name)}"></option>`).join('');
+  const quoteOptions = (selectedId) => renderQuoteOptions(availableQuotes, selectedId, escHtml);
+  const cards = orders.length
+    ? orders.map((order) => renderClientOrderCard(order, {
+      isWorkshop: isAtelier, availableQuotes, escapeHtml: escHtml,
+      clientPageIcon, pcFolderIcon, chantierStatusOptions
+    })).join('')
+    : '<p class="empty">Aucune commande client.</p>';
   return `
       <div class="modern-page modern-client-orders-page">
         <section class="modern-list-head modern-client-orders-head">

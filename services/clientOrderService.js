@@ -3,6 +3,7 @@
 function createClientOrderService({ db, now = () => new Date().toISOString() }) {
   if (!db || typeof db.prepare !== 'function') throw new TypeError('Base de données manquante.');
   const getOrderById = (id) => db.prepare('SELECT * FROM client_orders WHERE id = ?').get(id);
+  const listAllOrdersNewestFirst = () => db.prepare('SELECT * FROM client_orders ORDER BY id DESC').all();
   const quoteExists = (id) => Boolean(db.prepare('SELECT id FROM quotes WHERE id = ?').get(id));
   const listActiveOrders = () => db.prepare(
     "SELECT * FROM client_orders WHERE status != 'Terminée' ORDER BY date DESC, id DESC"
@@ -49,7 +50,7 @@ function createClientOrderService({ db, now = () => new Date().toISOString() }) 
         values.startDate, values.endDate, values.notes, id);
   }
   return {
-    getOrderById, quoteExists, listActiveOrders, listAvailableQuotes, listHoursTotals,
+    getOrderById, listAllOrdersNewestFirst, quoteExists, listActiveOrders, listAvailableQuotes, listHoursTotals,
     listPoseEvents, createOrder, updateOrderForAtelier, updateOrderForAdmin,
     completeOrder, updateChantier
   };

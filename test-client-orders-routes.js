@@ -66,7 +66,7 @@ for (const route of registered) {
 assert(!serverSource.includes("app.get('/orders/clients', requireLogin"), 'liste des commandes encore enregistrée dans server.js');
 assert(serverSource.includes("app.get('/pc-folders/:client/:order', requireLogin"), 'dossier commande absent');
 assert(serverSource.includes("app.get('/pc-folders/:client/:order/:type', requireLogin"), 'dossier Factures générique absent');
-assert(serverSource.includes("type === 'Factures'"), 'branche Factures absente');
+assert(fs.readFileSync('controllers/clientOrderFoldersController.js', 'utf8').includes("type === 'Factures'"), 'branche Factures spécialisée absente');
 assert(serverSource.includes('registerClientOrderRoutes(app, {'));
 assert(serverSource.includes('clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot'));
 assert(controllerSource.includes('financialSnapshot }'), 'structure JSON Rentabilité modifiée');

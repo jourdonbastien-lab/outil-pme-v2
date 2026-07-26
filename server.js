@@ -52,6 +52,14 @@ const { renderClientOrderInvoiceValidationView } = require('./views/clientOrderI
 const { createClientOrderService } = require('./services/clientOrderService');
 const { createClientOrdersController } = require('./controllers/clientOrdersController');
 const { renderClientOrdersListView } = require('./views/clientOrdersListView');
+const { createClientOrderFolderService } = require('./services/clientOrderFolderService');
+const { createClientOrderFoldersController } = require('./controllers/clientOrderFoldersController');
+const {
+  renderClientOrderFolderView,
+  renderClientOrderRootFolderView,
+  renderClientOrderFilesList,
+  renderPurchasesBlock
+} = require('./views/clientOrderFolderView');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -486,12 +494,7 @@ function clientOrderFolderName(order) {
 }
 
 function findClientOrderByFolder(clientFolder, orderFolder) {
-  const safeClientFolder = safeName(clientFolder);
-  const safeOrderFolder = safeName(orderFolder);
-  return db
-    .prepare('SELECT * FROM client_orders ORDER BY id DESC')
-    .all()
-    .find((row) => safeName(row.name) === safeClientFolder && clientOrderFolderName(row) === safeOrderFolder);
+  return clientOrderFolderService.resolveClientOrder(clientFolder, orderFolder);
 }
 
 function normalizePurchaseStatus(value) {
@@ -6825,351 +6828,6 @@ app.post('/documents-entrants/:id/reject', requireAdmin, (req, res) => {
 
 /* ===================== COMMANDES CLIENTS ===================== */
 
-function renderClientOrdersListPage(req, res) {
-  const isAtelier =
-  req.session?.user?.role === 'atelier';
-  const orders = clientOrderService.listActiveOrders();
-  const availableQuotes = isAtelier ? [] : clientOrderService.listAvailableQuotes();
-  const quoteOptions = (selectedId = null) => `<option value="">Aucun devis lié</option>${availableQuotes.map((quote) => `<option value="${quote.id}" ${Number(selectedId) === Number(quote.id) ? 'selected' : ''}>#${quote.id} · ${escHtml(quote.client_name || '')} · ${escHtml(quote.title || 'Sans titre')}</option>`).join('')}`;
-
-  const financialSnapshots = new Map(orders.map((order) => [
-    Number(order.id),
-    clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, order.id)
-  ]));
-  const totalAmount = orders.reduce((sum, order) => sum + financialSnapshots.get(Number(order.id)).revenue.remainingToInvoiceExVat, 0);
-  const chantierHoursByOrderId = new Map();
-  const legacyChantierHoursTotals = new Map();
-  clientOrderService
-    .listHoursTotals()
-    .forEach((row) => {
-      const totalMinutes = Number(row.total_minutes || 0);
-      const orderId = Number(row.client_order_id || 0);
-      if (Number.isFinite(orderId) && orderId > 0) {
-        chantierHoursByOrderId.set(orderId, (chantierHoursByOrderId.get(orderId) || 0) + totalMinutes);
-        return;
-      }
-      legacyChantierHoursTotals.set(
-        `${String(row.client || '')}\u0000${String(row.order_name || '')}`,
-        totalMinutes
-      );
-    });
-
-  // datalist clients PC
-  let pcFolders = [];
-  try {
-    pcFolders = fs
-      .readdirSync(CLIENT_PC_DIR, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name);
-  } catch {}
-
-  const pcFoldersOptions = pcFolders.map((name) => `<option value="${escHtml(name)}"></option>`).join('');
-
-  const buildPoseAgendaTitle = (order) => {
-    const chantierName = String(order.description || '').trim() || `Commande #${order.id}`;
-    return `Pose - ${String(order.name || '').trim()} - ${chantierName}`;
-  };
-
-  const poseAgendaEvents = clientOrderService.listPoseEvents();
-
-  const poseAgendaByOrderId = new Map();
-  orders.forEach((order) => {
-    const status = normalizeChantierStatus(order.chantier_status);
-    if (status !== 'En pose') return;
-    const baseTitle = buildPoseAgendaTitle(order);
-    const existing = poseAgendaEvents.find((evt) => {
-      const title = String(evt.title || '');
-      return title === baseTitle || title.startsWith(`${baseTitle} · `);
-    });
-    if (existing) poseAgendaByOrderId.set(Number(order.id), existing);
-  });
-
-  const poseAgendaStatus = String(req.query.poseAgendaStatus || '').trim();
-  const poseAgendaOrderId = Number(req.query.poseAgendaOrderId || 0);
-  const poseAgendaFlash =
-    poseAgendaStatus === 'created'
-      ? 'Événement de pose ajouté à l’agenda.'
-      : poseAgendaStatus === 'exists'
-        ? (poseAgendaOrderId > 0
-            ? `Un événement de pose existe déjà pour la commande #${poseAgendaOrderId}.`
-            : 'Un événement de pose existe déjà pour cette commande.')
-        : poseAgendaStatus === 'error'
-          ? 'Impossible d’ajouter l’événement de pose. Vérifiez les champs.'
-          : '';
-  const orderUpdateStatus = String(req.query.orderUpdate || '').trim();
-  const orderUpdateFlash =
-    orderUpdateStatus === 'ok'
-      ? 'Commande mise à jour.'
-      : orderUpdateStatus === 'notfound'
-        ? 'Commande introuvable.'
-        : orderUpdateStatus === 'error'
-          ? 'Impossible de mettre à jour la commande.'
-          : '';
-
-  const todayIso = isoDate();
-
-  const cards =
-    orders.length > 0
-      ? orders
-          .map((o) => {
-            const safeClientFolder = safeName(o.name);
-            const orderFolderName = safeName(o.description && o.description.trim() !== '' ? o.description : `Commande_${o.id}`);
-            const clientFolderUrl = `/pc-folders/${encodeURIComponent(safeClientFolder)}/${encodeURIComponent(orderFolderName)}`;
-            const chantierHoursUrl = `${clientFolderUrl}/Heure%20chantier`;
-
-            const dateLabel = (o.date || '').slice(0, 10);
-            const chantierPrice = Number(o.price || 0);
-            const financialSnapshot = financialSnapshots.get(Number(o.id));
-            const invoiceSummary = {
-              invoicedHt: financialSnapshot.revenue.invoicedExVat,
-              remainingHt: financialSnapshot.revenue.remainingToInvoiceExVat
-            };
-            const chantierVatRate = parseOptionalVatRate(o.vat_rate);
-            const chantierPriceTtc = chantierVatRate !== null ? round2(chantierPrice * (1 + chantierVatRate / 100)) : null;
-            const chantierPriceLabel = chantierPrice > 0 ? `${formatEuroFr(chantierPrice)} HT` : 'Non renseigné';
-            const chantierVatLabel = chantierVatRate !== null ? `TVA : ${chantierVatRate} %` : 'TVA non renseignée';
-            const chantierPriceTtcLabel = chantierPrice > 0 && chantierPriceTtc !== null ? `${formatEuroFr(chantierPriceTtc)} TTC` : 'TTC non calculé';
-            const statusLabel = o.status || 'En cours';
-            const plannedHoursValue = Number(o.planned_hours || 0);
-            const editPriceValue = chantierPrice > 0 ? chantierPrice.toFixed(2) : '';
-            const editVatOptions = `
-              <option value=""${chantierVatRate === null ? ' selected' : ''}>TVA non renseignée</option>
-              <option value="20"${chantierVatRate === 20 ? ' selected' : ''}>TVA 20 %</option>
-              <option value="10"${chantierVatRate === 10 ? ' selected' : ''}>TVA 10 %</option>
-            `;
-const actualMinutes =
-  (chantierHoursByOrderId.get(Number(o.id)) || 0)
-  + (legacyChantierHoursTotals.get(`${safeClientFolder}\u0000${orderFolderName}`) || 0);
-
-const actualHours =
-  actualMinutes / 60;
-
-const plannedHours =
-  Number(o.planned_hours || 0);
-
-const chantierStatus = normalizeChantierStatus(o.chantier_status);
-const progress = getProgressFromChantierStatus(chantierStatus);
-const isOverHours = plannedHours > 0 && actualHours > plannedHours;
-
-const endDate = String(o.chantier_end_date || '').slice(0, 10);
-const isLate = endDate && endDate < todayIso;
-const isPoseStatus = chantierStatus === 'En pose';
-const existingPoseEvent = poseAgendaByOrderId.get(Number(o.id));
-const poseAgendaTitle = buildPoseAgendaTitle(o);
-            return `
-              <article class="order-card modern-client-order-card">
-                <header class="modern-client-order-head">
-                  <div class="modern-client-order-icon">
-                    ${clientPageIcon('folder', 'modern-client-order-svg')}
-                  </div>
-                  <div class="modern-client-order-title">
-                    <h2>${escHtml(o.description || `Commande #${o.id}`)}</h2>
-                    <p>${escHtml(o.name || 'Client non renseigné')}</p>
-                  </div>
-                  <span class="modern-status-badge progress">${escHtml(statusLabel)}</span>
-                </header>
-
-                <div class="modern-client-order-row">
-                  <span class="chantier-status ${chantierStatusClass(chantierStatus)}">${escHtml(chantierStatus)}</span>
-                  <strong>${progress}%</strong>
-                  <span class="modern-client-order-hours-total">${actualHours.toFixed(1)} h</span>
-                  ${isLate ? '<span class="modern-late-badge">Retard</span>' : ''}
-                </div>
-
-                <div class="modern-client-order-info-list">
-                  <div><span>Date commande</span><strong>${escHtml(dateLabel || 'Non renseignée')}</strong></div>
-                  ${!isAtelier ? `
-                  <div><span>Montant commande HT</span><strong>${escHtml(chantierPriceLabel)}</strong></div>
-                  <div><span>Deja facture HT</span><strong>${escHtml(formatEuroFr(invoiceSummary.invoicedHt))}</strong></div>
-                  <div><span>Reste a facturer HT</span><strong>${escHtml(formatEuroFr(invoiceSummary.remainingHt))}</strong></div>
-                  <div><span>TVA</span><strong>${escHtml(chantierVatLabel)}</strong></div>
-                  <div><span>Prix TTC</span><strong>${escHtml(chantierPriceTtcLabel)}</strong></div>
-                  ` : ''}
-                </div>
-
-                <div class="modern-client-order-progress">
-                  <div class="chantier-progress client-order-stage-progress ${isOverHours ? 'over-hours' : 'ok-hours'}"><span style="width:${progress}%"></span></div>
-                </div>
-
-                ${isPoseStatus ? `
-                <section class="modern-client-order-agenda-block">
-                  ${existingPoseEvent
-                    ? `
-                  <div class="modern-client-order-agenda-inline modern-client-order-agenda-ready">
-                    <a class="modern-client-order-open modern-client-order-agenda-trigger" href="/agenda">
-                      ${clientPageIcon('calendar', 'modern-client-order-open-icon')}
-                      <span>Voir dans l'agenda</span>
-                      <b aria-hidden="true">›</b>
-                    </a>
-                    <span class="modern-status-badge done">Pose déjà planifiée</span>
-                  </div>
-                    `
-                    : `
-                  <details class="modern-client-order-agenda-inline">
-                    <summary class="modern-client-order-open modern-client-order-agenda-trigger">
-                      ${clientPageIcon('calendar', 'modern-client-order-open-icon')}
-                      <span>Ajouter à l’agenda</span>
-                      <b aria-hidden="true">›</b>
-                    </summary>
-                    <form method="POST" action="/orders/client/${o.id}/add-agenda-pose" class="modern-client-order-add-form modern-client-order-agenda-form">
-                      <input type="hidden" name="client" value="${escHtml(o.name || '')}">
-                      <input type="hidden" name="order_name" value="${escHtml(o.description || '')}">
-                      <input type="hidden" name="title" value="${escHtml(poseAgendaTitle)}">
-                      <div class="modern-client-order-agenda-grid">
-                        <label class="clients-field modern-client-order-agenda-field-wide">
-                          <span>Date de pose</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('calendar')}
-                            <input type="date" name="pose_date" required>
-                          </div>
-                        </label>
-                        <label class="clients-field">
-                          <span>Heure de début</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('calendar')}
-                            <input type="time" name="start_time" required>
-                          </div>
-                        </label>
-                        <label class="clients-field">
-                          <span>Heure de fin</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('calendar')}
-                            <input type="time" name="end_time" required>
-                          </div>
-                        </label>
-                        <label class="clients-field modern-client-order-agenda-field-wide">
-                          <span>Lieu / adresse (facultatif)</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('location')}
-                            <input name="place" placeholder="Adresse de pose">
-                          </div>
-                        </label>
-                        <label class="clients-field modern-client-order-agenda-field-wide">
-                          <span>Note (facultatif)</span>
-                          <div class="clients-input-shell">
-                            ${clientPageIcon('tasks')}
-                            <input name="note" placeholder="Infos chantier / équipe">
-                          </div>
-                        </label>
-                      </div>
-                      <div class="modern-form-actions modern-client-order-agenda-actions">
-                        <button type="submit" class="clients-submit-btn">Valider</button>
-                      </div>
-                    </form>
-                  </details>
-                    `}
-                </section>
-                ` : ''}
-
-                <div class="modern-client-order-actions modern-client-order-actions-bottom">
-                  <a class="modern-client-order-open" href="${clientFolderUrl}">
-                    ${clientPageIcon('folder', 'modern-client-order-open-icon')}
-                    <span>Ouvrir</span>
-                    <b aria-hidden="true">›</b>
-                  </a>
-                  <a class="modern-client-order-open modern-client-order-hours-link" href="${chantierHoursUrl}">
-                    ${pcFolderIcon('Heure chantier', 'modern-client-order-open-icon')}
-                    <span>Heures</span>
-                    <b aria-hidden="true">›</b>
-                  </a>
-                  <button type="button" class="modern-client-order-open modern-client-order-edit-trigger" aria-expanded="false" aria-controls="order-edit-${o.id}" data-order-edit-toggle>
-                    ${clientPageIcon('edit', 'modern-client-order-open-icon')}
-                    <span>Modifier</span>
-                    <b aria-hidden="true">›</b>
-                  </button>
-                  <form method="POST" action="/orders/client/done" onsubmit="return confirm('Terminer cette commande ?');">
-                    <input type="hidden" name="id" value="${o.id}" />
-                    <button type="submit" class="modern-order-done-btn" aria-label="Terminer la commande" title="Terminer la commande">✅</button>
-                  </form>
-                </div>
-                <form method="POST" action="/orders/client/${o.id}/update" id="order-edit-${o.id}" class="modern-client-order-edit-form" data-order-edit-form hidden onsubmit="const b=this.querySelector('[type=submit]'); if (b && b.disabled) return false; if (b) b.disabled = true;">
-                  <div class="modern-client-order-edit-note">
-                    <strong>Nom verrouillé</strong>
-                    <span>${escHtml(o.description || `Commande #${o.id}`)}</span>
-                    <small>Utilisé par le dossier physique.</small>
-                  </div>
-                  <div class="modern-client-order-edit-grid">
-                    <label class="clients-field">
-                      <span>Date commande</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('calendar')}
-                        <input type="date" name="date" value="${escHtml(dateLabel)}">
-                      </div>
-                    </label>
-                    ${!isAtelier ? `
-                    <label class="clients-field">
-                      <span>Prix HT (€)</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('postal')}
-                        <input type="number" name="price" step="0.01" min="0" value="${escHtml(editPriceValue)}" data-order-edit-price-ht>
-                      </div>
-                    </label>
-                    <label class="clients-field">
-                      <span>TVA</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('postal')}
-                        <select name="vat_rate" data-order-edit-vat-rate>${editVatOptions}</select>
-                      </div>
-                    </label>
-                    <label class="clients-field">
-                      <span>Prix TTC (€)</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('postal')}
-                        <input type="number" step="0.01" readonly data-order-edit-price-ttc>
-                      </div>
-                    </label>
-                    ` : ''}
-                    <label class="clients-field">
-                      <span>Heures prévues</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('calendar')}
-                        <input type="number" name="planned_hours" min="0" step="0.25" value="${plannedHoursValue > 0 ? escHtml(String(plannedHoursValue)) : ''}">
-                      </div>
-                    </label>
-                    <label class="clients-field">
-                      <span>Date fin prévue</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('calendar')}
-                        <input type="date" name="chantier_end_date" value="${escHtml(endDate || '')}">
-                      </div>
-                    </label>
-                    <label class="clients-field">
-                      <span>Étape chantier</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('database')}
-                        <select name="chantier_status">${chantierStatusOptions(chantierStatus)}</select>
-                      </div>
-                    </label>
-                    <label class="clients-field">
-                      <span>Avancement (%)</span>
-                      <div class="clients-input-shell">
-                        ${clientPageIcon('tasks')}
-                        <input type="number" name="chantier_progress" min="0" max="100" step="1" value="${escHtml(String(Number(o.chantier_progress || progress || 0)))}">
-                      </div>
-                    </label>
-                    ${!isAtelier ? `<label class="clients-field"><span>Devis lié</span><div class="clients-input-shell">${clientPageIcon('quotes')}<select name="quote_id">${quoteOptions(o.quote_id)}</select></div></label>` : ''}
-                  </div>
-                  <div class="modern-client-order-edit-actions">
-                    <button type="submit" class="clients-submit-btn">${clientPageIcon('check', 'clients-submit-icon')} Enregistrer</button>
-                    <button type="button" class="modern-cancel-link" data-order-edit-cancel>Annuler</button>
-                  </div>
-                </form>
-              </article>
-            `;
-          })
-          .join('')
-      : `<p class="empty">Aucune commande client.</p>`;
-
-  const preClient = String(req.query.client || '').trim();
-
-  const html = renderClientOrdersListView({
-    orders, isAtelier, totalAmount, formatEuroFr, clientPageIcon, poseAgendaFlash,
-    orderUpdateFlash, orderUpdateStatus, escapeHtml: escHtml, preClient,
-    chantierStatusOptions, quoteOptions, pcFoldersOptions, cards
-  });
-  return res.send(pageTemplate(req, 'Commandes clients', html));
-}
-
 async function renderEbpScanValidationPage(req, res, options) {
   const scanFileName = path.basename(String(options.scanFileName || ''));
   const scanOriginalName = path.basename(String(options.scanOriginalName || scanFileName));
@@ -8236,396 +7894,11 @@ app.get('/pc-folders/:client', requireLogin, (req, res) => {
 });
 
 app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
-
-  const isAtelier =
-    req.session?.user?.role === 'atelier';
-
-  const atelierFolders = [
-    'Plans',
-    'Photos',
-    'Commandes',
-    'Heure chantier'
-  ];
-
-  const foldersToShow = isAtelier
-    ? STANDARD_SUBFOLDERS.filter(f => atelierFolders.includes(f))
-    : STANDARD_SUBFOLDERS;
-
-  const client = safeName(req.params.client);
-  const order = safeName(req.params.order);
-
-  const orderDir = path.join(CLIENT_PC_DIR, client, order);
-
-  if (!fs.existsSync(orderDir) || !fs.lstatSync(orderDir).isDirectory()) {
-    return res.status(404).send('Commande introuvable sur le PC');
-  }
-
-  ensureStandardSubfolders(orderDir);
-
-  const cards = foldersToShow.map(
-
-    (type) => `
-      <article class="pc-modern-card">
-        <a class="pc-modern-card-link" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}" aria-label="Ouvrir ${escHtml(type)}"></a>
-        ${pcFolderIcon(type)}
-        <div class="pc-modern-main">
-          <strong>${escHtml(type)}</strong>
-          <span>Dossier</span>
-        </div>
-        <span class="pc-modern-open">Ouvrir</span>
-      </article>
-    `
-  ).join('');
-
-  const orderDb = db
-    .prepare('SELECT * FROM client_orders ORDER BY id DESC')
-    .all()
-    .find((row) => {
-      const folderName = safeName(row.description && row.description.trim() !== '' ? row.description : `Commande_${row.id}`);
-      return safeName(row.name) === client && folderName === order;
-    });
-
-  const linkedMeasurements = orderDb
-    ? db.prepare('SELECT * FROM measurements WHERE client_order_id = ? ORDER BY updated_at DESC, id DESC').all(orderDb.id)
-    : [];
-  const profitabilityAccessCard = orderDb ? `
-    <article class="pc-modern-card pc-profitability-access">
-      <a class="pc-modern-card-link" href="/orders/client/${orderDb.id}/profitability" aria-label="Ouvrir Rentabilité"></a>
-      ${pcFolderIcon('Rentabilité')}
-      <div class="pc-modern-main"><strong>Rentabilité</strong><span>Prévisionnel et réel</span></div>
-      <span class="pc-modern-open">Ouvrir</span>
-    </article>` : '';
-
-  const chantierHeroControl = orderDb
-    ? (() => {
-        const status = normalizeChantierStatus(orderDb.chantier_status);
-        return `
-          <form method="POST" action="/orders/client/${orderDb.id}/chantier" class="chantier-status-card-form" data-auto-submit>
-            <label>
-              <span>Étape chantier</span>
-              <select name="chantier_status" onchange="this.form.requestSubmit()">${chantierStatusOptions(status)}</select>
-            </label>
-          </form>
-        `;
-      })()
-    : '';
-  const chantierHoursUrl = `/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/Heure%20chantier`;
-  const stairV2Url = orderDb
-    ? `/outils/prises-cotes/escalier-v2?client_order_id=${encodeURIComponent(String(orderDb.id))}`
-    : '/outils/prises-cotes/escalier-v2';
-
-  const content = `
-    <div class="pc-modern-page">
-      <section class="pc-modern-hero pc-order-hero">
-        <div class="pc-order-hero-main">
-          <span>Commande</span>
-          <h1>${escHtml(order)}</h1>
-          <p>${foldersToShow.length} dossier${foldersToShow.length > 1 ? 's' : ''}</p>
-        </div>
-        <div class="pc-modern-actions pc-order-hero-actions">
-          ${chantierHeroControl}
-          <div class="pc-order-hero-links">
-            <a class="pc-order-hero-link pc-order-hours-link" href="${chantierHoursUrl}">
-              ${pcFolderIcon('Heure chantier', 'pc-order-hero-link-icon')}
-              Saisir des heures
-            </a>
-            <a class="pc-order-hero-link" href="/pc-folders/${encodeURIComponent(client)}">
-              ${clientPageIcon('clients', 'pc-order-hero-link-icon')}
-              Client
-            </a>
-            <a class="pc-order-hero-link" href="/orders/clients">
-              ${clientPageIcon('folder', 'pc-order-hero-link-icon')}
-              Commandes
-            </a>
-            <a class="pc-order-hero-link" href="${stairV2Url}">
-              ${clientPageIcon('measurements', 'pc-order-hero-link-icon')}
-              Escalier V2
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <section class="pc-modern-grid">
-        ${cards}${profitabilityAccessCard}
-      </section>
-
-      <section class="pc-modern-panel measurement-linked-section">
-        <div class="modern-section-title">
-          ${pcFolderIcon('Plans', 'clients-title-icon')}
-          <div>
-            <h2>Prises de cotes liées</h2>
-          </div>
-        </div>
-        ${renderMeasurementCards(linkedMeasurements)}
-      </section>
-    </div>
-  `;
-
-  res.send(pageTemplate(req, `Commande : ${order}`, content));
+  return clientOrderFoldersController.showClientOrderRootFolder(req, res);
 });
 
 app.get('/pc-folders/:client/:order/:type', requireLogin, (req, res) => {
-  const client = safeName(req.params.client);
-  const order = safeName(req.params.order);
-  const type = String(req.params.type || '').trim();
-
-  if (type === 'Heure chantier') return clientOrderHoursController.showOrderHoursFolder(req, res);
-
-  if (!STANDARD_SUBFOLDERS.includes(type)) return res.status(400).send('Type de dossier invalide');
-
-  const dirPath = path.join(CLIENT_PC_DIR, client, order, type);
-  if (!fs.existsSync(dirPath) || !fs.lstatSync(dirPath).isDirectory()) {
-    return res.status(404).send('Dossier introuvable sur le PC');
-  }
-
-  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-  const files = entries.filter((e) => e.isFile()).map((e) => e.name);
-  const orderDb = findClientOrderByFolder(client, order);
-  const invoiceFolderData = type === 'Factures'
-    ? clientOrderInvoicesController.getInvoicesFolderData(orderDb)
-    : { analyzedFileNames: new Set() };
-
-const list = files.length
-  ? `
-    <div class="pc-modern-grid pc-modern-file-grid">
-      ${files.map(f => {
-        const ext = path.extname(String(f || '')).toLowerCase();
-        const canAnalyzeInvoice = type === 'Factures' && orderDb && EBP_SCAN_ALLOWED_EXT.has(ext);
-        const alreadyAnalyzed = canAnalyzeInvoice && invoiceFolderData.analyzedFileNames.has(path.basename(f));
-        const invoiceAnalyzeAction = canAnalyzeInvoice
-          ? clientOrderInvoicesController.renderInvoiceFileAction({ orderDb, fileName: path.basename(f), alreadyAnalyzed })
-          : '';
-        return `
-          <article class="pc-modern-card pc-modern-file-card">
-            ${pcFolderIcon(pcFileIconName(f))}
-            <div class="pc-modern-main">
-              <strong>${escHtml(f)}</strong>
-              <span>Fichier</span>
-            </div>
-            <div class="pc-modern-file-actions">
-              <a
-                class="pc-modern-open"
-                href="/pc-file/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}/${encodeURIComponent(f)}"
-                target="_blank">
-                Ouvrir
-              </a>
-              ${invoiceAnalyzeAction}
-            </div>
-          </article>
-        `;
-
-      }).join('')}
-    </div>
-  `
-  : `<div class="empty-state">Aucun fichier dans ce dossier.</div>`;
-
-  const purchasesBlock = type === 'Commandes'
-    ? (() => {
-        if (!orderDb) {
-          return `
-            <section class="pc-modern-panel order-purchases-panel">
-              <div class="modern-section-title">
-                ${clientPageIcon('materials', 'clients-title-icon')}
-                <div>
-                  <h2>Quincaillerie et achats à commander</h2>
-                  <p>Commande non retrouvée en base, liste indisponible.</p>
-                </div>
-              </div>
-            </section>
-          `;
-        }
-
-        const purchases = db
-          .prepare('SELECT * FROM client_order_purchases WHERE client_order_id = ? ORDER BY id DESC')
-          .all(orderDb.id);
-        const purchaseCards = purchases.length
-          ? purchases
-              .map((item) => {
-                const status = normalizePurchaseStatus(item.status);
-                return `
-                  <article class="order-purchase-card">
-                    <div class="order-purchase-main">
-                      <div>
-                        <h3>${escHtml(item.designation || 'Article')}</h3>
-                        <p>
-                          ${item.category ? `<span>${escHtml(item.category)}</span>` : ''}
-                          <span>${Number(item.qty || 0).toLocaleString('fr-FR')} ${escHtml(item.unit || '')}</span>
-                          ${item.reference ? `<span>Réf. ${escHtml(item.reference)}</span>` : ''}
-                          ${item.supplier ? `<span>${escHtml(item.supplier)}</span>` : ''}
-                          ${item.needed_date ? `<span>Besoin ${escHtml(formatDateLabel(item.needed_date))}</span>` : ''}
-                        </p>
-                        ${item.note ? `<small>${escHtml(item.note)}</small>` : ''}
-                      </div>
-                      <span class="order-purchase-status ${purchaseStatusClass(status)}">${escHtml(status)}</span>
-                    </div>
-                    <details class="order-purchase-edit">
-                      <summary>Modifier</summary>
-                      <form method="POST" action="/orders/client/${orderDb.id}/purchases/${item.id}/update" class="order-purchase-form">
-                        <div class="order-purchase-form-grid">
-                          <label class="clients-field">
-                            <span>Désignation</span>
-                            <div class="clients-input-shell"><input name="designation" value="${escHtml(item.designation || '')}" required></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Catégorie</span>
-                            <div class="clients-input-shell"><input name="category" value="${escHtml(item.category || '')}" placeholder="Quincaillerie, acier..."></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Quantité</span>
-                            <div class="clients-input-shell"><input type="number" min="0" step="0.01" name="qty" value="${escHtml(String(Number(item.qty || 0)))}"></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Unité</span>
-                            <div class="clients-input-shell"><input name="unit" value="${escHtml(item.unit || '')}" placeholder="pièce, ml, lot"></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Référence</span>
-                            <div class="clients-input-shell"><input name="reference" value="${escHtml(item.reference || '')}"></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Fournisseur</span>
-                            <div class="clients-input-shell"><input name="supplier" value="${escHtml(item.supplier || '')}"></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Date de besoin</span>
-                            <div class="clients-input-shell"><input type="date" name="needed_date" value="${escHtml(String(item.needed_date || '').slice(0, 10))}"></div>
-                          </label>
-                          <label class="clients-field">
-                            <span>Statut</span>
-                            <div class="clients-input-shell"><select name="status">${purchaseStatusOptions(status)}</select></div>
-                          </label>
-                          <label class="clients-field order-purchase-wide">
-                            <span>Note</span>
-                            <div class="clients-input-shell"><input name="note" value="${escHtml(item.note || '')}"></div>
-                          </label>
-                        </div>
-                        <div class="order-purchase-actions">
-                          <button class="clients-submit-btn" type="submit">Enregistrer</button>
-                        </div>
-                      </form>
-                    </details>
-                    <form method="POST" action="/orders/client/${orderDb.id}/purchases/${item.id}/delete" class="order-purchase-delete" onsubmit="return confirm('Supprimer cet article ?');">
-                      <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
-                    </form>
-                  </article>
-                `;
-              })
-              .join('')
-          : '<div class="empty-state">Aucun achat à commander pour cette commande.</div>';
-
-        return `
-          <section class="pc-modern-panel order-purchases-panel">
-            <div class="modern-section-title">
-              ${clientPageIcon('materials', 'clients-title-icon')}
-              <div>
-                <h2>Quincaillerie et achats à commander</h2>
-                <p>${purchases.length} article${purchases.length > 1 ? 's' : ''}</p>
-              </div>
-            </div>
-            <form method="POST" action="/orders/client/${orderDb.id}/purchases" class="order-purchase-form order-purchase-add-form">
-              <div class="order-purchase-form-grid">
-                <label class="clients-field order-purchase-wide">
-                  <span>Désignation</span>
-                  <div class="clients-input-shell"><input name="designation" placeholder="Ex : chevilles, visserie, paumelles..." required></div>
-                </label>
-                <label class="clients-field">
-                  <span>Catégorie</span>
-                  <div class="clients-input-shell"><input name="category" placeholder="Quincaillerie, acier..."></div>
-                </label>
-                <label class="clients-field">
-                  <span>Quantité</span>
-                  <div class="clients-input-shell"><input type="number" min="0" step="0.01" name="qty" value="1"></div>
-                </label>
-                <label class="clients-field">
-                  <span>Unité</span>
-                  <div class="clients-input-shell"><input name="unit" placeholder="pièce"></div>
-                </label>
-                <label class="clients-field">
-                  <span>Référence</span>
-                  <div class="clients-input-shell"><input name="reference" placeholder="Référence fournisseur"></div>
-                </label>
-                <label class="clients-field">
-                  <span>Fournisseur</span>
-                  <div class="clients-input-shell"><input name="supplier" placeholder="Fournisseur"></div>
-                </label>
-                <label class="clients-field">
-                  <span>Date de besoin</span>
-                  <div class="clients-input-shell"><input type="date" name="needed_date"></div>
-                </label>
-                <label class="clients-field">
-                  <span>Statut</span>
-                  <div class="clients-input-shell"><select name="status">${purchaseStatusOptions('À commander')}</select></div>
-                </label>
-                <label class="clients-field order-purchase-wide">
-                  <span>Note</span>
-                  <div class="clients-input-shell"><input name="note" placeholder="Détail, dimensions, consigne..."></div>
-                </label>
-              </div>
-              <div class="order-purchase-actions">
-                <button class="clients-submit-btn" type="submit">
-                  <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-                  Ajouter l'article
-                </button>
-              </div>
-            </form>
-            <div class="order-purchase-list">
-              ${purchaseCards}
-            </div>
-          </section>
-        `;
-      })()
-    : '';
-
-  const invoicesBlock = type === 'Factures'
-    ? clientOrderInvoicesController.renderInvoicesFolder({ orderDb, client, order, type })
-    : '';
-
-  const content = `
-    <div class="pc-modern-page">
-      <section class="pc-modern-hero">
-        <div>
-          <span>Dossier</span>
-          <h1>${escHtml(type)}</h1>
-          <p>${files.length} fichier${files.length > 1 ? 's' : ''}</p>
-        </div>
-        <div class="pc-modern-actions">
-          <a class="modern-cancel-link" href="/pc-folders/${encodeURIComponent(client)}">Client</a>
-          <a class="clients-submit-btn" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">Retour commande</a>
-        </div>
-      </section>
-
-      <section class="pc-modern-panel">
-        <div class="modern-section-title">
-          ${pcFolderIcon(type, 'clients-title-icon')}
-          <div>
-            <h2>Ajouter un fichier</h2>
-          </div>
-        </div>
-        <form method="POST"
-              action="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}/upload"
-              enctype="multipart/form-data"
-              class="pc-modern-upload-form">
-          <input type="file" name="file" required />
-          <button class="clients-submit-btn" type="submit">Ajouter</button>
-        </form>
-      </section>
-
-      <section class="pc-modern-panel">
-        <div class="modern-section-title">
-          ${pcFolderIcon('file', 'clients-title-icon')}
-          <div>
-            <h2>Fichiers</h2>
-          </div>
-        </div>
-        ${list}
-      </section>
-
-      ${purchasesBlock}
-      ${invoicesBlock}
-    </div>
-  `;
-
-  res.send(pageTemplate(req, `${type} - ${order}`, content));
+  return clientOrderFoldersController.showClientOrderFolder(req, res);
 });
 
 app.post('/pc-folders/:client/:order/:type/upload', requireLogin, pcUpload.single('file'), (req, res) => {
@@ -12417,9 +11690,54 @@ const clientOrderHoursController = createClientOrderHoursController({
 const clientOrderAgendaService = createClientOrderAgendaService({ db, normalizeChantierStatus });
 const clientOrderAgendaController = createClientOrderAgendaController({ agendaService: clientOrderAgendaService });
 const clientOrderService = createClientOrderService({ db });
+const clientOrderFolderService = createClientOrderFolderService({
+  orderService: clientOrderService,
+  safeName,
+  joinPath: path.join,
+  supportedFolderTypes: STANDARD_SUBFOLDERS
+});
+const clientOrderFoldersController = createClientOrderFoldersController({
+  folderService: clientOrderFolderService,
+  hoursController: clientOrderHoursController,
+  purchaseService: clientOrderPurchaseService,
+  invoiceController: clientOrderInvoicesController,
+  baseDir: CLIENT_PC_DIR,
+  folderExists(folderPath) {
+    return fs.existsSync(folderPath) && fs.lstatSync(folderPath).isDirectory();
+  },
+  listFiles(folderPath) {
+    return fs.readdirSync(folderPath, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name);
+  },
+  extensionName: path.extname,
+  baseName: path.basename,
+  invoiceExtensions: EBP_SCAN_ALLOWED_EXT,
+  fileIconName: pcFileIconName,
+  renderFolderView: renderClientOrderFolderView,
+  renderRootFolderView: renderClientOrderRootFolderView,
+  renderFilesList: renderClientOrderFilesList,
+  renderPurchasesBlock,
+  pageTemplate,
+  escapeHtml: escHtml,
+  clientPageIcon,
+  pcFolderIcon,
+  normalizePurchaseStatus,
+  purchaseStatusClass,
+  purchaseStatusOptions,
+  formatDateLabel,
+  ensureStandardSubfolders,
+  workshopFolderTypes: ['Plans', 'Photos', 'Commandes', 'Heure chantier'],
+  listMeasurements(orderId) {
+    return db.prepare('SELECT * FROM measurements WHERE client_order_id = ? ORDER BY updated_at DESC, id DESC').all(orderId);
+  },
+  renderMeasurements: renderMeasurementCards,
+  chantierStatusOptions
+});
 const clientOrdersController = createClientOrdersController({
   orderService: clientOrderService,
-  renderListPage: renderClientOrdersListPage,
+  renderListView: renderClientOrdersListView,
+  pageTemplate,
   parseOptionalVatRate,
   normalizeChantierStatus,
   parsePositiveNumber,
@@ -12429,6 +11747,23 @@ const clientOrdersController = createClientOrdersController({
   importMissingQuoteCostLines,
   safeName,
   getProgressFromChantierStatus,
+  getFinancialSnapshot: (orderId) => clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, orderId),
+  listClientFolders() {
+    try {
+      return fs.readdirSync(CLIENT_PC_DIR, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
+    } catch {
+      return [];
+    }
+  },
+  formatEuroFr,
+  roundAmount: round2,
+  chantierStatusClass,
+  chantierStatusOptions,
+  escapeHtml: escHtml,
+  clientPageIcon,
+  pcFolderIcon,
   ensureOrderFolders({ orderId, name, description }) {
     const internalDir = path.join(CLIENT_ORDER_FILES_DIR, String(orderId));
     console.log('CLIENT_ORDER_FILES_DIR =', CLIENT_ORDER_FILES_DIR);

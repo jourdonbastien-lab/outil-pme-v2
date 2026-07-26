@@ -14,6 +14,8 @@ const db = {
 const service = createClientOrderService({ db, now: () => 'NOW' });
 service.listActiveOrders();
 assert(calls.at(-1).sql.includes("status != 'Terminée'"));
+service.listAllOrdersNewestFirst();
+assert(calls.at(-1).sql.includes('ORDER BY id DESC'));
 service.listHoursTotals();
 assert(calls.at(-1).sql.includes('GROUP BY client_order_id, client, order_name'));
 service.createOrder({ name: 'C', description: 'O', date: '2026-01-01', price: 100, vatRate: 20,

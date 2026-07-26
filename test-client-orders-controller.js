@@ -8,10 +8,15 @@ const service = {
   completeOrder() {}, getOrderById: () => null
 };
 const controller = createClientOrdersController({
-  orderService: service, renderListPage: () => {}, parseOptionalVatRate: () => 20,
+  orderService: service, renderListView: () => '', pageTemplate: (_req, _title, html) => html,
+  parseOptionalVatRate: () => 20,
   normalizeChantierStatus: () => 'À préparer', parsePositiveNumber: () => 2, parseOptionalId: () => null,
   parseDecimalInput: Number, isoDate: () => '2026-07-26', importMissingQuoteCostLines() {},
-  ensureOrderFolders() {}, safeName: String, getProgressFromChantierStatus: () => 0
+  ensureOrderFolders() {}, safeName: String, getProgressFromChantierStatus: () => 0,
+  getFinancialSnapshot: () => ({ revenue: { remainingToInvoiceExVat: 0, invoicedExVat: 0 } }),
+  listClientFolders: () => [], formatEuroFr: String, roundAmount: Number,
+  chantierStatusClass: () => '', chantierStatusOptions: () => '', escapeHtml: String,
+  clientPageIcon: () => '', pcFolderIcon: () => ''
 });
 let status;
 controller.createClientOrder({ body: {} }, { status: (code) => { status = code; return { send() {} }; } });
