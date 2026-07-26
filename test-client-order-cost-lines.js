@@ -48,6 +48,7 @@ assert.strictEqual(costs.quoteLineToCostLine({ label: 'Fourniture inconnue', qty
 const server = fs.readFileSync('server.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const profitabilityController = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
+const clientOrdersController = fs.readFileSync('controllers/clientOrdersController.js', 'utf8');
 const profitabilityView = fs.readFileSync('views/clientOrderProfitabilityView.js', 'utf8');
 const css = fs.readFileSync('public/style.css', 'utf8');
 assert(server.includes('CREATE TABLE IF NOT EXISTS client_order_cost_lines'));
@@ -64,7 +65,7 @@ assert(profitabilityController.includes('WHERE id = ? AND client_order_id = ?'),
 assert(server.includes('INSERT OR IGNORE INTO client_order_cost_lines'), 'import anti-doublon absent');
 assert(profitabilityController.includes('client_order_cost_line_exclusions'), 'mémoire des suppressions absente');
 assert(server.includes('importMissingQuoteCostLines(clientOrderId, quoteId)'), 'import à l’acceptation du devis absent');
-assert(server.includes('if (quoteId) importMissingQuoteCostLines(Number(orderId), quoteId)'), 'import à la création manuelle liée absent');
+assert(clientOrdersController.includes('if (quoteId) importMissingQuoteCostLines(orderId, quoteId)'), 'import à la création manuelle liée absent');
 assert(server.includes("source_type, source_quote_line_id"));
 assert(profitabilityView.includes('Le devis d’origine reste inchangé'));
 assert(profitabilityView.includes('Aucune matière ni main-d’œuvre renseignée'));

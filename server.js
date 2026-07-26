@@ -43,6 +43,15 @@ const { createClientOrderPurchasesController } = require('./controllers/clientOr
 const { createClientOrderInvoiceService } = require('./services/clientOrderInvoiceService');
 const { createClientOrderInvoicesController } = require('./controllers/clientOrderInvoicesController');
 const { renderClientOrderInvoicesView } = require('./views/clientOrderInvoicesView');
+const { createClientOrderHoursService } = require('./services/clientOrderHoursService');
+const { createClientOrderHoursController } = require('./controllers/clientOrderHoursController');
+const { renderClientOrderHoursView } = require('./views/clientOrderHoursView');
+const { createClientOrderAgendaService } = require('./services/clientOrderAgendaService');
+const { createClientOrderAgendaController } = require('./controllers/clientOrderAgendaController');
+const { renderClientOrderInvoiceValidationView } = require('./views/clientOrderInvoiceValidationView');
+const { createClientOrderService } = require('./services/clientOrderService');
+const { createClientOrdersController } = require('./controllers/clientOrdersController');
+const { renderClientOrdersListView } = require('./views/clientOrdersListView');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -6816,20 +6825,11 @@ app.post('/documents-entrants/:id/reject', requireAdmin, (req, res) => {
 
 /* ===================== COMMANDES CLIENTS ===================== */
 
-app.get('/orders/clients', requireLogin, (req, res) => {
+function renderClientOrdersListPage(req, res) {
   const isAtelier =
   req.session?.user?.role === 'atelier';
-  const orders = db
-    .prepare(
-      `
-      SELECT *
-      FROM client_orders
-      WHERE status != 'Terminée'
-      ORDER BY date DESC, id DESC
-    `
-    )
-    .all();
-  const availableQuotes = isAtelier ? [] : db.prepare("SELECT id, title, client_name, status FROM quotes WHERE status != 'Supprimé' ORDER BY id DESC").all();
+  const orders = clientOrderService.listActiveOrders();
+  const availableQuotes = isAtelier ? [] : clientOrderService.listAvailableQuotes();
   const quoteOptions = (selectedId = null) => `<option value="">Aucun devis lié</option>${availableQuotes.map((quote) => `<option value="${quote.id}" ${Number(selectedId) === Number(quote.id) ? 'selected' : ''}>#${quote.id} · ${escHtml(quote.client_name || '')} · ${escHtml(quote.title || 'Sans titre')}</option>`).join('')}`;
 
   const financialSnapshots = new Map(orders.map((order) => [
@@ -6839,15 +6839,8 @@ app.get('/orders/clients', requireLogin, (req, res) => {
   const totalAmount = orders.reduce((sum, order) => sum + financialSnapshots.get(Number(order.id)).revenue.remainingToInvoiceExVat, 0);
   const chantierHoursByOrderId = new Map();
   const legacyChantierHoursTotals = new Map();
-  db
-    .prepare(
-      `
-      SELECT client_order_id, client, order_name, COALESCE(SUM(minutes_total), 0) AS total_minutes
-      FROM chantier_hours
-      GROUP BY client_order_id, client, order_name
-    `
-    )
-    .all()
+  clientOrderService
+    .listHoursTotals()
     .forEach((row) => {
       const totalMinutes = Number(row.total_minutes || 0);
       const orderId = Number(row.client_order_id || 0);
@@ -6877,14 +6870,7 @@ app.get('/orders/clients', requireLogin, (req, res) => {
     return `Pose - ${String(order.name || '').trim()} - ${chantierName}`;
   };
 
-  const poseAgendaEvents = db
-    .prepare(`
-      SELECT id, title, start_date, end_date
-      FROM events
-      WHERE type = 'pose'
-      ORDER BY datetime(start_date) DESC, id DESC
-    `)
-    .all();
+  const poseAgendaEvents = clientOrderService.listPoseEvents();
 
   const poseAgendaByOrderId = new Map();
   orders.forEach((order) => {
@@ -7176,238 +7162,13 @@ const poseAgendaTitle = buildPoseAgendaTitle(o);
 
   const preClient = String(req.query.client || '').trim();
 
-  res.send(
-    pageTemplate(
-      req,
-      'Commandes clients',
-      `
-      <div class="modern-page modern-client-orders-page">
-        <section class="modern-list-head modern-client-orders-head">
-          <div class="clients-create-head">
-            ${clientPageIcon('folder', 'clients-title-icon')}
-            <div>
-              <h1>Commandes clients</h1>
-              <span>${orders.length} commande${orders.length > 1 ? 's' : ''} en cours${!isAtelier ? ` · Reste total a facturer HT : ${formatEuroFr(totalAmount)}` : ''}</span>
-            </div>
-          </div>
-        </section>
-
-        ${poseAgendaFlash ? `<section class="clients-create-card modern-form-card"><p class="info">${escHtml(poseAgendaFlash)}</p></section>` : ''}
-        ${orderUpdateFlash ? `<section class="clients-create-card modern-form-card"><p class="${orderUpdateStatus === 'ok' ? 'info' : 'error'}">${escHtml(orderUpdateFlash)}</p></section>` : ''}
-
-        <section class="clients-create-card modern-form-card modern-client-order-form modern-client-order-add-card is-collapsed" id="new-client-order" data-client-order-add-card>
-          <button type="button" class="modern-client-order-add-toggle" aria-expanded="false" aria-controls="client-order-add-panel" data-client-order-add-toggle>
-            <span class="modern-client-order-add-title">
-              ${clientPageIcon('add', 'clients-title-icon')}
-              <h2>Nouvelle commande</h2>
-            </span>
-            <span class="modern-client-order-add-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
-          </button>
-
-          <div class="modern-client-order-add-panel" id="client-order-add-panel" hidden data-client-order-add-panel>
-            <form method="POST" action="/orders/client" class="modern-client-order-add-form">
-              <div class="modern-form-grid">
-                <label class="clients-field">
-                  <span>Client</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('user')}
-                    <input list="pc-clients" name="name" placeholder="Nom du client ou dossier PC" required value="${escHtml(preClient)}" />
-                  </div>
-                </label>
-
-                <label class="clients-field">
-                  <span>Nom / objet commande</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('folder')}
-                    <input name="description" placeholder="Ex : Escalier, portail, garde-corps" />
-                  </div>
-                </label>
-
-                <label class="clients-field">
-                  <span>Statut commande</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('database')}
-                    <select disabled>
-                      <option>En cours</option>
-                    </select>
-                  </div>
-                </label>
-
-                <label class="clients-field">
-                  <span>Statut chantier</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('database')}
-                    <select name="chantier_status">${chantierStatusOptions('À préparer')}</select>
-                  </div>
-                </label>
-
-                <label class="clients-field">
-                  <span>Heures prévues</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('calendar')}
-                    <input type="number" name="planned_hours" min="0" step="0.25" placeholder="0" />
-                  </div>
-                </label>
-
-                <label class="clients-field">
-                  <span>Date commande</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('calendar')}
-                    <input type="date" name="date" />
-                  </div>
-                </label>
-
-                <label class="clients-field">
-                  <span>Date début</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('calendar')}
-                    <input type="date" name="chantier_start_date" />
-                  </div>
-                </label>
-
-                <label class="clients-field">
-                  <span>Date fin prévue</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('calendar')}
-                    <input type="date" name="chantier_end_date" />
-                  </div>
-                </label>
-
-                ${!isAtelier ? `<label class="clients-field"><span>Devis lié (facultatif)</span><div class="clients-input-shell">${clientPageIcon('quotes')}<select name="quote_id">${quoteOptions()}</select></div></label>` : ''}
-
-                ${!isAtelier ? `
-                <label class="clients-field">
-                  <span>Prix HT (€)</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('postal')}
-                    <input type="number" name="price" step="0.01" min="0" placeholder="0.00" data-order-price-ht />
-                  </div>
-                </label>
-                <label class="clients-field">
-                  <span>TVA</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('postal')}
-                    <select name="vat_rate" data-order-vat-rate>
-                      <option value="20" selected>TVA 20 %</option>
-                      <option value="10">TVA 10 %</option>
-                    </select>
-                  </div>
-                </label>
-                <label class="clients-field">
-                  <span>Prix TTC (€)</span>
-                  <div class="clients-input-shell">
-                    ${clientPageIcon('postal')}
-                    <input type="number" step="0.01" placeholder="0.00" readonly data-order-price-ttc />
-                  </div>
-                </label>
-                ` : ''}
-              </div>
-
-              <div class="modern-form-actions">
-                <button type="submit" class="clients-submit-btn">
-                  <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-                  Créer la commande
-                </button>
-                <a class="clients-submit-btn" href="/orders/clients/scan-ebp">
-                  <span>${clientPageIcon('quotes', 'clients-submit-icon')}</span>
-                  Scanner devis EBP
-                </a>
-                <a class="clients-submit-btn" href="/orders/clients/incoming-ebp">
-                  <span>${clientPageIcon('folder', 'clients-submit-icon')}</span>
-                  Devis EBP à traiter
-                </a>
-                <a class="modern-cancel-link" href="/clients">Voir clients</a>
-              </div>
-
-              <datalist id="pc-clients">${pcFoldersOptions}</datalist>
-            </form>
-          </div>
-        </section>
-
-        <section class="orders-cards-section modern-client-orders-section">
-          <div class="modern-client-orders-grid">${cards}</div>
-        </section>
-      </div>
-      <script>
-        (function(){
-          var card = document.querySelector('[data-client-order-add-card]');
-          if (!card) return;
-          var toggle = card.querySelector('[data-client-order-add-toggle]');
-          var panel = card.querySelector('[data-client-order-add-panel]');
-          if (!toggle || !panel) return;
-          var priceHt = card.querySelector('[data-order-price-ht]');
-          var vatRate = card.querySelector('[data-order-vat-rate]');
-          var priceTtc = card.querySelector('[data-order-price-ttc]');
-          function syncOrderTtc(){
-            if (!priceHt || !vatRate || !priceTtc) return;
-            var ht = Number(String(priceHt.value || '').replace(',', '.'));
-            var rate = Number(vatRate.value || 20);
-            priceTtc.value = Number.isFinite(ht) && ht > 0 ? (ht * (1 + rate / 100)).toFixed(2) : '';
-          }
-          if (priceHt && vatRate && priceTtc) {
-            priceHt.addEventListener('input', syncOrderTtc);
-            vatRate.addEventListener('change', syncOrderTtc);
-            syncOrderTtc();
-          }
-          document.querySelectorAll('[data-order-edit-form]').forEach(function(form){
-            var editPriceHt = form.querySelector('[data-order-edit-price-ht]');
-            var editVatRate = form.querySelector('[data-order-edit-vat-rate]');
-            var editPriceTtc = form.querySelector('[data-order-edit-price-ttc]');
-            function syncEditTtc(){
-              if (!editPriceHt || !editVatRate || !editPriceTtc) return;
-              var ht = Number(String(editPriceHt.value || '').replace(',', '.'));
-              var rate = Number(editVatRate.value || '');
-              editPriceTtc.value = Number.isFinite(ht) && ht > 0 && (rate === 10 || rate === 20)
-                ? (ht * (1 + rate / 100)).toFixed(2)
-                : '';
-            }
-            if (editPriceHt && editVatRate && editPriceTtc) {
-              editPriceHt.addEventListener('input', syncEditTtc);
-              editVatRate.addEventListener('change', syncEditTtc);
-              syncEditTtc();
-            }
-          });
-          document.querySelectorAll('[data-order-edit-toggle]').forEach(function(toggle){
-            var panel = document.getElementById(toggle.getAttribute('aria-controls') || '');
-            if (!panel) return;
-            toggle.addEventListener('click', function(){
-              var isOpen = toggle.getAttribute('aria-expanded') === 'true';
-              toggle.setAttribute('aria-expanded', String(!isOpen));
-              panel.hidden = isOpen;
-            });
-          });
-          document.querySelectorAll('[data-order-edit-cancel]').forEach(function(button){
-            button.addEventListener('click', function(){
-              var panel = button.closest('[data-order-edit-form]');
-              if (!panel) return;
-              panel.hidden = true;
-              var toggle = document.querySelector('[data-order-edit-toggle][aria-controls="' + panel.id + '"]');
-              if (toggle) toggle.setAttribute('aria-expanded', 'false');
-            });
-          });
-          toggle.addEventListener('click', function(){
-            var isOpen = toggle.getAttribute('aria-expanded') === 'true';
-            toggle.setAttribute('aria-expanded', String(!isOpen));
-            if (isOpen) {
-              card.classList.remove('is-open');
-              card.classList.add('is-collapsed');
-              window.setTimeout(function(){
-                if (toggle.getAttribute('aria-expanded') !== 'true') panel.hidden = true;
-              }, 230);
-            } else {
-              panel.hidden = false;
-              window.requestAnimationFrame(function(){
-                card.classList.add('is-open');
-                card.classList.remove('is-collapsed');
-              });
-            }
-          });
-        })();
-      </script>
-      `
-    )
-  );
-});
+  const html = renderClientOrdersListView({
+    orders, isAtelier, totalAmount, formatEuroFr, clientPageIcon, poseAgendaFlash,
+    orderUpdateFlash, orderUpdateStatus, escapeHtml: escHtml, preClient,
+    chantierStatusOptions, quoteOptions, pcFoldersOptions, cards
+  });
+  return res.send(pageTemplate(req, 'Commandes clients', html));
+}
 
 async function renderEbpScanValidationPage(req, res, options) {
   const scanFileName = path.basename(String(options.scanFileName || ''));
@@ -7612,66 +7373,13 @@ async function renderEbpInvoiceValidationPage(req, res, options) {
     || (!extractedText ? 'Analyse incertaine: verifiez et corrigez les champs.' : '');
 
   return res.send(
-    pageTemplate(
-      req,
-      'Validation facture EBP',
-      `
-      <div class="modern-page modern-client-orders-page">
-        <section class="modern-list-head modern-client-orders-head">
-          <div class="clients-create-head">
-            ${clientPageIcon('quotes', 'clients-title-icon')}
-            <div>
-              <h1>Validation facture EBP</h1>
-              <span>Commande cible : ${escHtml(order.description || `Commande #${order.id}`)} - ${escHtml(order.name || '')}</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="clients-create-card modern-form-card modern-client-order-form">
-          ${warning ? `<p class="info">${escHtml(warning)}</p>` : ''}
-          <form method="POST" action="/orders/client/${order.id}/invoices/create" class="modern-client-order-add-form">
-            <input type="hidden" name="source_type" value="${escHtml(sourceType)}" />
-            <input type="hidden" name="scan_file" value="${escHtml(scanFileName)}" />
-            <input type="hidden" name="existing_file" value="${escHtml(existing ? existing.fileName : '')}" />
-            <input type="hidden" name="scan_original_name" value="${escHtml(scanOriginalName || scanFileName)}" />
-            <div class="modern-form-grid">
-              <label class="clients-field">
-                <span>Numero facture</span>
-                <div class="clients-input-shell">${clientPageIcon('quotes')}<input name="invoice_number" value="${escHtml(fields.invoice_number || '')}" /></div>
-              </label>
-              <label class="clients-field">
-                <span>Date facture</span>
-                <div class="clients-input-shell">${clientPageIcon('calendar')}<input type="date" name="invoice_date" value="${escHtml(fields.invoice_date || isoDate())}" /></div>
-              </label>
-              <label class="clients-field">
-                <span>Client detecte</span>
-                <div class="clients-input-shell">${clientPageIcon('user')}<input name="client_name" value="${escHtml(fields.client_name || order.name || '')}" /></div>
-              </label>
-              <label class="clients-field">
-                <span>Montant HT</span>
-                <div class="clients-input-shell">${clientPageIcon('postal')}<input name="amount_ht" type="number" step="0.01" value="${escHtml(amountHt)}" required /></div>
-              </label>
-              <label class="clients-field">
-                <span>TVA</span>
-                <div class="clients-input-shell">${clientPageIcon('postal')}<input name="vat_amount" type="number" step="0.01" value="${escHtml(vatAmount)}" /></div>
-              </label>
-              <label class="clients-field">
-                <span>Montant TTC</span>
-                <div class="clients-input-shell">${clientPageIcon('postal')}<input name="amount_ttc" type="number" step="0.01" value="${escHtml(amountTtc)}" /></div>
-              </label>
-            </div>
-            <div class="modern-form-actions">
-              <button type="submit" class="clients-submit-btn">
-                <span>${clientPageIcon('check', 'clients-submit-icon')}</span>
-                Valider la facture
-              </button>
-              <a class="modern-cancel-link" href="${getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures')}">Annuler</a>
-            </div>
-          </form>
-        </section>
-      </div>
-      `
-    )
+    pageTemplate(req, 'Validation facture EBP', renderClientOrderInvoiceValidationView({
+      order, warning, sourceType, scanFileName,
+      existingFileName: existing ? existing.fileName : '',
+      scanOriginalName, fields, amountHt, vatAmount, amountTtc,
+      cancelUrl: getPurchaseOrderRedirect(order).replace('/Commandes', '/Factures'),
+      defaultInvoiceDate: isoDate(), escapeHtml: escHtml, clientPageIcon
+    }))
   );
 }
 
@@ -8094,158 +7802,6 @@ app.post('/orders/clients/scan-ebp/create', requireLogin, (req, res) => {
   }
 });
 
-const handleCreateClientOrder = (req, res) => {
-  const name = String(req.body.name || '').trim();
-  const description = String(req.body.description || '').trim();
-  const date = String(req.body.date || '').trim();
-  const price = req.body.price;
-  const vatRate = parseOptionalVatRate(req.body.vat_rate) || 20;
-  const chantierStatus = normalizeChantierStatus(req.body.chantier_status);
-  const plannedHours = parsePositiveNumber(req.body.planned_hours);
-  const chantierStartDate = String(req.body.chantier_start_date || '').trim() || null;
-  const chantierEndDate = String(req.body.chantier_end_date || '').trim() || null;
-  const quoteId = parseOptionalId(req.body.quote_id);
-  if (quoteId && !db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)) return res.status(400).send('Devis lié introuvable');
-
-  if (!name) return res.status(400).send('Nom client requis');
-
-  const dateValue = date && date !== '' ? date : isoDate();
-
-  const info = db
-    .prepare(
-      `
-	    INSERT INTO client_orders (
-        name,
-        description,
-        date,
-        price,
-        vat_rate,
-        planned_hours,
-        chantier_status,
-        chantier_start_date,
-        chantier_end_date,
-        quote_id,
-        status,
-        created_at
-      )
-	    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'En cours', ?)
-	  `
-    )
-	    .run(
-        name,
-        description || null,
-        dateValue,
-        price ? parseFloat(price) : 0,
-        vatRate,
-        plannedHours,
-        chantierStatus,
-        chantierStartDate,
-        chantierEndDate,
-        quoteId,
-        new Date().toISOString()
-      );
-
-  const orderId = info.lastInsertRowid;
-  if (quoteId) importMissingQuoteCostLines(Number(orderId), quoteId);
-
-
-
-// Interne
-const internalDir = path.join(CLIENT_ORDER_FILES_DIR, String(orderId));
-
-console.log('CLIENT_ORDER_FILES_DIR =', CLIENT_ORDER_FILES_DIR);
-console.log('internalDir =', internalDir);
-
-try {
-  console.log(
-    'CLIENT_ORDER_FILES_DIR isDirectory =',
-    fs.existsSync(CLIENT_ORDER_FILES_DIR)
-      ? fs.statSync(CLIENT_ORDER_FILES_DIR).isDirectory()
-      : 'NOT EXISTS'
-  );
-} catch (e) {
-  console.log('STAT ERROR =', e.message);
-}
-
-ensureDir(internalDir);
-
-  // PC
-  const safeClientFolder = safeName(name);
-  const clientDir = path.join(CLIENT_PC_DIR, safeClientFolder);
-  ensureDir(clientDir);
-
-  const orderFolderName = safeName(description && description.trim() !== '' ? description : `Commande_${orderId}`);
-  const pcOrderDir = path.join(clientDir, orderFolderName);
-  ensureDir(pcOrderDir);
-  ensureStandardSubfolders(pcOrderDir);
-
-  res.redirect('/orders/clients');
-};
-
-const handleUpdateClientOrder = (req, res) => {
-  try {
-    const orderId = Number(req.params.id || 0);
-    if (!Number.isFinite(orderId) || orderId <= 0) {
-      return res.redirect('/orders/clients?orderUpdate=notfound');
-    }
-
-    const existing = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-    if (!existing) {
-      return res.redirect('/orders/clients?orderUpdate=notfound');
-    }
-
-    const isAtelier = req.session?.user?.role === 'atelier';
-    const dateValue = String(req.body.date || '').trim() || existing.date || isoDate();
-    const plannedHours = parsePositiveNumber(req.body.planned_hours);
-    const chantierEndDate = String(req.body.chantier_end_date || '').trim() || null;
-    const chantierStatus = normalizeChantierStatus(req.body.chantier_status || existing.chantier_status);
-    const chantierProgressRaw = parseDecimalInput(req.body.chantier_progress, Number(existing.chantier_progress || 0));
-    const chantierProgress = Math.max(0, Math.min(100, chantierProgressRaw));
-
-    if (isAtelier) {
-      db.prepare(`
-        UPDATE client_orders
-        SET date = ?,
-            planned_hours = ?,
-            chantier_end_date = ?,
-            chantier_status = ?,
-            chantier_progress = ?
-        WHERE id = ?
-      `).run(
-        dateValue,
-        plannedHours,
-        chantierEndDate,
-        chantierStatus,
-        chantierProgress,
-        orderId
-      );
-    } else {
-      const priceHt = parseDecimalInput(req.body.price, 0);
-      const vatRate = parseOptionalVatRate(req.body.vat_rate);
-      const quoteId = parseOptionalId(req.body.quote_id);
-      if (quoteId && !db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)) return res.redirect('/orders/clients?orderUpdate=error');
-      db.transaction(() => {
-        db.prepare(`
-          UPDATE client_orders
-          SET date = ?, price = ?, vat_rate = ?, planned_hours = ?, chantier_end_date = ?,
-              chantier_status = ?, chantier_progress = ?, quote_id = ?
-          WHERE id = ?
-        `).run(dateValue, priceHt, vatRate, plannedHours, chantierEndDate, chantierStatus, chantierProgress, quoteId, orderId);
-        if (quoteId && Number(existing.quote_id || 0) !== quoteId) importMissingQuoteCostLines(orderId, quoteId);
-      })();
-    }
-
-    return res.redirect('/orders/clients?orderUpdate=ok');
-  } catch (e) {
-    console.error('Erreur modification commande client', e);
-    return res.redirect('/orders/clients?orderUpdate=error');
-  }
-};
-
-const handleCompleteClientOrder = (req, res) => {
-  db.prepare("UPDATE client_orders SET status = 'Terminée' WHERE id = ?").run(req.body.id);
-  res.redirect('/orders/clients');
-};
 const scannerDocumentUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: SCANNER_MAX_FILE_SIZE_BYTES, files: 1 },
@@ -8808,60 +8364,12 @@ app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
   res.send(pageTemplate(req, `Commande : ${order}`, content));
 });
 
-const handleUpdateClientOrderChantier = (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  const existing = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(orderId);
-  if (!existing) return res.status(404).send('Commande introuvable');
-
-  const chantierStatus = normalizeChantierStatus(req.body.chantier_status || existing.chantier_status);
-  const plannedHours = Object.prototype.hasOwnProperty.call(req.body, 'planned_hours')
-    ? parsePositiveNumber(req.body.planned_hours)
-    : Number(existing.planned_hours || 0);
-  const doneHours = Object.prototype.hasOwnProperty.call(req.body, 'done_hours')
-    ? parsePositiveNumber(req.body.done_hours)
-    : Number(existing.done_hours || 0);
-  const chantierProgressValue = getProgressFromChantierStatus(chantierStatus);
-  const startDate = Object.prototype.hasOwnProperty.call(req.body, 'chantier_start_date')
-    ? String(req.body.chantier_start_date || '').trim() || null
-    : existing.chantier_start_date || null;
-  const endDate = Object.prototype.hasOwnProperty.call(req.body, 'chantier_end_date')
-    ? String(req.body.chantier_end_date || '').trim() || null
-    : existing.chantier_end_date || null;
-  const notes = Object.prototype.hasOwnProperty.call(req.body, 'chantier_notes')
-    ? String(req.body.chantier_notes || '').trim() || null
-    : existing.chantier_notes || null;
-
-  db.prepare(`
-    UPDATE client_orders
-    SET chantier_status = ?,
-        planned_hours = ?,
-        done_hours = ?,
-        chantier_progress = ?,
-        chantier_start_date = ?,
-        chantier_end_date = ?,
-        chantier_notes = ?
-    WHERE id = ?
-  `).run(
-    chantierStatus,
-    plannedHours,
-    doneHours,
-    chantierProgressValue,
-    startDate,
-    endDate,
-    notes,
-    orderId
-  );
-
-  const orderFolderName = safeName(existing.description && existing.description.trim() !== '' ? existing.description : `Commande_${existing.id}`);
-  res.redirect(`/pc-folders/${encodeURIComponent(safeName(existing.name))}/${encodeURIComponent(orderFolderName)}`);
-};
-
 app.get('/pc-folders/:client/:order/:type', requireLogin, (req, res) => {
   const client = safeName(req.params.client);
   const order = safeName(req.params.order);
   const type = String(req.params.type || '').trim();
 
-  if (type === 'Heure chantier') return renderHeuresChantier(req, res);
+  if (type === 'Heure chantier') return clientOrderHoursController.showOrderHoursFolder(req, res);
 
   if (!STANDARD_SUBFOLDERS.includes(type)) return res.status(400).send('Type de dossier invalide');
 
@@ -9230,364 +8738,6 @@ app.get('/pc-file-raw/:client/:order/:type/:file', requireLogin, (req, res) => {
   } catch (e) {
     return res.status(400).send('Chemin invalide');
   }
-});
-/* ===================== HEURE CHANTIER ===================== */
-
-function renderHeuresChantier(req, res) {
-  const client = safeName(req.params.client);
-  const order = safeName(req.params.order);
-  const orderDb = findClientOrderByFolder(client, order);
-  const orderId = Number(orderDb?.id || 0);
-  const hasOrderId = Number.isFinite(orderId) && orderId > 0;
-
-  const rows = hasOrderId
-    ? db
-        .prepare(
-          `
-    SELECT *
-    FROM chantier_hours
-    WHERE client_order_id = ?
-       OR (client_order_id IS NULL AND client = ? AND order_name = ?)
-    ORDER BY work_date DESC, id DESC
-  `
-        )
-        .all(orderId, client, order)
-    : db
-        .prepare(
-          `
-    SELECT *
-    FROM chantier_hours
-    WHERE client = ? AND order_name = ?
-    ORDER BY work_date DESC, id DESC
-  `
-        )
-        .all(client, order);
-
-  const totalMinutes = rows.reduce((sum, r) => sum + (r.minutes_total || 0), 0);
-
-const plannedHours =
-  Number(orderDb?.planned_hours || 0);
-
-const actualHours =
-  totalMinutes / 60;
-
-const diffHours =
-  actualHours - plannedHours;
-
-const isOver =
-  actualHours > plannedHours;
-
-  const since7 = new Date();
-  since7.setDate(since7.getDate() - 7);
-  const since7Iso = since7.toISOString().slice(0, 10);
-
-  const last7 = db
-    .prepare(
-      hasOrderId
-        ? `
-    SELECT COALESCE(SUM(minutes_total),0) AS m
-    FROM chantier_hours
-    WHERE (client_order_id = ? OR (client_order_id IS NULL AND client = ? AND order_name = ?))
-      AND work_date >= ?
-  `
-        : `
-    SELECT COALESCE(SUM(minutes_total),0) AS m
-    FROM chantier_hours
-    WHERE client = ? AND order_name = ? AND work_date >= ?
-  `
-    )
-    .get(...(hasOrderId ? [orderId, client, order, since7Iso] : [client, order, since7Iso])).m;
-
-  const listHtml = rows.length
-    ? `
-      <div class="pc-modern-hours-grid">
-          ${rows
-            .map(
-              (r) => `
-            <article class="pc-modern-hour-card">
-              <header>
-                <strong>${escHtml(r.work_date)}</strong>
-                <span>${escHtml(formatChantierDurationLabel(r.minutes_total || 0))}</span>
-              </header>
-              <div class="pc-modern-hour-meta">
-                <span>Durée <strong>${escHtml(formatChantierDurationLabel(r.minutes_total || 0))}</strong></span>
-                <span>Catégorie <strong>${escHtml(r.category || 'autre')}</strong></span>
-              </div>
-              ${r.note ? `<p>${escHtml(r.note)}</p>` : ''}
-                <form method="POST" action="/chantier-hours/delete" onsubmit="return confirm('Supprimer cette ligne ?');" style="margin:0">
-                  <input type="hidden" name="id" value="${r.id}">
-                  <input type="hidden" name="client" value="${escHtml(client)}">
-                  <input type="hidden" name="order" value="${escHtml(order)}">
-                  <button class="modern-danger-btn" title="Supprimer">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
-                </form>
-            </article>
-          `
-            )
-            .join('')}
-      </div>
-    `
-    : `<div class="empty-state">Aucune heure saisie pour ce chantier.</div>`;
-
-  res.send(
-    pageTemplate(
-      req,
-      `Heures chantier - ${order}`,
-      `
-      <div class="pc-modern-page">
-        <section class="pc-modern-hero">
-          <div>
-            <span>Dossier</span>
-            <h1>Heures chantier</h1>
-            <p>${escHtml(order)}</p>
-          </div>
-          <div class="pc-modern-actions">
-            <a class="modern-cancel-link" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}">Retour commande</a>
-            <a class="modern-cancel-link" href="/pc-folders/${encodeURIComponent(client)}">Retour client</a>
-            <a class="clients-submit-btn" href="/chantier-hours/export.csv?client=${encodeURIComponent(client)}&order=${encodeURIComponent(order)}${hasOrderId ? `&client_order_id=${encodeURIComponent(String(orderId))}` : ''}">Export CSV</a>
-          </div>
-        </section>
-
-        <section class="pc-modern-panel">
-          <div class="chantier-hours-grid">
-            <div><span>Total chantier</span><strong>${fmtMinutes(totalMinutes)}</strong></div>
-            <div><span>7 derniers jours</span><strong>${fmtMinutes(last7)}</strong></div>
-            ${
-              req.session?.user?.role !== 'atelier'
-                ? `
-                <div><span>Heures prévues</span><strong>${plannedHours.toFixed(1)} h</strong></div>
-                <div><span>Écart</span><strong class="${isOver ? 'chantier-over' : ''}">${diffHours >= 0 ? '+' : ''}${diffHours.toFixed(1)} h</strong></div>
-                `
-                : ''
-            }
-          </div>
-          ${
-            req.session?.user?.role !== 'atelier'
-              ? `
-              <form method="POST" action="/chantier-hours/planned-hours" class="pc-modern-planned-form">
-                <input type="hidden" name="client" value="${escHtml(client)}">
-                <input type="hidden" name="order" value="${escHtml(order)}">
-                ${hasOrderId ? `<input type="hidden" name="client_order_id" value="${orderId}">` : ''}
-                <label>Heures prévues</label>
-                <input type="number" step="0.5" name="planned_hours" value="${plannedHours}">
-                <button class="clients-submit-btn" type="submit">Enregistrer</button>
-              </form>
-              `
-              : ''
-          }
-        </section>
-
-      <section class="pc-modern-panel">
-        <div class="modern-section-title">
-          ${pcFolderIcon('Heure chantier', 'clients-title-icon')}
-          <div><h2>Ajouter une durée</h2></div>
-        </div>
-        <form method="POST" action="/chantier-hours/add" class="hours-form">
-          <input type="hidden" name="client" value="${escHtml(client)}">
-          <input type="hidden" name="order" value="${escHtml(order)}">
-          ${hasOrderId ? `<input type="hidden" name="client_order_id" value="${orderId}">` : ''}
-
-          <div class="hours-grid">
-            <div class="field">
-              <label>Date</label>
-              <input type="date" name="work_date" value="${isoDate()}" required>
-            </div>
-
-            <div class="field">
-              <label>Heures</label>
-              <input type="number" name="work_hours" min="0" step="1" inputmode="numeric" value="0" required data-chantier-hours-input>
-            </div>
-
-            <div class="field">
-              <label>Minutes</label>
-              <select name="work_minutes" required data-chantier-minutes-select>
-                <option value="0">0</option>
-                <option value="15">15</option>
-                <option value="30">30</option>
-                <option value="45">45</option>
-              </select>
-            </div>
-
-            <div class="field">
-              <label>Total</label>
-              <strong data-chantier-duration-total aria-live="polite">0 h</strong>
-            </div>
-
-            <div class="field">
-              <label>Catégorie</label>
-              <select name="category">
-                <option value="atelier">Atelier</option>
-                <option value="etude">Étude</option>
-                <option value="pose">Pose</option>
-                <option value="transport">Transport</option>
-                <option value="sav">SAV</option>
-                <option value="autre">Autre</option>
-              </select>
-            </div>
-
-            <div class="field field-wide">
-              <label>Note</label>
-              <input name="note" placeholder="Ex: pose portail, soudure, déplacement…">
-            </div>
-
-            <div class="actions">
-              <button class="clients-submit-btn" type="submit">Ajouter</button>
-            </div>
-          </div>
-        </form>
-        <script>
-          (function() {
-            const form = document.querySelector('.hours-form');
-            if (!form) return;
-            const hoursInput = form.querySelector('[data-chantier-hours-input]');
-            const minutesSelect = form.querySelector('[data-chantier-minutes-select]');
-            const totalNode = form.querySelector('[data-chantier-duration-total]');
-            if (!hoursInput || !minutesSelect || !totalNode) return;
-
-            const updateTotal = () => {
-              const hours = Math.max(0, parseInt(hoursInput.value || '0', 10) || 0);
-              const minutes = parseInt(minutesSelect.value || '0', 10) || 0;
-              const totalMinutes = (hours * 60) + minutes;
-              totalNode.textContent = hours + ' h' + (minutes ? ' ' + String(minutes).padStart(2, '0') : '');
-              totalNode.dataset.totalMinutes = String(totalMinutes);
-            };
-
-            hoursInput.addEventListener('input', updateTotal);
-            minutesSelect.addEventListener('change', updateTotal);
-            updateTotal();
-          })();
-        </script>
-      </section>
-
-      <section class="pc-modern-panel">
-        <div class="modern-section-title">
-          ${pcFolderIcon('file', 'clients-title-icon')}
-          <div><h2>Historique</h2></div>
-        </div>
-        ${listHtml}
-      </section>
-      </div>
-      `
-    )
-  );
-}
-
-app.post('/chantier-hours/add', requireLogin, (req, res) => {
-  const client = String(req.body.client || '').trim();
-  const order = String(req.body.order || '').trim();
-  const requestedOrderId = Number(req.body.client_order_id || 0);
-  const linkedOrder = Number.isFinite(requestedOrderId) && requestedOrderId > 0
-    ? db.prepare('SELECT id FROM client_orders WHERE id = ?').get(requestedOrderId)
-    : null;
-  const clientOrderId = linkedOrder ? requestedOrderId : null;
-  const work_date = String(req.body.work_date || '').trim();
-  const work_hours = req.body.work_hours;
-  const work_minutes = req.body.work_minutes;
-  const note = String(req.body.note || '').trim();
-  const category = projectProfitability.HOUR_CATEGORIES.includes(String(req.body.category || ''))
-    ? String(req.body.category)
-    : 'autre';
-
-  if (!client || !order || !work_date) return res.status(400).send('Données manquantes');
-
-  const duration = parseChantierHoursDuration(work_hours, work_minutes);
-  if (duration.error) return res.status(400).send(duration.error);
-
-  const minutes_total = duration.minutesTotal;
-
-  db.prepare(
-    `
-    INSERT INTO chantier_hours (client, order_name, client_order_id, work_date, start_time, end_time, break_minutes, minutes_total, note, category, created_at)
-    VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?)
-  `
-  ).run(client, order, clientOrderId, work_date, minutes_total, note || null, category, new Date().toISOString());
-
-  res.redirect(`/pc-folders/${encodeURIComponent(safeName(client))}/${encodeURIComponent(safeName(order))}/Heure%20chantier`);
-});
-
-app.post('/chantier-hours/delete', requireLogin, (req, res) => {
-  const id = req.body.id;
-  const client = String(req.body.client || '').trim();
-  const order = String(req.body.order || '').trim();
-
-  db.prepare('DELETE FROM chantier_hours WHERE id = ?').run(id);
-  res.redirect(`/pc-folders/${encodeURIComponent(safeName(client))}/${encodeURIComponent(safeName(order))}/Heure%20chantier`);
-});
-
-app.get('/chantier-hours/export.csv', requireLogin, (req, res) => {
-  const client = String(req.query.client || '').trim();
-  const order = String(req.query.order || '').trim();
-  const requestedOrderId = Number(req.query.client_order_id || 0);
-  const linkedOrder = Number.isFinite(requestedOrderId) && requestedOrderId > 0
-    ? db.prepare('SELECT id FROM client_orders WHERE id = ?').get(requestedOrderId)
-    : null;
-  const clientOrderId = linkedOrder ? requestedOrderId : null;
-
-  const rows = clientOrderId
-    ? db
-        .prepare(
-          `
-    SELECT work_date, start_time, end_time, break_minutes, minutes_total, note
-    FROM chantier_hours
-    WHERE client_order_id = ?
-       OR (client_order_id IS NULL AND client = ? AND order_name = ?)
-    ORDER BY work_date ASC, id ASC
-  `
-        )
-        .all(clientOrderId, client, order)
-    : db
-        .prepare(
-          `
-    SELECT work_date, start_time, end_time, break_minutes, minutes_total, note
-    FROM chantier_hours
-    WHERE client = ? AND order_name = ?
-    ORDER BY work_date ASC, id ASC
-  `
-        )
-        .all(client, order);
-
-  const header = 'date;debut;fin;pause_min;total;note\n';
-  const lines = rows
-    .map(
-      (r) =>
-        `${r.work_date};${r.start_time || ''};${r.end_time || ''};${r.break_minutes || 0};${fmtMinutes(r.minutes_total || 0)};${String(r.note || '').replace(/;/g, ',')}`
-    )
-    .join('\n');
-
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="heures_${safeSegment(client)}_${safeSegment(order)}.csv"`);
-  res.send(header + lines + '\n');
-});
-app.post('/chantier-hours/planned-hours', requireLogin, (req, res) => {
-  const requestedOrderId = Number(req.body.client_order_id || 0);
-  const linkedOrder = Number.isFinite(requestedOrderId) && requestedOrderId > 0
-    ? db.prepare('SELECT id FROM client_orders WHERE id = ?').get(requestedOrderId)
-    : null;
-
-  if (linkedOrder) {
-    db.prepare(`
-    UPDATE client_orders
-    SET planned_hours = ?
-    WHERE id = ?
-  `).run(
-      Number(req.body.planned_hours || 0),
-      requestedOrderId
-    );
-  } else {
-    db.prepare(`
-    UPDATE client_orders
-    SET planned_hours = ?
-    WHERE name = ?
-    AND description = ?
-  `).run(
-      Number(req.body.planned_hours || 0),
-      req.body.client,
-      req.body.order
-    );
-  }
-
-  res.redirect(
-    `/pc-folders/${encodeURIComponent(req.body.client)}/${encodeURIComponent(req.body.order)}/Heure chantier`
-  );
 });
 /* ===================== DEVIS ===================== */
 
@@ -13136,75 +12286,6 @@ app.post('/orders/suppliers/delete', requireLogin, (req, res) => {
 
   res.redirect('/orders/suppliers');
 });
-app.post('/orders/client/:id/add-agenda-pose', requireLogin, (req, res) => {
-  const orderId = Number(req.params.id || 0);
-  if (!Number.isFinite(orderId) || orderId <= 0) {
-    return res.redirect('/orders/clients?poseAgendaStatus=error');
-  }
-
-  const order = db
-    .prepare('SELECT id, name, description, chantier_status FROM client_orders WHERE id = ? LIMIT 1')
-    .get(orderId);
-
-  if (!order) {
-    return res.redirect('/orders/clients?poseAgendaStatus=error');
-  }
-
-  const chantierStatus = normalizeChantierStatus(order.chantier_status);
-  if (chantierStatus !== 'En pose') {
-    return res.redirect('/orders/clients?poseAgendaStatus=error');
-  }
-
-  const poseDate = String(req.body.pose_date || '').trim();
-  const startTime = String(req.body.start_time || '').trim();
-  const endTime = String(req.body.end_time || '').trim();
-  const place = String(req.body.place || '').trim();
-  const note = String(req.body.note || '').trim();
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(poseDate) || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
-    return res.redirect(`/orders/clients?poseAgendaStatus=error&poseAgendaOrderId=${orderId}`);
-  }
-  if (startTime >= endTime) {
-    return res.redirect(`/orders/clients?poseAgendaStatus=error&poseAgendaOrderId=${orderId}`);
-  }
-
-  const orderName = String(order.description || '').trim() || `Commande #${order.id}`;
-  const clientName = String(order.name || '').trim();
-  const baseTitle = `Pose - ${clientName} - ${orderName}`;
-  const detailParts = [];
-  if (place) detailParts.push(`Lieu: ${place}`);
-  if (note) detailParts.push(`Note: ${note}`);
-  const title = detailParts.length ? `${baseTitle} · ${detailParts.join(' · ')}` : baseTitle;
-
-  const startIso = `${poseDate}T${startTime}`;
-  const endIso = `${poseDate}T${endTime}`;
-
-  const duplicate = db
-    .prepare(
-      `
-      SELECT id
-      FROM events
-      WHERE type = 'pose'
-        AND start_date = ?
-        AND (title = ? OR title LIKE ?)
-      LIMIT 1
-    `
-    )
-    .get(startIso, baseTitle, `${baseTitle} · %`);
-
-  if (duplicate) {
-    return res.redirect(`/orders/clients?poseAgendaStatus=exists&poseAgendaOrderId=${orderId}`);
-  }
-
-  db.prepare(
-    `
-    INSERT INTO events (title, type, start_date, end_date, created_at)
-    VALUES (?, ?, ?, ?, ?)
-  `
-  ).run(title, 'pose', startIso, endIso, new Date().toISOString());
-
-  return res.redirect(`/orders/clients?poseAgendaStatus=created&poseAgendaOrderId=${orderId}`);
-});
 app.post('/agenda/add', requireLogin, (req, res) => {
   const { title, type, start_date, end_date } = req.body;
 
@@ -13316,14 +12397,66 @@ const clientOrderInvoicesController = createClientOrderInvoicesController({
   pcFolderIcon,
   isoDate
 });
+const clientOrderHoursService = createClientOrderHoursService({ db });
+const clientOrderHoursController = createClientOrderHoursController({
+  hoursService: clientOrderHoursService,
+  findOrderByFolder: findClientOrderByFolder,
+  safeName,
+  safeSegment,
+  parseDuration: parseChantierHoursDuration,
+  allowedCategories: projectProfitability.HOUR_CATEGORIES,
+  formatMinutes: fmtMinutes,
+  formatDurationLabel: formatChantierDurationLabel,
+  pageTemplate,
+  renderHoursView: renderClientOrderHoursView,
+  escapeHtml: escHtml,
+  clientPageIcon,
+  pcFolderIcon,
+  isoDate
+});
+const clientOrderAgendaService = createClientOrderAgendaService({ db, normalizeChantierStatus });
+const clientOrderAgendaController = createClientOrderAgendaController({ agendaService: clientOrderAgendaService });
+const clientOrderService = createClientOrderService({ db });
+const clientOrdersController = createClientOrdersController({
+  orderService: clientOrderService,
+  renderListPage: renderClientOrdersListPage,
+  parseOptionalVatRate,
+  normalizeChantierStatus,
+  parsePositiveNumber,
+  parseOptionalId,
+  parseDecimalInput,
+  isoDate,
+  importMissingQuoteCostLines,
+  safeName,
+  getProgressFromChantierStatus,
+  ensureOrderFolders({ orderId, name, description }) {
+    const internalDir = path.join(CLIENT_ORDER_FILES_DIR, String(orderId));
+    console.log('CLIENT_ORDER_FILES_DIR =', CLIENT_ORDER_FILES_DIR);
+    console.log('internalDir =', internalDir);
+    try {
+      console.log('CLIENT_ORDER_FILES_DIR isDirectory =',
+        fs.existsSync(CLIENT_ORDER_FILES_DIR) ? fs.statSync(CLIENT_ORDER_FILES_DIR).isDirectory() : 'NOT EXISTS');
+    } catch (error) {
+      console.log('STAT ERROR =', error.message);
+    }
+    ensureDir(internalDir);
+    const clientDir = path.join(CLIENT_PC_DIR, safeName(name));
+    ensureDir(clientDir);
+    const orderFolderName = safeName(description && description.trim() !== '' ? description : `Commande_${orderId}`);
+    const pcOrderDir = path.join(clientDir, orderFolderName);
+    ensureDir(pcOrderDir);
+    ensureStandardSubfolders(pcOrderDir);
+  }
+});
 
 registerClientOrderRoutes(app, {
   requireLogin,
   handlers: {
-    create: handleCreateClientOrder,
-    update: handleUpdateClientOrder,
-    done: handleCompleteClientOrder,
-    updateChantier: handleUpdateClientOrderChantier,
+    list: clientOrdersController.listClientOrders,
+    create: clientOrdersController.createClientOrder,
+    update: clientOrdersController.updateClientOrder,
+    done: clientOrdersController.completeClientOrder,
+    updateChantier: clientOrdersController.updateClientOrderStatus,
     profitabilityPage: clientOrderProfitabilityController.showProfitability,
     profitabilityApi: clientOrderProfitabilityController.getProfitabilityApi,
     createActualCost: clientOrderProfitabilityController.addActualCost,
@@ -13339,7 +12472,13 @@ registerClientOrderRoutes(app, {
     deleteInvoice: clientOrderInvoicesController.deleteClientOrderInvoice,
     addPurchase: clientOrderPurchasesController.addPurchase,
     updatePurchase: clientOrderPurchasesController.updatePurchase,
-    deletePurchase: clientOrderPurchasesController.deletePurchase
+    deletePurchase: clientOrderPurchasesController.deletePurchase,
+    showOrderHoursFolder: clientOrderHoursController.showOrderHoursFolder,
+    createOrderHourEntry: clientOrderHoursController.createOrderHourEntry,
+    deleteOrderHourEntry: clientOrderHoursController.deleteOrderHourEntry,
+    exportOrderHours: clientOrderHoursController.exportOrderHours,
+    updatePlannedHours: clientOrderHoursController.updatePlannedHours,
+    addClientOrderToAgenda: clientOrderAgendaController.addClientOrderToAgenda
   }
 });
 

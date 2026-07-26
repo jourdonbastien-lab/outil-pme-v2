@@ -7,6 +7,7 @@ for (const path of ['/orders/client/:id/purchases', '/orders/client/:id/purchase
   assert(routes.includes(`post('${path}'`), `route achat absente: ${path}`);
   assert(!server.includes(`app.post('${path}'`), `route achat dupliquée: ${path}`);
 }
-assert(server.includes("app.get('/orders/clients', requireLogin"), 'liste volontairement conservée absente');
+assert(routes.includes("get('/orders/clients', 'list')"), 'liste commandes non centralisée');
+assert(!server.includes("app.get('/orders/clients', requireLogin"), 'route liste dupliquée dans server.js');
 assert(server.includes("app.get('/pc-folders/:client/:order/:type', requireLogin"), 'route dossier partagée absente');
 console.log('OK - architecture domaine commandes clients');

@@ -17,15 +17,18 @@ const app = {
 };
 const requireLogin = function requireLoginForTest(req, res, next) { next(); };
 const handlerNames = [
-  'create', 'update', 'done', 'updateChantier', 'profitabilityPage', 'profitabilityApi',
+  'list', 'create', 'update', 'done', 'updateChantier', 'profitabilityPage', 'profitabilityApi',
   'createActualCost', 'deleteActualCost', 'createCostLine', 'editCostLine',
   'duplicateCostLine', 'deleteCostLine', 'importQuoteCostLines', 'analyzeInvoice',
-  'analyzeExistingInvoice', 'createInvoice', 'deleteInvoice', 'addPurchase', 'updatePurchase', 'deletePurchase'
+  'analyzeExistingInvoice', 'createInvoice', 'deleteInvoice', 'addPurchase', 'updatePurchase', 'deletePurchase',
+  'showOrderHoursFolder', 'createOrderHourEntry', 'deleteOrderHourEntry', 'exportOrderHours',
+  'updatePlannedHours', 'addClientOrderToAgenda'
 ];
 const handlers = Object.fromEntries(handlerNames.map((name) => [name, function routeHandler() {}]));
 registerClientOrderRoutes(app, { requireLogin, handlers });
 
 const expected = [
+  ['GET', '/orders/clients'],
   ['POST', '/orders/client'],
   ['POST', '/orders/client/:id/update'],
   ['POST', '/orders/client/done'],
@@ -45,7 +48,12 @@ const expected = [
   ['POST', '/orders/client/:id/invoices/:invoiceId/delete'],
   ['POST', '/orders/client/:id/purchases'],
   ['POST', '/orders/client/:id/purchases/:purchaseId/update'],
-  ['POST', '/orders/client/:id/purchases/:purchaseId/delete']
+  ['POST', '/orders/client/:id/purchases/:purchaseId/delete'],
+  ['POST', '/chantier-hours/add'],
+  ['POST', '/chantier-hours/delete'],
+  ['GET', '/chantier-hours/export.csv'],
+  ['POST', '/chantier-hours/planned-hours'],
+  ['POST', '/orders/client/:id/add-agenda-pose']
 ];
 assert.deepStrictEqual(registered.map(({ method, path }) => [method, path]), expected);
 assert.strictEqual(new Set(registered.map(({ method, path }) => `${method} ${path}`)).size, registered.length, 'route enregistrée plusieurs fois');
@@ -55,7 +63,7 @@ for (const route of registered) {
   assert.strictEqual(typeof route.callbacks[1], 'function');
 }
 
-assert(serverSource.includes("app.get('/orders/clients', requireLogin"), 'liste des commandes absente');
+assert(!serverSource.includes("app.get('/orders/clients', requireLogin"), 'liste des commandes encore enregistrée dans server.js');
 assert(serverSource.includes("app.get('/pc-folders/:client/:order', requireLogin"), 'dossier commande absent');
 assert(serverSource.includes("app.get('/pc-folders/:client/:order/:type', requireLogin"), 'dossier Factures générique absent');
 assert(serverSource.includes("type === 'Factures'"), 'branche Factures absente');

@@ -14,11 +14,13 @@ function registerClientOrderRoutes(app, dependencies) {
   if (typeof requireLogin !== 'function') throw new TypeError('Middleware requireLogin manquant.');
   if (!handlers || typeof handlers !== 'object') throw new TypeError('Gestionnaires de commandes clients manquants.');
   for (const name of [
-    'create', 'update', 'done', 'updateChantier', 'profitabilityPage', 'profitabilityApi',
+    'list', 'create', 'update', 'done', 'updateChantier', 'profitabilityPage', 'profitabilityApi',
     'createActualCost', 'deleteActualCost', 'createCostLine', 'editCostLine',
     'duplicateCostLine', 'deleteCostLine', 'importQuoteCostLines', 'analyzeInvoice',
     'analyzeExistingInvoice', 'createInvoice', 'deleteInvoice',
-    'addPurchase', 'updatePurchase', 'deletePurchase'
+    'addPurchase', 'updatePurchase', 'deletePurchase',
+    'showOrderHoursFolder', 'createOrderHourEntry', 'deleteOrderHourEntry',
+    'exportOrderHours', 'updatePlannedHours', 'addClientOrderToAgenda'
   ]) {
     if (typeof handlers[name] !== 'function') throw new TypeError(`Gestionnaire ${name} manquant.`);
   }
@@ -26,6 +28,7 @@ function registerClientOrderRoutes(app, dependencies) {
   const post = (route, name) => app.post(route, requireLogin, handlers[name]);
   const get = (route, name) => app.get(route, requireLogin, handlers[name]);
 
+  get('/orders/clients', 'list');
   post('/orders/client', 'create');
   post('/orders/client/:id/update', 'update');
   post('/orders/client/done', 'done');
@@ -50,6 +53,12 @@ function registerClientOrderRoutes(app, dependencies) {
   post('/orders/client/:id/purchases', 'addPurchase');
   post('/orders/client/:id/purchases/:purchaseId/update', 'updatePurchase');
   post('/orders/client/:id/purchases/:purchaseId/delete', 'deletePurchase');
+
+  post('/chantier-hours/add', 'createOrderHourEntry');
+  post('/chantier-hours/delete', 'deleteOrderHourEntry');
+  get('/chantier-hours/export.csv', 'exportOrderHours');
+  post('/chantier-hours/planned-hours', 'updatePlannedHours');
+  post('/orders/client/:id/add-agenda-pose', 'addClientOrderToAgenda');
 }
 
 module.exports = { registerClientOrderRoutes };
