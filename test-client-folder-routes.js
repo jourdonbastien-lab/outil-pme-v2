@@ -1,0 +1,15 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const { registerClientFolderRoutes } = require('./routes/clientFolders');
+assert.strictEqual(typeof registerClientFolderRoutes, 'function');
+const calls = [];
+const app = { get: (...args) => calls.push(args) };
+const requireLogin = () => {};
+const showClientFolders = () => {};
+registerClientFolderRoutes(app, { requireLogin, showClientFolders });
+assert.strictEqual(calls.length, 1);
+assert.deepStrictEqual(calls[0], ['/pc-folders/:client', requireLogin, showClientFolders]);
+const source = fs.readFileSync('routes/clientFolders.js', 'utf8');
+assert(!/SELECT|INSERT|UPDATE|DELETE|<article|fs\./.test(source));
+console.log('OK - routes navigation dossiers clients');

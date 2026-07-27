@@ -60,6 +60,10 @@ const {
   renderClientOrderFilesList,
   renderPurchasesBlock
 } = require('./views/clientOrderFolderView');
+const { createClientFolderNavigationService } = require('./services/clientFolderNavigationService');
+const { createClientFolderNavigationController } = require('./controllers/clientFolderNavigationController');
+const { renderClientFolderNavigationView } = require('./views/clientFolderNavigationView');
+const { registerClientFolderRoutes } = require('./routes/clientFolders');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -7838,59 +7842,9 @@ app.post('/orders/suppliers/purchases/:purchaseId/status', requireLogin, (req, r
 
 app.get('/pc-folders', requireLogin, (req, res) => res.redirect('/clients'));
 
-app.get('/pc-folders/:client', requireLogin, (req, res) => {
-  const client = safeName(req.params.client);
-  const clientDir = path.join(CLIENT_PC_DIR, client);
-
-  if (!fs.existsSync(clientDir) || !fs.lstatSync(clientDir).isDirectory()) {
-    return res.status(404).send('Client introuvable sur le PC');
-  }
-
-  let orders = [];
-  try {
-    orders = fs
-      .readdirSync(clientDir, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name)
-      .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
-  } catch {}
-
-  const cards = orders.length
-    ? orders
-        .map(
-          (orderName) => `
-        <article class="pc-modern-card">
-          <a class="pc-modern-card-link" href="/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(orderName)}" aria-label="Ouvrir ${escHtml(orderName)}"></a>
-          ${pcFolderIcon('Commandes')}
-          <div class="pc-modern-main">
-            <strong>${escHtml(orderName)}</strong>
-            <span>Commande</span>
-          </div>
-          <span class="pc-modern-open">Ouvrir</span>
-        </article>
-      `
-        )
-        .join('')
-    : `<div class="empty-state">Aucune commande trouvée.</div>`;
-
-  const content = `
-    <div class="pc-modern-page">
-      <section class="pc-modern-hero">
-        <div>
-          <span>Client</span>
-          <h1>${escHtml(client)}</h1>
-          <p>${orders.length} commande${orders.length > 1 ? 's' : ''}</p>
-        </div>
-        <a class="modern-cancel-link" href="/clients">Retour clients</a>
-      </section>
-
-      <section class="pc-modern-grid">
-        ${cards}
-      </section>
-    </div>
-  `;
-
-  res.send(pageTemplate(req, `Client : ${client}`, content));
+registerClientFolderRoutes(app, {
+  requireLogin,
+  showClientFolders: (req, res) => clientFolderNavigationController.showClientFolders(req, res)
 });
 
 app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
@@ -11695,6 +11649,29 @@ const clientOrderFolderService = createClientOrderFolderService({
   safeName,
   joinPath: path.join,
   supportedFolderTypes: STANDARD_SUBFOLDERS
+});
+const clientFolderNavigationService = createClientFolderNavigationService({
+  clientsRoot: CLIENT_PC_DIR,
+  safeName,
+  joinPath: path.join,
+  folderExists(folderPath) {
+    return fs.existsSync(folderPath) && fs.lstatSync(folderPath).isDirectory();
+  },
+  listDirectoryEntries(folderPath) {
+    try {
+      return fs.readdirSync(folderPath, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+  },
+  clientOrderFolderService
+});
+const clientFolderNavigationController = createClientFolderNavigationController({
+  navigationService: clientFolderNavigationService,
+  renderView: renderClientFolderNavigationView,
+  pageTemplate,
+  escapeHtml: escHtml,
+  pcFolderIcon
 });
 const clientOrderFoldersController = createClientOrderFoldersController({
   folderService: clientOrderFolderService,
