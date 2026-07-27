@@ -64,6 +64,11 @@ const { createClientFolderNavigationService } = require('./services/clientFolder
 const { createClientFolderNavigationController } = require('./controllers/clientFolderNavigationController');
 const { renderClientFolderNavigationView } = require('./views/clientFolderNavigationView');
 const { registerClientFolderRoutes } = require('./routes/clientFolders');
+const { createClientsService } = require('./services/clientsService');
+const { createClientsController } = require('./controllers/clientsController');
+const { renderClientsListView } = require('./views/clientsListView');
+const { renderClientCard } = require('./views/clientCardView');
+const { registerClientsRoutes } = require('./routes/clients');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -6399,303 +6404,34 @@ app.post('/chantiers/:id', requireLogin, (req, res) => {
 
 /* ===================== CLIENTS ===================== */
 
-app.get('/clients', requireLogin, (req, res) => {
-  const dbClients = db.prepare('SELECT * FROM clients ORDER BY created_at DESC, id DESC').all();
-  const dbMap = new Map();
-  dbClients.forEach((c) => dbMap.set(normalizeKey(c.name), c));
-
-
-  // PC
-  let pcFolders = [];
-  try {
-    pcFolders = fs
-      .readdirSync(CLIENT_PC_DIR, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name);
-  } catch (err) {
-    console.error('Erreur lecture clients_pc :', err);
-  }
-
-  // Merge
-  const merged = [];
-for (const c of dbClients) {
-  const folder = safeName(c.name);
-  const clientDir = path.join(CLIENT_PC_DIR, folder);
-  ensureDir(clientDir);
-
-  merged.push({
-    id: c.id,
-    name: c.name,
-    address: c.address,
-    postal_code: c.postal_code,
-    city: c.city,
-    email: c.email,
-    phone: c.phone,
-    folder,
-    source: 'db',
-  });
-}
-
-for (const folder of pcFolders) {
-  if (!dbMap.has(normalizeKey(folder))) {
-
-    merged.push({
-      id: null,
-      name: folder,
-      address: '',
-      postal_code: '',
-      city: '',
-      email: '',
-      phone: '',
-      folder,
-      source: 'pc',
-    });
-
-  }
-}
-
-  merged.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'fr', { sensitivity: 'base' }));
-  const clientCreateError = String(req.query.error || '').trim();
-  const clientCreateOpen = Boolean(clientCreateError);
-
-  const cards = merged.length
-    ? merged
-        .map(
-          (c) => `
-<div class="client-card-modern">
-
-  <a class="client-card-link"
-     href="/pc-folders/${encodeURIComponent(c.folder)}">
-
-    <div class="client-header">
-      <div class="client-name">
-        ${escHtml(c.name)}
-      </div>
-
-      <span class="client-source">
-        ${clientPageIcon(c.source === 'pc' ? 'folder' : 'database', 'client-source-icon')}
-        ${c.source === 'pc' ? 'PC' : 'DB'}
-      </span>
-    </div>
-
-    <div class="client-infos">
-
-      ${c.city ? `
-        <div>${clientPageIcon('building', 'client-info-icon')} ${escHtml(c.city)}</div>
-      ` : ''}
-
-      ${c.phone ? `
-        <div>${clientPageIcon('phone', 'client-info-icon')} ${escHtml(c.phone)}</div>
-      ` : ''}
-
-      ${c.email ? `
-        <div>${clientPageIcon('mail', 'client-info-icon')} ${escHtml(c.email)}</div>
-      ` : ''}
-
-    </div>
-
-  </a>
-
-  ${c.source === 'db' ? `
-  <form method="POST"
-        action="/clients/delete"
-        onsubmit="return confirm('Supprimer définitivement ce client ?');">
-
-    <input type="hidden" name="id" value="${c.id}">
-
-    <button class="client-delete-btn">
-      ${clientPageIcon('trash', 'client-delete-icon')}
-    </button>
-
-  </form>
-  ` : ''}
-
-</div>
-        `
-        )
-        .join('')
-    : `<div class="empty-state">Aucun client</div>`;
-
-  res.send(
-    pageTemplate(
-      req,
-      'Clients',
-      `
-      <div class="clients-page-modern">
-        <form method="POST" action="/clients" class="clients-create-card clients-create-collapsible ${clientCreateOpen ? 'is-open' : 'is-collapsed'}" data-clients-create-card>
-          <button type="button" class="clients-create-head clients-create-toggle" aria-expanded="${clientCreateOpen ? 'true' : 'false'}" aria-controls="client-create-panel" data-clients-create-toggle>
-            <span class="clients-create-title">
-              ${clientPageIcon('add', 'clients-title-icon')}
-              <h1>Nouveau client</h1>
-            </span>
-            <span class="clients-create-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>
-          </button>
-
-          <div class="clients-create-panel" id="client-create-panel" ${clientCreateOpen ? '' : 'hidden'} data-clients-create-panel>
-            ${clientCreateError ? `<p class="error">${escHtml(clientCreateError)}</p>` : ''}
-            <div class="clients-form-grid">
-              <label class="clients-field">
-                <span>Nom *</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('user')}
-                  <input name="name" required placeholder="Nom du client" />
-                </div>
-              </label>
-
-              <label class="clients-field">
-                <span>Email</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('mail')}
-                  <input name="email" type="email" placeholder="client@email.com" />
-                </div>
-              </label>
-
-              <label class="clients-field clients-field-wide">
-                <span>Adresse</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('location')}
-                  <input name="address" placeholder="Adresse" />
-                </div>
-              </label>
-
-              <label class="clients-field">
-                <span>Code postal</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('postal')}
-                  <input name="postal_code" placeholder="00000" />
-                </div>
-              </label>
-
-              <label class="clients-field">
-                <span>Ville</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('building')}
-                  <input name="city" placeholder="Ville" />
-                </div>
-              </label>
-
-              <label class="clients-field">
-                <span>Téléphone</span>
-                <div class="clients-input-shell">
-                  ${clientPageIcon('phone')}
-                  <input name="phone" placeholder="06…" />
-                </div>
-              </label>
-            </div>
-
-            <button class="clients-submit-btn" type="submit">
-              <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-              Ajouter le client
-            </button>
-          </div>
-        </form>
-
-        <section class="clients-list-card">
-          <div class="clients-list-head">
-            <div>
-              <h2>Clients</h2>
-              <span>${merged.length} au total</span>
-            </div>
-            <strong>${merged.length}</strong>
-          </div>
-
-          <div class="clients-search-shell">
-            ${clientPageIcon('search')}
-            <input id="clientSearch" class="search" placeholder="Rechercher un client…" autocomplete="off" />
-          </div>
-        </section>
-
-      <section class="cards-grid" id="clientsGrid">${cards}</section>
-      </div>
-
-      <script>
-        (function(){
-          const createCard = document.querySelector('[data-clients-create-card]');
-          if (createCard) {
-            const toggle = createCard.querySelector('[data-clients-create-toggle]');
-            const panel = createCard.querySelector('[data-clients-create-panel]');
-            if (toggle && panel) {
-              toggle.addEventListener('click', function(){
-                const isOpen = toggle.getAttribute('aria-expanded') === 'true';
-                toggle.setAttribute('aria-expanded', String(!isOpen));
-                if (isOpen) {
-                  createCard.classList.remove('is-open');
-                  createCard.classList.add('is-collapsed');
-                  panel.hidden = true;
-                } else {
-                  panel.hidden = false;
-                  window.requestAnimationFrame(function(){
-                    createCard.classList.add('is-open');
-                    createCard.classList.remove('is-collapsed');
-                  });
-                }
-              });
-            }
-          }
-
-          const input = document.getElementById('clientSearch');
-          const cards = document.querySelectorAll('.client-card-modern');
-          if (!input) return;
-          input.addEventListener('input', function(){
-            const q = (this.value||'').toLowerCase();
-            cards.forEach(card => {
-              const name = card.textContent.toLowerCase();
-              card.style.display = name.includes(q) ? '' : 'none';
-            });
-          });
-        })();
-      </script>
-      `
-    )
-  );
+const clientsService = createClientsService({
+  db,
+  clientsRoot: CLIENT_PC_DIR,
+  safeName,
+  normalizeKey,
+  joinPath: path.join,
+  listDirectoryEntries(folderPath) {
+    return fs.readdirSync(folderPath, { withFileTypes: true });
+  },
+  ensureDirectory: ensureDir
 });
-
-app.post('/clients', requireLogin, (req, res) => {
-  const name = String(req.body.name || '').trim();
-  if (!name) return res.status(400).send('Nom requis');
-
-  const address = String(req.body.address || '').trim();
-  const postal_code = String(req.body.postal_code || '').trim();
-  const city = String(req.body.city || '').trim();
-  const email = String(req.body.email || '').trim();
-  const phone = String(req.body.phone || '').trim();
-
-const existing = db
-  .prepare('SELECT id FROM clients WHERE LOWER(name) = LOWER(?)')
-  .get(name);
-
-
-  if (!existing) {
-    db.prepare(
-      `
-      INSERT INTO clients (name, address, postal_code, city, email, phone, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `
-    ).run(name, address || null, postal_code || null, city || null, email || null, phone || null, new Date().toISOString());
+const clientsController = createClientsController({
+  clientsService,
+  renderListView: renderClientsListView,
+  renderClientCard,
+  pageTemplate,
+  escapeHtml: escHtml,
+  clientPageIcon,
+  safeName
+});
+registerClientsRoutes(app, {
+  requireLogin,
+  handlers: {
+    list: clientsController.showClients,
+    create: clientsController.createClient,
+    show: clientsController.showClient,
+    delete: clientsController.deleteClient
   }
-
-  const folder = safeName(name);
-  ensureDir(path.join(CLIENT_PC_DIR, folder));
-
-  res.redirect('/clients');
-});
-
-// Fiche client (route basée sur le dossier PC)
-app.get('/clients/:client', requireLogin, (req, res) => {
-  const clientFolder = safeName(req.params.client);
-  res.redirect(`/pc-folders/${encodeURIComponent(clientFolder)}`);
-});
-app.post('/clients/delete', requireLogin, (req, res) => {
-
-  console.log(req.body);
-
-  db.prepare(`
-    DELETE FROM clients
-    WHERE id = ?
-  `).run(req.body.id);
-
-  res.redirect('/clients');
-
 });
 /* ===================== DOCUMENTS ENTRANTS ===================== */
 
