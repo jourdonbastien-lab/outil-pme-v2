@@ -68,7 +68,7 @@ const { createClientsService } = require('./services/clientsService');
 const { createClientsController } = require('./controllers/clientsController');
 const { renderClientsListView } = require('./views/clientsListView');
 const { renderClientCard } = require('./views/clientCardView');
-const { registerClientsRoutes } = require('./routes/clients');
+const { registerClientsRoutes, registerPcFoldersAliasRoute } = require('./routes/clients');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -7576,29 +7576,20 @@ app.post('/orders/suppliers/purchases/:purchaseId/status', requireLogin, (req, r
 
 /* ===================== PC FOLDERS (NAVIGATION) ===================== */
 
-app.get('/pc-folders', requireLogin, (req, res) => res.redirect('/clients'));
+registerPcFoldersAliasRoute(app, {
+  requireLogin,
+  redirectPcFoldersToClients: clientsController.redirectPcFoldersToClients
+});
 
 registerClientFolderRoutes(app, {
   requireLogin,
-  showClientFolders: (req, res) => clientFolderNavigationController.showClientFolders(req, res)
-});
-
-app.get('/pc-folders/:client/:order', requireLogin, (req, res) => {
-  return clientOrderFoldersController.showClientOrderRootFolder(req, res);
-});
-
-app.get('/pc-folders/:client/:order/:type', requireLogin, (req, res) => {
-  return clientOrderFoldersController.showClientOrderFolder(req, res);
-});
-
-app.post('/pc-folders/:client/:order/:type/upload', requireLogin, pcUpload.single('file'), (req, res) => {
-  const client = safeName(req.params.client);
-  const order = safeName(req.params.order);
-  const type = String(req.params.type || '').trim();
-
-  if (!req.file) return res.status(400).send('Aucun fichier reçu');
-
-  res.redirect(`/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}`);
+  uploadSingleFile: pcUpload.single('file'),
+  handlers: {
+    showClientFolders: (req, res) => clientFolderNavigationController.showClientFolders(req, res),
+    showClientOrderRootFolder: (req, res) => clientOrderFoldersController.showClientOrderRootFolder(req, res),
+    showClientOrderFolder: (req, res) => clientOrderFoldersController.showClientOrderFolder(req, res),
+    uploadClientOrderFolderFile: (req, res) => clientOrderFoldersController.uploadClientOrderFolderFile(req, res)
+  }
 });
 
 // ⚠️ Windows + sécurité : on re-sécurise le filename avant lecture disque
@@ -11445,7 +11436,8 @@ const clientOrderFoldersController = createClientOrderFoldersController({
     return db.prepare('SELECT * FROM measurements WHERE client_order_id = ? ORDER BY updated_at DESC, id DESC').all(orderId);
   },
   renderMeasurements: renderMeasurementCards,
-  chantierStatusOptions
+  chantierStatusOptions,
+  safeName
 });
 const clientOrdersController = createClientOrdersController({
   orderService: clientOrderService,

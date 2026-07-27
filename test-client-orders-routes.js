@@ -4,6 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const routesSource = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const serverSource = fs.readFileSync('server.js', 'utf8');
+const clientFolderRoutesSource = fs.readFileSync('routes/clientFolders.js', 'utf8');
 const controllerSource = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
 const { registerClientOrderRoutes } = require('./routes/clientOrders');
 
@@ -64,8 +65,8 @@ for (const route of registered) {
 }
 
 assert(!serverSource.includes("app.get('/orders/clients', requireLogin"), 'liste des commandes encore enregistrée dans server.js');
-assert(serverSource.includes("app.get('/pc-folders/:client/:order', requireLogin"), 'dossier commande absent');
-assert(serverSource.includes("app.get('/pc-folders/:client/:order/:type', requireLogin"), 'dossier Factures générique absent');
+assert(clientFolderRoutesSource.includes("app.get('/pc-folders/:client/:order', requireLogin"), 'dossier commande absent');
+assert(clientFolderRoutesSource.includes("app.get('/pc-folders/:client/:order/:type', requireLogin"), 'dossier Factures générique absent');
 assert(fs.readFileSync('controllers/clientOrderFoldersController.js', 'utf8').includes("type === 'Factures'"), 'branche Factures spécialisée absente');
 assert(serverSource.includes('registerClientOrderRoutes(app, {'));
 assert(serverSource.includes('clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot'));

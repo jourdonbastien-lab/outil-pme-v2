@@ -51,6 +51,12 @@ function response() {
 }
 {
   const res = response();
+  controller.redirectPcFoldersToClients({}, res);
+  assert.strictEqual(res.location, '/clients');
+  assert.strictEqual(res.code, 200);
+}
+{
+  const res = response();
   controller.deleteClient({ body: { id: '7' } }, res);
   assert.strictEqual(res.location, '/clients');
   assert(calls.some((call) => Array.isArray(call) && call[0] === 'delete' && call[1] === '7'));

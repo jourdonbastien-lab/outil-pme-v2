@@ -8,7 +8,7 @@ function createClientOrderFoldersController(dependencies) {
     pageTemplate, escapeHtml, clientPageIcon, pcFolderIcon,
     normalizePurchaseStatus, purchaseStatusClass, purchaseStatusOptions, formatDateLabel,
     ensureStandardSubfolders, workshopFolderTypes, listMeasurements, renderMeasurements,
-    chantierStatusOptions
+    chantierStatusOptions, safeName
   } = dependencies;
   if (!folderService) throw new TypeError('Service dossiers commandes manquant.');
   if (!hoursController) throw new TypeError('Contrôleur heures manquant.');
@@ -88,7 +88,15 @@ function createClientOrderFoldersController(dependencies) {
     return res.send(pageTemplate(req, `Commande : ${context.order}`, html));
   }
 
-  return { showClientOrderFolder, showClientOrderRootFolder };
+  function uploadClientOrderFolderFile(req, res) {
+    const client = safeName(req.params.client);
+    const order = safeName(req.params.order);
+    const type = String(req.params.type || '').trim();
+    if (!req.file) return res.status(400).send('Aucun fichier reçu');
+    return res.redirect(`/pc-folders/${encodeURIComponent(client)}/${encodeURIComponent(order)}/${encodeURIComponent(type)}`);
+  }
+
+  return { showClientOrderFolder, showClientOrderRootFolder, uploadClientOrderFolderFile };
 }
 
 module.exports = { createClientOrderFoldersController };

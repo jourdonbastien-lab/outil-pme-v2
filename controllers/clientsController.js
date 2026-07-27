@@ -50,13 +50,17 @@ function createClientsController(dependencies) {
     return res.redirect(`/pc-folders/${encodeURIComponent(clientFolder)}`);
   }
 
+  function redirectPcFoldersToClients(req, res) {
+    return res.redirect('/clients');
+  }
+
   function deleteClient(req, res) {
     logRequestBody(req.body);
     clientsService.deleteClient(req.body.id);
     return res.redirect('/clients');
   }
 
-  return { showClients, createClient, showClient, deleteClient };
+  return { showClients, createClient, showClient, redirectPcFoldersToClients, deleteClient };
 }
 
 module.exports = { createClientsController };
