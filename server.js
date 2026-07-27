@@ -69,6 +69,11 @@ const { createClientsController } = require('./controllers/clientsController');
 const { renderClientsListView } = require('./views/clientsListView');
 const { renderClientCard } = require('./views/clientCardView');
 const { registerClientsRoutes, registerPcFoldersAliasRoute } = require('./routes/clients');
+const { createQuotesService } = require('./services/quotesService');
+const { createQuotesController } = require('./controllers/quotesController');
+const { renderQuotesListView } = require('./views/quotesListView');
+const { renderQuoteCreateView } = require('./views/quoteCreateView');
+const { registerQuoteRoutes } = require('./routes/quotes');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -7695,288 +7700,35 @@ app.get('/pc-file-raw/:client/:order/:type/:file', requireLogin, (req, res) => {
 });
 /* ===================== DEVIS ===================== */
 
-// LISTE DEVIS
-app.get('/devis', requireLogin, (req, res) => {
-  const quotes = db.prepare('SELECT * FROM quotes ORDER BY id DESC').all();
-  const quoteTotals = db
-    .prepare(`
-      SELECT quote_id, COALESCE(SUM(total), 0) AS total_ht
-      FROM quote_lines
-      GROUP BY quote_id
-    `)
-    .all()
-    .reduce((map, row) => {
-      map.set(Number(row.quote_id), Number(row.total_ht || 0));
-      return map;
-    }, new Map());
-
-  const cards = quotes.length
-    ? quotes
-        .map(
-          (q) => {
-            const totalHt = quoteTotals.get(Number(q.id)) || 0;
-            const tva = round2(totalHt * (normalizeVatRate(q.vat_rate) / 100));
-            const totalTtc = round2(totalHt + tva);
-            const status = normalizeQuoteStatus(q.status);
-            return `
-        <article class="quote-list-card">
-          <a class="quote-list-link" href="/devis/${q.id}" aria-label="Ouvrir le devis ${q.id}"></a>
-          <div class="quote-list-head">
-            <span class="quote-number">#${q.id}</span>
-            <span class="quote-status-badge ${quoteStatusClass(status)}">${escHtml(status)}</span>
-          </div>
-          <h2>${escHtml(q.title || 'Sans titre')}</h2>
-          <div class="quote-list-client">${escHtml(q.client_name || 'Client non renseigné')}</div>
-          <div class="quote-list-meta">
-            <span>Date : ${escHtml(formatDateLabel(q.created_at))}</span>
-            <span>HT : ${totalHt.toFixed(2)} €</span>
-            <span>TTC : ${totalTtc.toFixed(2)} €</span>
-          </div>
-          <div class="quote-list-footer">
-            <strong>${totalTtc.toFixed(2)} € TTC</strong>
-            <span class="dash-card-button">Ouvrir</span>
-          </div>
-        </article>
-      `;
-          }
-        )
-        .join('')
-    : `<div class="empty-state">Aucun devis</div>`;
-
-  res.send(
-    pageTemplate(
-      req,
-      'Devis',
-      `
-      <div class="page-head quote-page-head app-dark-page-head">
-        <div class="clients-create-head">
-          ${clientPageIcon('quotes', 'clients-title-icon')}
-          <div>
-            <h1>Devis</h1>
-            <span>${quotes.length} devis au total</span>
-          </div>
-        </div>
-        <a class="btn btn-primary" href="/devis/new">+ Nouveau devis</a>
-      </div>
-
-      ${infoBar(
-        `<div class="kpi"><div class="kpi-label">Devis</div><div class="kpi-value">${quotes.length}</div></div>`,
-        ''
-      )}
-
-      <section class="quote-list-grid">${cards}</section>
-      `
-    )
-  );
+const quotesService = createQuotesService({
+  db,
+  clientsRoot: CLIENT_PC_DIR,
+  listDirectoryEntries(folderPath) {
+    return fs.readdirSync(folderPath, { withFileTypes: true });
+  },
+  roundAmount: round2,
+  normalizeVatRate,
+  normalizeQuoteStatus,
+  formatDateLabel
 });
-
-// PAGE NOUVEAU DEVIS
-app.get('/devis/new', requireLogin, (req, res) => {
-  // 1) Clients DB
-  let dbClients = [];
-  try {
-    dbClients = db
-      .prepare("SELECT name FROM clients WHERE name IS NOT NULL AND TRIM(name) != '' ORDER BY name COLLATE NOCASE")
-      .all()
-      .map((r) => String(r.name).trim());
-  } catch (e) {
-    console.error('Erreur lecture clients DB:', e);
-  }
-
-  // 2) Clients PC (dossiers)
-  let pcClients = [];
-  try {
-    pcClients = fs
-      .readdirSync(CLIENT_PC_DIR, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => String(e.name).trim())
-      .filter(Boolean);
-  } catch (e) {
-    console.error('Erreur lecture clients PC:', e);
-  }
-
-  // 3) Merge + dedupe
-  const seen = new Set();
-  const merged = [...dbClients, ...pcClients]
-    .map((n) => n.trim())
-    .filter(Boolean)
-    .filter((n) => {
-      const k = n.toLowerCase();
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    })
-    .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
-
-  const clientSelectOptions = [
-    '<option value="">Nouveau prospect</option>',
-    ...merged.map((c) => `<option value="${escHtml(c)}">${escHtml(c)}</option>`)
-  ].join('');
-
-  res.send(
-    pageTemplate(
-      req,
-      'Nouveau devis',
-      `
-      <div class="modern-page">
-        <form method="POST" action="/devis" class="clients-create-card modern-form-card quote-create-form" id="quoteForm">
-          <div class="clients-create-head">
-            ${clientPageIcon('quotes', 'clients-title-icon')}
-            <h1>Nouveau devis</h1>
-          </div>
-
-          <h2 class="modern-section-title">Informations du devis</h2>
-
-          <div class="modern-form-grid">
-            <label class="clients-field">
-              <span>Client</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('user')}
-                <select id="existing_client" name="existing_client">
-                  ${clientSelectOptions}
-                </select>
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Objet du devis *</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('postal')}
-                <input name="title" required placeholder="Ex : Escalier quart tournant" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Date du devis</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('calendar')}
-                <input name="quote_date" type="date" value="${isoDate()}" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Statut</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('database')}
-                <select name="status" disabled>
-                  <option>Brouillon</option>
-                </select>
-              </div>
-            </label>
-          </div>
-
-          <h2 class="modern-section-title">Nouveau prospect</h2>
-
-          <div class="modern-form-grid">
-            <label class="clients-field">
-              <span>Nom du prospect *</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('user')}
-                <input name="prospect_name" id="prospect_name" placeholder="Nom du prospect" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Email</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('mail')}
-                <input name="prospect_email" id="prospect_email" type="email" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Téléphone</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('phone')}
-                <input name="prospect_phone" id="prospect_phone" />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Adresse</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('location')}
-                <input name="prospect_address" id="prospect_address" />
-              </div>
-            </label>
-          </div>
-
-          <div class="modern-form-actions">
-            <button type="submit" class="clients-submit-btn">
-              <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-              Créer le devis
-            </button>
-            <a class="modern-cancel-link" href="/devis">Annuler</a>
-          </div>
-        </form>
-      </div>
-
-      <script>
-      (function(){
-        const existing = document.getElementById('existing_client');
-        const pName  = document.getElementById('prospect_name');
-        const pEmail = document.getElementById('prospect_email');
-        const pPhone = document.getElementById('prospect_phone');
-        const pAddr  = document.getElementById('prospect_address');
-
-        function setProspectEnabled(enabled){
-          [pName, pEmail, pPhone, pAddr].forEach(el => {
-            if (!el) return;
-            el.disabled = !enabled;
-            if (!enabled) el.value = '';
-          });
-        }
-
-        function sync(){
-          const hasExisting = (existing && existing.value ? existing.value : '').trim().length > 0;
-          setProspectEnabled(!hasExisting);
-        }
-
-        if (existing){
-          existing.addEventListener('input', sync);
-          existing.addEventListener('change', sync);
-        }
-        sync();
-      })();
-      </script>
-      `
-    )
-  );
+const quotesController = createQuotesController({
+  quotesService,
+  renderQuotesListView,
+  renderQuoteCreateView,
+  pageTemplate,
+  isoDate,
+  escapeHtml: escHtml,
+  quoteStatusClass,
+  clientPageIcon,
+  infoBar
 });
-
-// CREATION DEVIS
-app.post('/devis', requireLogin, (req, res) => {
-  const existing_client = String(req.body.existing_client || '').trim();
-  const title = String(req.body.title || '').trim();
-  const quoteDate = String(req.body.quote_date || '').trim() || isoDate();
-  if (!title) return res.status(400).send('❌ Titre du devis requis');
-
-  let clientName = existing_client;
-
-  if (!clientName) {
-    const pName = String(req.body.prospect_name || '').trim();
-    if (!pName) return res.status(400).send('❌ Nom du prospect requis');
-    clientName = pName;
+registerQuoteRoutes(app, {
+  requireLogin,
+  handlers: {
+    list: quotesController.showQuotesList,
+    createForm: quotesController.showQuoteCreateForm,
+    create: quotesController.createQuote
   }
-
-  const info = db
-    .prepare(
-      `
-    INSERT INTO quotes
-    (title, client_name, client_email, client_phone, client_address, status, vat_rate, created_at)
-    VALUES (?, ?, ?, ?, ?, 'Brouillon', 20, ?)
-  `
-    )
-    .run(
-      title,
-      clientName,
-      String(req.body.prospect_email || '').trim() || null,
-      String(req.body.prospect_phone || '').trim() || null,
-      String(req.body.prospect_address || '').trim() || null,
-      `${quoteDate}T00:00:00.000Z`
-    );
-
-  res.redirect('/devis/' + info.lastInsertRowid);
 });
 // PAGE DEVIS (EXISTANT) + RECHERCHE MATIÈRE
 app.post('/devis/:id/notes', requireLogin, (req, res) => {
