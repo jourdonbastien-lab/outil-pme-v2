@@ -81,6 +81,16 @@ const { registerQuoteLineEditRoutes, registerQuoteLineMutationRoutes } = require
 const { createQuoteSettingsService } = require('./services/quoteSettingsService');
 const { createQuoteSettingsController } = require('./controllers/quoteSettingsController');
 const { registerQuoteHeaderSettingsRoutes, registerQuoteFooterSettingsRoutes } = require('./routes/quoteSettings');
+const { createQuoteAttachmentsService } = require('./services/quoteAttachmentsService');
+const { createQuoteAttachmentsController } = require('./controllers/quoteAttachmentsController');
+const {
+  registerQuoteAttachmentUploadRoute,
+  registerQuoteAttachmentDeleteRoute,
+  registerQuoteAttachmentFileRoute
+} = require('./routes/quoteAttachments');
+const { createQuoteSketchesService } = require('./services/quoteSketchesService');
+const { createQuoteSketchesController } = require('./controllers/quoteSketchesController');
+const { registerQuoteSketchRoutes } = require('./routes/quoteSketches');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -7751,14 +7761,38 @@ const quoteLinesController = createQuoteLinesController({
   clientPageIcon,
   lineCostCategories: projectProfitability.LINE_COST_CATEGORIES
 });
+const quoteAttachmentsService = createQuoteAttachmentsService({
+  photosRoot: QUOTE_PHOTO_DIR,
+  safeResolveInside,
+  basename: path.basename,
+  fileExists: fs.existsSync,
+  deleteFile: fs.unlinkSync,
+  removeStoragePath: removeStoragePathIfExists
+});
+const quoteAttachmentsController = createQuoteAttachmentsController({
+  attachmentsService: quoteAttachmentsService,
+  uploadPhoto(req, res, callback) {
+    return quotePhotoUpload.single('photo')(req, res, callback);
+  }
+});
+const quoteSketchesService = createQuoteSketchesService({
+  db,
+  quoteSketchPath(quoteId) {
+    return sketchPath('quotes', quoteId);
+  },
+  saveQuoteSketchPng(quoteId, image) {
+    return saveSketchPng('quotes', quoteId, image);
+  },
+  fileExists: fs.existsSync,
+  removeStoragePath: removeStoragePathIfExists
+});
+const quoteSketchesController = createQuoteSketchesController({
+  sketchesService: quoteSketchesService
+});
 const quoteSettingsService = createQuoteSettingsService({
   db,
-  removeQuotePhotos(quoteId) {
-    removeStoragePathIfExists(safeResolveInside(QUOTE_PHOTO_DIR, String(quoteId)));
-  },
-  removeQuoteSketch(quoteId) {
-    removeStoragePathIfExists(sketchPath('quotes', quoteId));
-  }
+  removeQuotePhotos: quoteAttachmentsService.deleteAllQuotePhotos,
+  removeQuoteSketch: quoteSketchesService.deleteQuoteSketch
 });
 const quoteSettingsController = createQuoteSettingsController({
   quoteSettingsService,
@@ -7773,59 +7807,16 @@ registerQuoteHeaderSettingsRoutes(app, {
   }
 });
 // PAGE DEVIS (EXISTANT) + RECHERCHE MATIÈRE
-app.post('/devis/:id/photo', requireLogin, (req, res) => {
-  quotePhotoUpload.single('photo')(req, res, (err) => {
-    const quoteId = Number(req.params.id || 0);
-    if (!Number.isFinite(quoteId) || quoteId <= 0) return res.status(400).send('ID devis invalide');
-    console.log('UPLOAD DEVIS', { id: req.params.id, file: req.file, body: req.body });
-    if (err) {
-      console.error('Erreur upload fichier devis:', err);
-      return res.status(400).send('Impossible d’ajouter ce fichier au devis.');
-    }
-    if (!req.file) {
-      console.warn('UPLOAD DEVIS SANS FICHIER', { id: req.params.id, body: req.body });
-      return res.status(400).send('Aucun fichier reçu. Vérifiez que le champ fichier du formulaire est bien renseigné.');
-    }
-
-    const savedPath = req.file.path || safeResolveInside(QUOTE_PHOTO_DIR, String(quoteId), req.file.filename);
-    console.log('UPLOAD DEVIS FICHIER SAUVEGARDE', {
-      id: quoteId,
-      destination: req.file.destination,
-      filename: req.file.filename,
-      path: savedPath,
-      exists: fs.existsSync(savedPath),
-      size: req.file.size,
-    });
-
-    if (!fs.existsSync(savedPath)) {
-      return res.status(500).send('Le fichier a été reçu mais n’a pas été retrouvé sur le disque.');
-    }
-
-    res.redirect('/devis/' + quoteId);
-  });
+registerQuoteAttachmentUploadRoute(app, {
+  requireLogin,
+  handlers: { upload: quoteAttachmentsController.uploadQuotePhoto }
 });
 
-app.get('/sketches/quotes/:id.png', requireLogin, (req, res) => {
-  const quoteId = Number(req.params.id);
-  const quote = Number.isFinite(quoteId) && quoteId > 0
-    ? db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)
-    : null;
-  if (!quote) return res.status(404).send('Devis introuvable');
-  return sendSketch('quotes', quoteId, res);
-});
-
-app.post('/api/devis/:id/sketch', requireLogin, (req, res) => {
-  const quoteId = Number(req.params.id);
-  const quote = Number.isFinite(quoteId) && quoteId > 0
-    ? db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)
-    : null;
-  if (!quote) return res.status(404).json({ ok: false, error: 'Devis introuvable' });
-
-  try {
-    const filePath = saveSketchPng('quotes', quoteId, req.body?.image);
-    return res.json({ ok: true, path: filePath });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, error: error.message || 'Erreur sauvegarde croquis' });
+registerQuoteSketchRoutes(app, {
+  requireLogin,
+  handlers: {
+    serve: quoteSketchesController.serveQuoteSketch,
+    save: quoteSketchesController.saveQuoteSketch
   }
 });
 
@@ -9440,20 +9431,9 @@ window.initSketchPad && window.initSketchPad({
     )
   );
 });
-app.post('/devis/:id/photo/delete', requireLogin, (req, res) => {
-
-  const id = Number(req.params.id);
-  const photo = path.basename(req.body.photo || '');
-  if (!Number.isFinite(id) || id <= 0) return res.status(400).send('ID devis invalide');
-
-  const photoPath = safeResolveInside(QUOTE_PHOTO_DIR, String(id), photo);
-
-  if (fs.existsSync(photoPath)) {
-    fs.unlinkSync(photoPath);
-  }
-
-  res.redirect('/devis/' + id);
-
+registerQuoteAttachmentDeleteRoute(app, {
+  requireLogin,
+  handlers: { delete: quoteAttachmentsController.deleteQuotePhoto }
 });
 registerQuoteLineEditRoutes(app, {
   requireLogin,
@@ -9462,21 +9442,10 @@ registerQuoteLineEditRoutes(app, {
     update: quoteLinesController.updateQuoteLine
   }
 });
-app.get(
-  '/quote-photos/:id/:file',
+registerQuoteAttachmentFileRoute(app, {
   requireLogin,
-  (req, res) => {
-    const quoteId = Number(req.params.id || 0);
-    if (!Number.isFinite(quoteId) || quoteId <= 0) return res.status(400).send('ID devis invalide');
-
-    const filePath = safeResolveInside(QUOTE_PHOTO_DIR, String(quoteId), path.basename(req.params.file || ''));
-
-    if (!fs.existsSync(filePath)) return res.status(404).send('Fichier introuvable');
-
-    res.sendFile(filePath);
-
-  }
-);
+  handlers: { serve: quoteAttachmentsController.serveQuotePhoto }
+});
 registerQuoteLineMutationRoutes(app, {
   requireLogin,
   handlers: {

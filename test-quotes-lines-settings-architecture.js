@@ -10,15 +10,15 @@ for (const route of [
 ]) assert(!server.includes(route), route);
 for (const preserved of [
   "app.get('/devis/:id', requireLogin",
-  "app.post('/devis/:id/photo', requireLogin",
   "app.post('/devis/:id/ai-costs', requireLogin",
   "app.post('/devis/:id/accept', requireLogin"
 ]) assert(server.includes(preserved), preserved);
+assert(fs.readFileSync('routes/quoteAttachments.js', 'utf8').includes("app.post('/devis/:id/photo', requireLogin"));
 assert(server.includes('registerQuoteRoutes(app'));
-assert(server.indexOf('registerQuoteHeaderSettingsRoutes(app') < server.indexOf("app.post('/devis/:id/photo'"));
-assert(server.indexOf("app.post('/devis/:id/photo/delete'") < server.indexOf('registerQuoteLineEditRoutes(app'));
-assert(server.indexOf('registerQuoteLineEditRoutes(app') < server.indexOf("'/quote-photos/:id/:file'"));
-assert(server.indexOf("'/quote-photos/:id/:file'") < server.indexOf('registerQuoteLineMutationRoutes(app'));
+assert(server.indexOf('registerQuoteHeaderSettingsRoutes(app') < server.indexOf('registerQuoteAttachmentUploadRoute(app'));
+assert(server.indexOf('registerQuoteAttachmentDeleteRoute(app') < server.indexOf('registerQuoteLineEditRoutes(app'));
+assert(server.indexOf('registerQuoteLineEditRoutes(app') < server.indexOf('registerQuoteAttachmentFileRoute(app'));
+assert(server.indexOf('registerQuoteAttachmentFileRoute(app') < server.indexOf('registerQuoteLineMutationRoutes(app'));
 assert(server.indexOf('registerQuoteLineMutationRoutes(app') < server.indexOf("app.post('/devis/:id/accept'"));
 assert(server.indexOf("app.post('/devis/:id/accept'") < server.indexOf('registerQuoteFooterSettingsRoutes(app'));
 for (const file of [
