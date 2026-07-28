@@ -74,6 +74,13 @@ const { createQuotesController } = require('./controllers/quotesController');
 const { renderQuotesListView } = require('./views/quotesListView');
 const { renderQuoteCreateView } = require('./views/quoteCreateView');
 const { registerQuoteRoutes } = require('./routes/quotes');
+const { createQuoteLinesService } = require('./services/quoteLinesService');
+const { createQuoteLinesController } = require('./controllers/quoteLinesController');
+const { renderQuoteLineEditView } = require('./views/quoteLineEditView');
+const { registerQuoteLineEditRoutes, registerQuoteLineMutationRoutes } = require('./routes/quoteLines');
+const { createQuoteSettingsService } = require('./services/quoteSettingsService');
+const { createQuoteSettingsController } = require('./controllers/quoteSettingsController');
+const { registerQuoteHeaderSettingsRoutes, registerQuoteFooterSettingsRoutes } = require('./routes/quoteSettings');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -7730,46 +7737,42 @@ registerQuoteRoutes(app, {
     create: quotesController.createQuote
   }
 });
-// PAGE DEVIS (EXISTANT) + RECHERCHE MATIÈRE
-app.post('/devis/:id/notes', requireLogin, (req, res) => {
-
-  db.prepare(`
-    UPDATE quotes
-    SET notes = ?
-    WHERE id = ?
-  `).run(
-    req.body.notes || '',
-    req.params.id
-  );
-
-  res.redirect('/devis/' + req.params.id);
-
+const quoteLinesService = createQuoteLinesService({
+  db,
+  roundAmount: round2,
+  calculateSheetWeight: calcSheetKg,
+  detectLineCostCategory: projectProfitability.detectLineCostCategory
 });
-
-app.post('/devis/:id/status', requireLogin, (req, res) => {
-  const quoteId = Number(req.params.id);
-  if (!Number.isFinite(quoteId) || quoteId <= 0) return res.status(400).send('ID devis invalide');
-
-  const status = normalizeQuoteStatus(req.body.status);
-  db.prepare('UPDATE quotes SET status = ? WHERE id = ?').run(status, quoteId);
-
-  res.redirect('/devis/' + quoteId);
+const quoteLinesController = createQuoteLinesController({
+  quoteLinesService,
+  renderQuoteLineEditView,
+  pageTemplate,
+  escapeHtml: escHtml,
+  clientPageIcon,
+  lineCostCategories: projectProfitability.LINE_COST_CATEGORIES
 });
-
-app.post('/devis/:id/vat', requireLogin, (req, res) => {
-  const quoteId = Number(req.params.id);
-  if (!Number.isFinite(quoteId) || quoteId <= 0) return res.status(400).send('ID devis invalide');
-
-  const requestedRate = Number(req.body.vat_rate);
-  if (requestedRate !== 10 && requestedRate !== 20) {
-    return res.status(400).send('TVA invalide');
+const quoteSettingsService = createQuoteSettingsService({
+  db,
+  removeQuotePhotos(quoteId) {
+    removeStoragePathIfExists(safeResolveInside(QUOTE_PHOTO_DIR, String(quoteId)));
+  },
+  removeQuoteSketch(quoteId) {
+    removeStoragePathIfExists(sketchPath('quotes', quoteId));
   }
-
-  db.prepare('UPDATE quotes SET vat_rate = ? WHERE id = ?').run(requestedRate, quoteId);
-
-  res.redirect('/devis/' + quoteId);
 });
-
+const quoteSettingsController = createQuoteSettingsController({
+  quoteSettingsService,
+  normalizeQuoteStatus
+});
+registerQuoteHeaderSettingsRoutes(app, {
+  requireLogin,
+  handlers: {
+    notes: quoteSettingsController.updateQuoteNotes,
+    status: quoteSettingsController.updateQuoteStatus,
+    vat: quoteSettingsController.updateQuoteVat
+  }
+});
+// PAGE DEVIS (EXISTANT) + RECHERCHE MATIÈRE
 app.post('/devis/:id/photo', requireLogin, (req, res) => {
   quotePhotoUpload.single('photo')(req, res, (err) => {
     const quoteId = Number(req.params.id || 0);
@@ -9452,126 +9455,12 @@ app.post('/devis/:id/photo/delete', requireLogin, (req, res) => {
   res.redirect('/devis/' + id);
 
 });
-app.get('/devis/line/:id/edit', requireLogin, (req, res) => {
-
-  const line = db
-    .prepare('SELECT * FROM quote_lines WHERE id = ?')
-    .get(req.params.id);
-  if (!line) {
-    return res.status(404).send('Ligne introuvable');
+registerQuoteLineEditRoutes(app, {
+  requireLogin,
+  handlers: {
+    editForm: quoteLinesController.showQuoteLineEditForm,
+    update: quoteLinesController.updateQuoteLine
   }
-
-  res.send(pageTemplate(req, 'Modifier la ligne', `
-    <main class="quote-line-editor-page">
-      <header class="quote-line-editor-hero">
-        <a href="/devis/${line.quote_id}" class="quote-line-editor-back" aria-label="Retour au devis">${clientPageIcon('arrow-left')}<span>Retour</span></a>
-        <span class="quote-line-editor-hero-icon">${clientPageIcon('quotes')}</span>
-        <div><p>Devis #${line.quote_id}</p><h1>Modifier la ligne</h1><span>${escHtml(line.label || 'Sans libellé')}</span></div>
-      </header>
-      <form method="POST" action="/devis/line/${line.id}/edit" id="quoteLineEditForm" class="quote-line-editor-card">
-        <section class="quote-line-editor-section">
-          <div class="quote-line-editor-section-head"><h2>Informations générales</h2><p>Identification et classement de la ligne.</p></div>
-          <div class="quote-line-editor-grid">
-            <label class="quote-line-editor-field field-wide"><span>Libellé</span><input name="label" value="${escHtml(line.label || '')}" required autocomplete="off"></label>
-            <label class="quote-line-editor-field field-wide"><span>Catégorie de coût</span><select name="cost_category"><option value="">Détection automatique</option>${projectProfitability.LINE_COST_CATEGORIES.map((category) => `<option value="${escHtml(category)}" ${line.cost_category === category ? 'selected' : ''}>${escHtml(category)}</option>`).join('')}</select><small>Laissez vide pour utiliser la détection automatique.</small></label>
-          </div>
-        </section>
-        <section class="quote-line-editor-section">
-          <div class="quote-line-editor-section-head"><h2>Quantité</h2></div>
-          <div class="quote-line-editor-grid">
-            <label class="quote-line-editor-field"><span>Quantité</span><input name="qty" type="number" inputmode="decimal" min="0.01" step="0.01" value="${escHtml(String(line.qty))}" required></label>
-            <label class="quote-line-editor-field"><span>Unité</span><input name="unit" value="${escHtml(line.unit || '')}" readonly><small>L’unité existante est conservée.</small></label>
-          </div>
-        </section>
-        <section class="quote-line-editor-section">
-          <div class="quote-line-editor-section-head"><h2>Coût d’achat</h2><p>Données internes utilisées par la rentabilité.</p></div>
-          <div class="quote-line-editor-grid">
-            <label class="quote-line-editor-field"><span>Prix d’achat unitaire</span><span class="quote-line-editor-input-unit"><input name="cost_unit" type="number" inputmode="decimal" min="0" step="0.01" value="${line.cost_unit == null ? '' : escHtml(String(line.cost_unit))}"><b>€</b></span><small>Coût réel payé par unité.</small></label>
-            <label class="quote-line-editor-field"><span>Coût total explicite</span><span class="quote-line-editor-input-unit"><input name="cost_total" type="number" inputmode="decimal" min="0" step="0.01" value="${line.cost_total == null ? '' : escHtml(String(line.cost_total))}"><b>€</b></span><small>Prioritaire lorsqu’il est renseigné.</small></label>
-          </div>
-        </section>
-        <section class="quote-line-editor-section">
-          <div class="quote-line-editor-section-head"><h2>Règle de vente</h2><p>Le prix de vente reste calculé avec la formule actuelle du devis.</p></div>
-          <div class="quote-line-editor-grid">
-            <label class="quote-line-editor-field"><span>Marge</span><span class="quote-line-editor-input-unit"><input name="margin_pct" type="number" inputmode="decimal" step="0.1" value="${line.margin_pct == null ? '' : escHtml(String(line.margin_pct))}"><b>%</b></span><small>Pourcentage appliqué au prix d’achat.</small></label>
-            <label class="quote-line-editor-field"><span>Coefficient</span><input name="coefficient" type="number" inputmode="decimal" min="0.01" step="0.01" value="${line.coefficient == null ? '' : escHtml(String(line.coefficient))}"><small>Multiplicateur enregistré pour la vente.</small></label>
-            <label class="quote-line-editor-field field-wide"><span>Prix de vente unitaire</span><span class="quote-line-editor-input-unit"><input name="unit_price" type="number" inputmode="decimal" min="0" step="0.01" value="${escHtml(String(line.unit_price))}" required><b>€</b></span></label>
-          </div>
-        </section>
-        <section class="quote-line-editor-section quote-line-editor-labor">
-          <div class="quote-line-editor-section-head"><h2>Main-d’œuvre</h2><p>À renseigner uniquement pour une ligne de temps de travail.</p></div>
-          <div class="quote-line-editor-grid">
-            <label class="quote-line-editor-field"><span>Heures</span><span class="quote-line-editor-input-unit"><input name="hours" type="number" inputmode="decimal" min="0" step="0.01" value="${line.hours == null ? '' : escHtml(String(line.hours))}"><b>h</b></span></label>
-            <label class="quote-line-editor-field"><span>Coût horaire interne</span><span class="quote-line-editor-input-unit"><input name="hourly_cost" type="number" inputmode="decimal" min="0" step="0.01" value="${line.hourly_cost == null ? '' : escHtml(String(line.hourly_cost))}"><b>€/h</b></span><small>Utilisé pour calculer le coût de la main-d’œuvre.</small></label>
-          </div>
-        </section>
-        <aside class="quote-line-editor-summary" aria-live="polite"><h2>Synthèse</h2><dl><div><dt>Coût d’achat total</dt><dd data-line-summary-cost>Non calculable</dd></div><div><dt>Prix de vente HT</dt><dd data-line-summary-sale>Non calculable</dd></div><div><dt>Marge estimée</dt><dd data-line-summary-margin>Non calculable</dd></div><div><dt>Marge sur vente</dt><dd data-line-summary-rate>Non calculable</dd></div></dl></aside>
-        <div class="quote-line-editor-actions"><a href="/devis/${line.quote_id}" class="modern-secondary-btn">Annuler</a><button type="submit" class="clients-submit-btn" data-line-save>Enregistrer</button></div>
-      </form>
-    </main>
-    <script>(function(){var form=document.getElementById('quoteLineEditForm');if(!form)return;var cost=form.elements.cost_unit;var totalCost=form.elements.cost_total;var margin=form.elements.margin_pct;var price=form.elements.unit_price;var qty=form.elements.qty;var hours=form.elements.hours;var hourly=form.elements.hourly_cost;var save=form.querySelector('[data-line-save]');var euro=new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'});function number(input){if(!input||input.value==='')return null;var value=Number(input.value);return Number.isFinite(value)?value:null;}function updatePrice(){if(cost.value==='')return;var c=Number(cost.value);var m=margin.value===''?0:Number(margin.value);if(Number.isFinite(c)&&Number.isFinite(m))price.value=(c*(1+m/100)).toFixed(2);}function updateSummary(){var q=number(qty);var unitCost=number(cost);var explicitCost=number(totalCost);var h=number(hours);var rate=number(hourly);var unitSale=number(price);var purchase=explicitCost!==null?explicitCost:(unitCost!==null&&q!==null?unitCost*q:(h!==null&&rate!==null?h*rate:null));var sale=unitSale!==null&&q!==null?unitSale*q:null;var estimatedMargin=purchase!==null&&sale!==null?sale-purchase:null;var marginRate=estimatedMargin!==null&&sale>0?estimatedMargin/sale*100:null;form.querySelector('[data-line-summary-cost]').textContent=purchase===null?'Non calculable':euro.format(purchase);form.querySelector('[data-line-summary-sale]').textContent=sale===null?'Non calculable':euro.format(sale);form.querySelector('[data-line-summary-margin]').textContent=estimatedMargin===null?'Non calculable':euro.format(estimatedMargin);form.querySelector('[data-line-summary-rate]').textContent=marginRate===null?'Non calculable':marginRate.toFixed(2)+' %';}cost.addEventListener('input',function(){updatePrice();updateSummary();});margin.addEventListener('input',function(){updatePrice();updateSummary();});[totalCost,price,qty,hours,hourly].forEach(function(input){input.addEventListener('input',updateSummary);});form.addEventListener('submit',function(){save.disabled=true;save.setAttribute('aria-busy','true');save.textContent='Enregistrement…';});updateSummary();})();</script>
-  `));
-
-});
-app.post('/devis/line/:id/edit', requireLogin, (req, res) => {
-
-  const line = db
-    .prepare('SELECT * FROM quote_lines WHERE id = ?')
-    .get(req.params.id);
-  if (!line) return res.status(404).send('Ligne introuvable');
-
-  const qty = Number(req.body.qty || 0);
-  const pu = Number(req.body.unit_price || 0);
-  if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(pu) || pu < 0) return res.status(400).send('Quantité ou prix de vente invalide');
-  const costUnitRaw = String(req.body.cost_unit ?? '').trim();
-  const costUnit = costUnitRaw === '' ? null : Number(costUnitRaw.replace(',', '.'));
-  const optionalBodyNumber = (name) => { const raw = String(req.body[name] ?? '').trim(); return raw === '' ? null : Number(raw.replace(',', '.')); };
-  const marginPct = optionalBodyNumber('margin_pct');
-  const coefficient = optionalBodyNumber('coefficient');
-  const costTotal = optionalBodyNumber('cost_total');
-  const hours = optionalBodyNumber('hours');
-  const hourlyCost = optionalBodyNumber('hourly_cost');
-  const costCategory = String(req.body.cost_category || '').trim();
-  if (costUnit !== null && (!Number.isFinite(costUnit) || costUnit < 0)) return res.status(400).send('Coût unitaire invalide');
-  for (const [label, value] of [['marge', marginPct], ['coefficient', coefficient], ['coût total', costTotal], ['heures', hours], ['coût horaire', hourlyCost]]) {
-    if (value !== null && (!Number.isFinite(value) || (label !== 'marge' && value < 0))) return res.status(400).send(`${label} invalide`);
-  }
-  if (costCategory && !projectProfitability.LINE_COST_CATEGORIES.includes(costCategory)) return res.status(400).send('Catégorie de coût invalide');
-
-  db.prepare(`
-    UPDATE quote_lines
-    SET
-      label = ?,
-      qty = ?,
-      unit_price = ?,
-      total = ?,
-      cost_unit = ?,
-      cost_total = ?,
-      margin_pct = ?,
-      coefficient = ?,
-      hours = ?,
-      hourly_cost = ?,
-      cost_category = ?,
-      cost_source = ?
-    WHERE id = ?
-  `).run(
-    req.body.label,
-    qty,
-    pu,
-    qty * pu,
-    costUnit,
-    costTotal,
-    marginPct,
-    coefficient,
-    hours,
-    hourlyCost,
-    costCategory || null,
-    [costUnit, costTotal, marginPct, coefficient, hours, hourlyCost].every((value) => value === null) ? null : 'modification de la ligne',
-    req.params.id
-  );
-
-  res.redirect('/devis/' + line.quote_id);
-
 });
 app.get(
   '/quote-photos/:id/:file',
@@ -9588,118 +9477,13 @@ app.get(
 
   }
 );
-// AJOUT LIGNE MANUELLE
-app.post('/devis/line', requireLogin, (req, res) => {
-  const quote_id = Number(req.body.quote_id);
-  const category = String(req.body.category || '').trim();
-  const label = String(req.body.label || '').trim();
-  const unit = String(req.body.unit || '').trim();
-  const qty = Number(req.body.qty || 0);
-  const unit_price = Number(req.body.unit_price || 0);
-  const costUnitRaw = String(req.body.cost_unit ?? '').trim();
-  const costUnit = costUnitRaw === '' ? null : Number(costUnitRaw.replace(',', '.'));
-  const lineMarginRaw = String(req.body.margin_pct ?? '').trim();
-  const lineMargin = lineMarginRaw === '' ? null : Number(lineMarginRaw.replace(',', '.'));
-  const optionalLineNumber = (name) => { const raw = String(req.body[name] ?? '').trim(); return raw === '' ? null : Number(raw.replace(',', '.')); };
-  const coefficient = optionalLineNumber('coefficient');
-  const costTotal = optionalLineNumber('cost_total');
-  const submittedHours = optionalLineNumber('hours');
-  const submittedHourlyCost = optionalLineNumber('hourly_cost');
-  const costCategory = String(req.body.cost_category || '').trim();
-  const hasLineCostInput = [costUnit, costTotal, lineMargin, coefficient, submittedHours, submittedHourlyCost].some((value) => value !== null);
-  const costSource = String(req.body.cost_source || (hasLineCostInput ? 'saisie de la ligne' : '')).trim();
-
-  if (!quote_id || !label || !unit || !Number.isFinite(qty) || !Number.isFinite(unit_price) || qty <= 0 || unit_price <= 0) {
-    return res.status(400).send('Données ligne invalides');
+registerQuoteLineMutationRoutes(app, {
+  requireLogin,
+  handlers: {
+    create: quoteLinesController.createQuoteLine,
+    delete: quoteLinesController.deleteQuoteLine,
+    createMaterial: quoteLinesController.createMaterialQuoteLine
   }
-  if ((costUnit !== null && (!Number.isFinite(costUnit) || costUnit < 0)) || (lineMargin !== null && !Number.isFinite(lineMargin))) return res.status(400).send('Coût ou marge de ligne invalide');
-  for (const value of [coefficient, costTotal, submittedHours, submittedHourlyCost]) if (value !== null && (!Number.isFinite(value) || value < 0)) return res.status(400).send('Donnée de coût invalide');
-
-  const total = round2(qty * unit_price);
-
-  db.prepare(
-    `
-    INSERT INTO quote_lines (quote_id, category, label, qty, unit, unit_price, total, cost_unit, cost_total, margin_pct, coefficient, hours, hourly_cost, cost_category, cost_source, position, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `
-  ).run(quote_id, category || null, label, qty, unit, unit_price, total, costUnit, costTotal, lineMargin, coefficient,
-    submittedHours ?? (['h', 'heure', 'heures'].includes(unit.toLowerCase()) ? qty : null),
-    submittedHourlyCost ?? (['h', 'heure', 'heures'].includes(unit.toLowerCase()) ? costUnit : null),
-    costCategory || null, costSource || null, 0, new Date().toISOString());
-
-  res.redirect('/devis/' + quote_id);
-});
-
-// SUPPRIMER LIGNE
-app.post('/devis/line/delete', requireLogin, (req, res) => {
-  const id = Number(req.body.id);
-  const quote_id = Number(req.body.quote_id);
-  if (!id || !quote_id) return res.status(400).send('Paramètres invalides');
-
-  db.prepare('DELETE FROM quote_lines WHERE id = ? AND quote_id = ?').run(id, quote_id);
-  res.redirect('/devis/' + quote_id);
-});
-
-// AJOUT LIGNE MATIERE (depuis répertoire)
-app.post('/devis/line/material', requireLogin, (req, res) => {
-  const quote_id = Number(req.body.quote_id);
-  const material_id = Number(req.body.material_id);
-  const category = String(req.body.category || 'Matière').trim();
-
-  if (!quote_id || !material_id) return res.status(400).send('Paramètres invalides');
-
-  const m = db.prepare('SELECT * FROM materials WHERE id = ?').get(material_id);
-  if (!m) return res.status(404).send('Matière introuvable');
-
-  const type = String(m.type || '');
-  const n = (x) => Number(x || 0) || 0;
-
-  let label = m.name || 'Matière';
-  let qty = 0;
-  let unit = m.unit || '';
-  const unit_price = Number(m.price || 0);
-
-  if (type === 'tube') {
-    const len_m = n(req.body.len_m);
-    if (len_m <= 0) return res.status(400).send('Longueur (m) requise');
-    qty = len_m;
-    unit = 'm';
-  } else if (type === 'beam') {
-    const len_m = n(req.body.len_m);
-    const kgpm = n(m.kg_per_m);
-    if (len_m <= 0) return res.status(400).send('Longueur (m) requise');
-    if (kgpm <= 0) return res.status(400).send('kg/m manquant dans le répertoire');
-    qty = len_m * kgpm;
-    unit = 'kg';
-    label = `${m.name} (${len_m.toFixed(2)} m)`;
-  } else if (type === 'sheet') {
-    const th = n(req.body.th_mm);
-    const w = n(req.body.w_mm);
-    const l = n(req.body.l_mm);
-    const dens = n(m.density) || 7.85;
-
-    if (th <= 0 || w <= 0 || l <= 0) return res.status(400).send('Dimensions tôle requises');
-
-    qty = calcSheetKg({ th_mm: th, w_mm: w, l_mm: l, density: dens });
-    unit = 'kg';
-    label = `${m.name} ${th}mm (${w}x${l})`;
-  } else {
-    return res.status(400).send('Type matière invalide (tube/beam/sheet)');
-  }
-
-  if (qty <= 0 || unit_price <= 0) return res.status(400).send('Quantité ou prix invalide');
-
-  const total = round2(qty * unit_price);
-
-  db.prepare(
-    `
-    INSERT INTO quote_lines (quote_id, category, label, qty, unit, unit_price, total, cost_unit, cost_category, cost_source, position, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `
-  ).run(quote_id, category || null, label, qty, unit, unit_price, total, unit_price,
-    projectProfitability.detectLineCostCategory({ category, label }), 'répertoire matières', 0, new Date().toISOString());
-
-  res.redirect('/devis/' + quote_id);
 });
 
 // ACCEPTER DEVIS
@@ -9861,33 +9645,12 @@ console.log('orderTitle =', orderTitle);
   }
 });
 
-app.post('/devis/:id/margin', requireLogin, (req, res) => {
-  const quoteId = Number(req.params.id);
-  const margin = Number(req.body.margin_pct || 0);
-
-  if (!Number.isFinite(quoteId) || quoteId <= 0) return res.status(400).send('ID devis invalide');
-  if (!Number.isFinite(margin) || margin < 0) return res.status(400).send('Marge invalide');
-
-  db.prepare('UPDATE quotes SET margin_pct = ? WHERE id = ?').run(margin, quoteId);
-
-  res.redirect('/devis/' + quoteId);
-});
-
-// SUPPRIMER UN DEVIS (et ses lignes)
-app.post('/devis/:id/delete', requireLogin, (req, res) => {
-  const quoteId = Number(req.params.id);
-  if (!quoteId) return res.status(400).send('ID devis invalide');
-
-  const quote = db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId);
-  if (!quote) return res.status(404).send('Devis introuvable');
-
-  db.prepare('DELETE FROM quote_lines WHERE quote_id = ?').run(quoteId);
-  db.prepare('DELETE FROM quotes WHERE id = ?').run(quoteId);
-
-  removeStoragePathIfExists(safeResolveInside(QUOTE_PHOTO_DIR, String(quoteId)));
-  removeStoragePathIfExists(sketchPath('quotes', quoteId));
-
-  res.redirect('/devis');
+registerQuoteFooterSettingsRoutes(app, {
+  requireLogin,
+  handlers: {
+    margin: quoteSettingsController.updateQuoteMargin,
+    delete: quoteSettingsController.deleteQuote
+  }
 });
 
 /* ===================== MATIÈRES ===================== */
