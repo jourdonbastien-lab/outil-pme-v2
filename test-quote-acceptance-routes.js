@@ -1,0 +1,11 @@
+'use strict';
+const assert = require('assert');
+const { registerQuoteAcceptanceRoute } = require('./routes/quoteAcceptance');
+const calls = [];
+const app = { post: (...args) => calls.push(args) };
+const requireLogin = () => {};
+const accept = () => {};
+registerQuoteAcceptanceRoute(app, { requireLogin, handlers: { accept } });
+assert.strictEqual(calls.length, 1);
+assert.deepStrictEqual(calls[0], ['/devis/:id/accept', requireLogin, accept]);
+console.log('OK - route acceptation devis');

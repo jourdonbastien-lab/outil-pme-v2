@@ -91,6 +91,9 @@ const {
 const { createQuoteSketchesService } = require('./services/quoteSketchesService');
 const { createQuoteSketchesController } = require('./controllers/quoteSketchesController');
 const { registerQuoteSketchRoutes } = require('./routes/quoteSketches');
+const { createQuoteAcceptanceService } = require('./services/quoteAcceptanceService');
+const { createQuoteAcceptanceController } = require('./controllers/quoteAcceptanceController');
+const { registerQuoteAcceptanceRoute } = require('./routes/quoteAcceptance');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -7798,6 +7801,25 @@ const quoteSettingsController = createQuoteSettingsController({
   quoteSettingsService,
   normalizeQuoteStatus
 });
+const quoteAcceptanceService = createQuoteAcceptanceService({
+  db,
+  fs,
+  path,
+  clientsRoot: CLIENT_PC_DIR,
+  safeName,
+  uniqueFolder,
+  ensureDir,
+  ensureStandardSubfolders,
+  round2,
+  isoDate,
+  parseOptionalVatRate,
+  detectWorkCategory: projectProfitability.detectWorkCategory,
+  saveProjectForecast,
+  importMissingQuoteCostLines
+});
+const quoteAcceptanceController = createQuoteAcceptanceController({
+  acceptanceService: quoteAcceptanceService
+});
 registerQuoteHeaderSettingsRoutes(app, {
   requireLogin,
   handlers: {
@@ -9456,162 +9478,9 @@ registerQuoteLineMutationRoutes(app, {
 });
 
 // ACCEPTER DEVIS
-app.post('/devis/:id/accept', requireLogin, (req, res) => {
-
-  try {
-
-    const quoteId = Number(req.params.id);
-
-    const lines = db.prepare(`
-      SELECT *
-      FROM quote_lines
-      WHERE quote_id = ?
-    `).all(quoteId);
-    console.log('LIGNES DU DEVIS :');
-console.log(JSON.stringify(lines, null, 2));
-
-let plannedHours = 0;
-
-for (const line of lines) {
-
-  const label =
-    String(line.label || '').toLowerCase();
-
-  if (label.includes('main')) {
-    plannedHours += Number(line.qty || 0);
-  }
-
-}
-
-    const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(quoteId);
-    if (!quote) return res.status(404).send('Devis introuvable');
-
-    const structuredPlannedHours = Number(quote.heures_etude || 0)
-      + Number(quote.heures_atelier || 0)
-      + Number(quote.heures_pose || 0);
-    if (structuredPlannedHours > 0) plannedHours = structuredPlannedHours;
-
-    const clientName = String(quote.client_name || '').trim();
-    if (!clientName) return res.status(400).send('Client manquant sur le devis');
-
-    const orderTitle = String(quote.title || '').trim();
-    if (!orderTitle) return res.status(400).send('Titre du devis manquant');
-
-    const safeClient = safeName(clientName);
-
-    // Total du devis (serveur)
-   const totalLines = db.prepare(
-  'SELECT total FROM quote_lines WHERE quote_id = ?'
-).all(quoteId);
-    const total = totalLines.reduce((s, l) => s + (Number(l.total) || 0), 0);
-
-    const marginPct = Number(quote.margin_pct ?? 0);
-    const totalWithMargin = round2(total * (1 + marginPct / 100));
-
-    // 1) Client DB (création si absent)
-const existing = db
-  .prepare('SELECT id FROM clients WHERE LOWER(name) = LOWER(?)')
-  .get(clientName);
-
-    if (!existing) {
-      db.prepare(
-        `
-        INSERT INTO clients (name, email, phone, address, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        `
-      ).run(
-        clientName,
-        quote.client_email || null,
-        quote.client_phone || null,
-        quote.client_address || null,
-        new Date().toISOString()
-      );
-    }
-
-    // 2) Dossier client PC
-    const clientDir = path.join(CLIENT_PC_DIR, safeClient);
-    ensureDir(clientDir);
-
-    // 3) Dossier commande = titre devis (unique)
-    const safeOrder = uniqueFolder(clientDir, safeName(orderTitle));
-    const orderDir = path.join(clientDir, safeOrder);
-    ensureDir(orderDir);
-    ensureStandardSubfolders(orderDir);
-const devisDir = path.join(orderDir, 'Devis');
-
-
-let descriptif = '';
-
-descriptif += `CLIENT : ${clientName}\n`;
-descriptif += `PROJET : ${orderTitle}\n`;
-descriptif += `DATE : ${new Date().toLocaleDateString('fr-FR')}\n\n`;
-
-descriptif += 'DESCRIPTIF DU DEVIS\n';
-descriptif += '===================\n\n';
-
-for (const line of lines) {
-
-  descriptif += `${line.qty || 1} x ${line.label || ''}`;
-
-  if (line.unit_price) {
-    descriptif += ` - ${line.unit_price} €`;
-  }
-
-  descriptif += '\n';
-}
-
-descriptif += '\n';
-descriptif += `TOTAL : ${totalWithMargin.toFixed(2)} €\n`;
-
-fs.writeFileSync(
-  path.join(devisDir, 'Descriptif devis.txt'),
-  descriptif,
-  'utf8'
-);
-    // 4) Commande DB (prix = total avec marge)
-    console.log('HEURES PREVUES =', plannedHours);
-    console.log('quoteId =', quoteId);
-console.log('plannedHours =', plannedHours);
-console.log('clientName =', clientName);
-console.log('orderTitle =', orderTitle);
-  const createOrderWithForecast = db.transaction(() => {
-    const orderInsert = db.prepare(
-  `
-  INSERT INTO client_orders
-  (
-    name,
-    description,
-    date,
-    price,
-    vat_rate,
-    planned_hours,
-    quote_id,
-    work_category,
-    status,
-    created_at
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'En cours', ?)
-  `
-    ).run(
-      clientName, orderTitle, isoDate(), totalWithMargin, parseOptionalVatRate(quote.vat_rate),
-      plannedHours, quoteId, projectProfitability.detectWorkCategory(quote, lines), new Date().toISOString()
-    );
-    const clientOrderId = Number(orderInsert.lastInsertRowid);
-    saveProjectForecast({ ...quote, total_ht: totalWithMargin }, lines, clientOrderId);
-    importMissingQuoteCostLines(clientOrderId, quoteId);
-    db.prepare("UPDATE quotes SET status = 'Accepté' WHERE id = ?").run(quoteId);
-    return clientOrderId;
-  });
-  createOrderWithForecast();
-
-    // 6) Redirection vers dossier PC
-    return res.redirect(
-      '/pc-folders/' + encodeURIComponent(safeClient) + '/' + encodeURIComponent(safeOrder)
-    );
-  } catch (err) {
-    console.error('❌ Erreur accept devis:', err);
-    return res.status(500).send('Erreur serveur lors de l’acceptation (voir console).');
-  }
+registerQuoteAcceptanceRoute(app, {
+  requireLogin,
+  handlers: { accept: quoteAcceptanceController.acceptQuote }
 });
 
 registerQuoteFooterSettingsRoutes(app, {

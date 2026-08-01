@@ -158,7 +158,10 @@ for (const schema of ['quote_profitability_forecasts', 'project_profitability_fo
 }
 assert(server.includes("ensureColumn('chantier_hours', 'category'"));
 assert(server.includes("ensureColumn('client_orders', 'quote_id'"));
-assert(server.includes('saveProjectForecast({ ...quote, total_ht: totalWithMargin }, lines, clientOrderId)'));
+assert(
+  fs.readFileSync('services/quoteAcceptanceService.js', 'utf8')
+    .includes('saveProjectForecast({ ...quote, total_ht: totalWithMargin }, lines, clientOrderId)')
+);
 assert(clientOrderRoutes.includes("get('/api/orders/:id/profitability', 'profitabilityApi')"));
 assert(server.includes("app.get('/api/devis/:id/profitability', requireLogin"));
 assert(server.includes("app.post('/api/devis/:id/profitability', requireLogin"));

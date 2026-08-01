@@ -64,7 +64,8 @@ for (const route of [
 assert(profitabilityController.includes('WHERE id = ? AND client_order_id = ?'), 'isolation commande/ligne absente');
 assert(server.includes('INSERT OR IGNORE INTO client_order_cost_lines'), 'import anti-doublon absent');
 assert(profitabilityController.includes('client_order_cost_line_exclusions'), 'mémoire des suppressions absente');
-assert(server.includes('importMissingQuoteCostLines(clientOrderId, quoteId)'), 'import à l’acceptation du devis absent');
+assert(server.includes('importMissingQuoteCostLines'), 'import à l’acceptation du devis absent');
+assert(fs.readFileSync('services/quoteAcceptanceService.js', 'utf8').includes('importMissingQuoteCostLines(clientOrderId, quoteId)'), 'import à l’acceptation du devis absent');
 assert(clientOrdersController.includes('if (quoteId) importMissingQuoteCostLines(orderId, quoteId)'), 'import à la création manuelle liée absent');
 assert(server.includes("source_type, source_quote_line_id"));
 assert(profitabilityView.includes('Le devis d’origine reste inchangé'));

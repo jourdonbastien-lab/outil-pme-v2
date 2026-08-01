@@ -21,5 +21,5 @@ for (const definition of [
 assert(server.includes("app.get('/devis/:id', requireLogin"));
 assert(quoteLineRoutes.includes("app.post('/devis/line', requireLogin"));
 assert(!server.includes("app.post('/devis/line', requireLogin"));
-assert(server.includes("app.post('/devis/:id/accept', requireLogin"));
+assert(server.includes('registerQuoteAcceptanceRoute(app'));
 console.log('OK - architecture liste et création devis');
