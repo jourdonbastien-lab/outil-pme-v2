@@ -128,6 +128,8 @@ const { createIncomingDocumentsController } = require('./controllers/incomingDoc
 const { renderIncomingDocumentsListView } = require('./views/incomingDocumentsListView');
 const { renderIncomingDocumentCard } = require('./views/incomingDocumentCardView');
 const { registerIncomingDocumentsRoutes } = require('./routes/incomingDocuments');
+const { createDocumentTextExtractionService } = require('./services/documentTextExtractionService');
+const { createEbpDocumentParserService } = require('./services/ebpDocumentParserService');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -499,6 +501,12 @@ const SCANNER_DIRS = incomingDocuments.ensureScannerDirectories(STORAGE_DIR);
 const SCANNER_IMPORT_ENABLED = String(process.env.SCANNER_IMPORT_ENABLED || 'true').toLowerCase() !== 'false';
 const SCANNER_IMPORT_INTERVAL_MS = Math.min(300000, Math.max(2000, parsePositiveInt(process.env.SCANNER_IMPORT_INTERVAL_MS, 10000)));
 const SCANNER_MAX_FILE_SIZE_BYTES = Math.min(100, Math.max(1, parsePositiveInt(process.env.SCANNER_MAX_FILE_SIZE_MB, 25))) * 1024 * 1024;
+const documentTextExtractionService = createDocumentTextExtractionService({
+  fs, path, pdfParse, tesseractJs, heicConvert, sharp,
+  pdfDebugPath: EBP_SCAN_LAST_PDF_TEXT_PATH,
+  logger: console
+});
+const ebpDocumentParserService = createEbpDocumentParserService({ parseEbpQuoteText, parseEbpInvoiceText });
 
 const MEASUREMENTS_PUBLIC_DIR = path.join(__dirname, 'modules', 'measurements', 'public');
 const MEASUREMENT_SHEETS = {
@@ -804,7 +812,7 @@ function guessTitleFromLines(lines) {
 }
 
 function extractEbpFieldsFromText(text) {
-  const parsedEbp = parseEbpQuoteText(text);
+  const parsedEbp = ebpDocumentParserService.parseQuote(text);
   if (parsedEbp.recognized) {
     return parsedEbp;
   }
@@ -887,7 +895,7 @@ function extractEbpFieldsFromText(text) {
 }
 
 function extractEbpInvoiceFieldsFromText(text) {
-  const parsed = parseEbpInvoiceText(text);
+  const parsed = ebpDocumentParserService.parseInvoice(text);
   const raw = String(text || '');
 
   let invoiceNumber = parsed.invoice_number || '';
@@ -1177,129 +1185,6 @@ function renderOrderProfitabilityComparison(forecastData, realData) {
       return `<article><h3>${label}</h3><div><span>Prévu</span><strong>${renderValue(planned, type)}</strong></div><div><span>Réel</span><strong class="${real === null ? 'profit-missing' : ''}">${renderValue(real, type)}</strong></div><div><span>Écart</span><strong class="${difference === null ? 'profit-missing' : difference > 0 ? 'profit-negative' : difference < 0 ? 'profit-positive' : ''}">${difference === null ? 'Non renseigné' : `${difference > 0 ? '+' : ''}${renderValue(difference, type)}`}</strong></div></article>`;
     }).join('')}
   </div></section>`;
-}
-
-async function extractTextFromPdfBuffer(buffer) {
-  if (!pdfParse) return { text: '', wordCount: 0, warning: 'pdf-parse indisponible: extraction PDF désactivée.' };
-  try {
-    const result = await pdfParse(buffer);
-    const text = String(result?.text || '');
-    const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
-    return { text, wordCount, pageCount: Number(result?.numpages || 0), warning: '' };
-  } catch (err) {
-    console.error('Scan EBP: lecture PDF impossible:', err.message || err);
-    return { text: '', wordCount: 0, warning: 'Lecture PDF impossible. Vérifiez le fichier ou complétez manuellement.' };
-  }
-}
-
-async function preprocessImageBufferForOcr(buffer, mimeType) {
-  let imageBuffer = buffer;
-  if ((mimeType || '').includes('heic') || (mimeType || '').includes('heif')) {
-    if (!heicConvert) {
-      return { buffer: null, warning: 'HEIC détecté mais conversion indisponible. Utilisez JPG/PNG ou installez heic-convert.' };
-    }
-    try {
-      imageBuffer = await heicConvert({
-        buffer,
-        format: 'JPEG',
-        quality: 0.92,
-      });
-    } catch {
-      return { buffer: null, warning: 'Conversion HEIC impossible. Utilisez JPG/PNG/PDF ou corrigez manuellement.' };
-    }
-  }
-
-  if (!sharp) {
-    return { buffer: imageBuffer, warning: '' };
-  }
-
-  try {
-    const prepared = await sharp(imageBuffer)
-      .rotate()
-      .resize({ width: 2400, withoutEnlargement: true })
-      .grayscale()
-      .normalize()
-      .sharpen()
-      .toBuffer();
-    return { buffer: prepared, warning: '' };
-  } catch {
-    return { buffer: imageBuffer, warning: 'Prétraitement image ignoré, OCR lancé sur l’image brute.' };
-  }
-}
-
-async function extractTextFromImageBuffer(buffer, mimeType) {
-  if (!tesseractJs) {
-    return { text: '', wordCount: 0, warning: 'tesseract.js indisponible: OCR image désactivé.' };
-  }
-  const preprocessed = await preprocessImageBufferForOcr(buffer, mimeType);
-  if (!preprocessed.buffer) return { text: '', wordCount: 0, warning: preprocessed.warning };
-  const imageBuffer = preprocessed.buffer;
-  try {
-    const worker = await tesseractJs.createWorker('fra+eng');
-    const result = await worker.recognize(imageBuffer);
-    await worker.terminate();
-    const text = String(result?.data?.text || '');
-    const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
-    return { text, wordCount, warning: preprocessed.warning || '' };
-  } catch {
-    return { text: '', wordCount: 0, warning: preprocessed.warning || 'OCR image impossible. Complétez manuellement les champs.' };
-  }
-}
-
-async function analyzeEbpFile(filePath, mimeType) {
-  const buffer = fs.readFileSync(filePath);
-  const lowerMime = String(mimeType || '').toLowerCase();
-  const isPdf = lowerMime.includes('pdf') || path.extname(String(filePath || '')).toLowerCase() === '.pdf';
-
-  if (isPdf) {
-    const pdfResult = await extractTextFromPdfBuffer(buffer);
-    try {
-      fs.writeFileSync(EBP_SCAN_LAST_PDF_TEXT_PATH, String(pdfResult.text || ''), 'utf8');
-    } catch (e) {
-      console.warn('Impossible d\'écrire le debug PDF EBP:', e.message);
-    }
-    const pdfTextLength = String(pdfResult.text || '').trim().replace(/\s+/g, ' ').length;
-    const hasEnoughText = pdfResult.wordCount >= 15 || pdfTextLength >= 100;
-    if (hasEnoughText) {
-      return {
-        source: 'pdf',
-        pdfText: pdfResult.text,
-        ocrText: '',
-        text: pdfResult.text,
-        warning: '',
-        ocrWarning: '',
-        pdfWordCount: pdfResult.wordCount,
-        pdfPageCount: pdfResult.pageCount || 0,
-        ocrWordCount: 0,
-      };
-    }
-
-    const ocrResult = await extractTextFromImageBuffer(buffer, lowerMime);
-    return {
-      source: 'ocr',
-      pdfText: pdfResult.text,
-      ocrText: ocrResult.text,
-      text: ocrResult.text || pdfResult.text,
-      warning: pdfResult.warning || ocrResult.warning || 'PDF peu textuel: OCR utilisé en secours.',
-      ocrWarning: ocrResult.warning || '',
-      pdfWordCount: pdfResult.wordCount,
-      pdfPageCount: pdfResult.pageCount || 0,
-      ocrWordCount: ocrResult.wordCount,
-    };
-  }
-
-  const ocrResult = await extractTextFromImageBuffer(buffer, lowerMime);
-  return {
-    source: 'ocr',
-    pdfText: '',
-    ocrText: ocrResult.text,
-    text: ocrResult.text,
-    warning: ocrResult.warning || '',
-    ocrWarning: ocrResult.warning || '',
-    pdfWordCount: 0,
-    pdfPageCount: 0,
-    ocrWordCount: ocrResult.wordCount,
-  };
 }
 
 function uniqueFilePath(baseDir, desiredFileName) {
@@ -6128,7 +6013,9 @@ registerClientsRoutes(app, {
 });
 /* ===================== DOCUMENTS ENTRANTS ===================== */
 
-const incomingDocumentsOcrService = createIncomingDocumentsOcrService({ analyzeEbpFile });
+const incomingDocumentsOcrService = createIncomingDocumentsOcrService({
+  analyzeEbpFile: documentTextExtractionService.extractTextFromFile
+});
 const incomingDocumentsImportService = createIncomingDocumentsImportService({
   db, fs, path, crypto, incomingDocuments, scannerDirs: SCANNER_DIRS,
   maxFileSizeBytes: SCANNER_MAX_FILE_SIZE_BYTES, intervalMs: SCANNER_IMPORT_INTERVAL_MS,
@@ -6166,7 +6053,7 @@ async function renderEbpScanValidationPage(req, res, options) {
   const incomingFileName = path.basename(String(options.incomingFileName || '')).trim();
 
   const scanPath = safeResolveInside(EBP_SCAN_DIR, scanFileName);
-  const analysis = await analyzeEbpFile(scanPath, mimeType);
+  const analysis = await documentTextExtractionService.extractTextFromFile(scanPath, mimeType);
   const ocrText = String(analysis.ocrText || '').trim();
   const pdfText = String(analysis.pdfText || '').trim();
   const extractedText = String(analysis.text || '').trim();
@@ -6345,7 +6232,7 @@ async function renderEbpInvoiceValidationPage(req, res, options) {
   const scanPath = sourceType === 'upload'
     ? safeResolveInside(EBP_SCAN_DIR, scanFileName)
     : existing.filePath;
-  const analysis = await analyzeEbpFile(scanPath, mimeType);
+  const analysis = await documentTextExtractionService.extractTextFromFile(scanPath, mimeType);
   const extractedText = String(analysis.text || '').trim();
   const fields = extractEbpInvoiceFieldsFromText(extractedText);
   const amountHt = fields.amount_ht !== null ? String(fields.amount_ht) : '';
