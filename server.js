@@ -115,6 +115,12 @@ const { renderMaterialsListView } = require('./views/materialsListView');
 const { renderMaterialCard } = require('./views/materialCardView');
 const { renderMaterialDetailView } = require('./views/materialDetailView');
 const { registerMaterialsRoutes } = require('./routes/materials');
+const { createWorksitesService } = require('./services/worksitesService');
+const { createWorksitesController } = require('./controllers/worksitesController');
+const { renderWorksitesListView } = require('./views/worksitesListView');
+const { renderWorksiteCard } = require('./views/worksiteCardView');
+const { renderWorksiteDetailView } = require('./views/worksiteDetailView');
+const { registerWorksitesRoutes } = require('./routes/worksites');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -2379,13 +2385,6 @@ function chantierStatusClass(status) {
   return `chantier-status-${index >= 0 ? index : 0}`;
 }
 
-function chantierProgress(doneHours, plannedHours) {
-  const planned = Number(plannedHours || 0);
-  const done = Number(doneHours || 0);
-  if (planned <= 0) return 0;
-  return Math.max(0, Math.min(100, Math.round((done / planned) * 100)));
-}
-
 function getProgressFromChantierStatus(status) {
   const normalized = normalizeChantierStatus(status);
   if (normalized === 'En pose') return 75;
@@ -2403,11 +2402,6 @@ function formatHours(value) {
 function parsePositiveNumber(value) {
   const n = Number(value || 0);
   return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-function parseOptionalClientId(value) {
-  const id = Number(value || 0);
-  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 function normalizeQuoteStatus(value) {
@@ -6079,313 +6073,19 @@ app.get('/google/calendars', requireLogin, async (req, res) => {
 });
 /* ===================== CHANTIERS ===================== */
 
-app.get('/chantiers', requireLogin, (req, res) => {
-  return res.redirect('/orders/clients');
-  const clients = db.prepare('SELECT id, name FROM clients ORDER BY name ASC').all();
-  const chantiers = db
-    .prepare(`
-      SELECT chantiers.*, clients.name AS client_name
-      FROM chantiers
-      LEFT JOIN clients ON clients.id = chantiers.client_id
-      ORDER BY
-        CASE WHEN chantiers.status IN ('Terminé', 'Facturé') THEN 1 ELSE 0 END,
-        chantiers.created_at DESC,
-        chantiers.id DESC
-    `)
-    .all();
-
-  const clientOptions = [
-    '<option value="">Aucun client lié</option>',
-    ...clients.map((client) => `<option value="${client.id}">${escHtml(client.name || 'Client')}</option>`)
-  ].join('');
-
-  const cards = chantiers.length
-    ? chantiers
-        .map((chantier) => {
-          const planned = Number(chantier.planned_hours || 0);
-          const done = Number(chantier.done_hours || 0);
-          const diff = done - planned;
-          const progress = chantierProgress(done, planned);
-          const statusIndex = Math.max(0, CHANTIER_STATUSES.indexOf(normalizeChantierStatus(chantier.status)));
-
-          return `
-            <article class="chantier-card">
-              <div class="chantier-card-head">
-                <div>
-                  <h3>${escHtml(chantier.name)}</h3>
-                  <p>${chantier.client_name ? escHtml(chantier.client_name) : 'Aucun client lié'}</p>
-                </div>
-                <span class="chantier-status chantier-status-${statusIndex}">${escHtml(normalizeChantierStatus(chantier.status))}</span>
-              </div>
-
-              <div class="chantier-hours-grid">
-                <div><span>Prévu</span><strong>${formatHours(planned)}</strong></div>
-                <div><span>Réalisé</span><strong>${formatHours(done)}</strong></div>
-                <div><span>Écart</span><strong class="${diff > 0 ? 'chantier-over' : ''}">${formatHours(diff)}</strong></div>
-              </div>
-
-              <div class="chantier-progress" aria-label="Avancement ${progress}%">
-                <span style="width:${progress}%"></span>
-              </div>
-              <div class="chantier-progress-label">${progress}% d’avancement</div>
-
-              <a class="btn chantier-open-btn" href="/chantiers/${chantier.id}">Ouvrir</a>
-            </article>
-          `;
-        })
-        .join('')
-    : '<p class="dash-empty">Aucun chantier pour le moment.</p>';
-
-  res.send(
-    pageTemplate(
-      req,
-      'Chantiers',
-      `
-      <div class="chantiers-page">
-        <div class="page-head chantiers-head">
-          <div>
-            <h1>Chantiers</h1>
-          </div>
-          <a class="btn btn-primary" href="#new-chantier">+ Nouveau chantier</a>
-        </div>
-
-        <form id="new-chantier" method="POST" action="/chantiers" class="chantiers-form">
-          <h2>Nouveau chantier</h2>
-
-          <div class="chantiers-form-grid">
-            <label>
-              <span>Nom du chantier *</span>
-              <input name="name" required placeholder="Ex: Verrière atelier" />
-            </label>
-
-            <label>
-              <span>Client</span>
-              <select name="client_id">${clientOptions}</select>
-            </label>
-
-            <label>
-              <span>Statut</span>
-              <select name="status">${chantierStatusOptions('À préparer')}</select>
-            </label>
-
-            <label>
-              <span>Heures prévues</span>
-              <input name="planned_hours" type="number" min="0" step="0.25" value="0" />
-            </label>
-
-            <label>
-              <span>Date début</span>
-              <input name="start_date" type="date" />
-            </label>
-
-            <label>
-              <span>Date fin prévue</span>
-              <input name="end_date" type="date" />
-            </label>
-
-            <label class="chantiers-form-wide">
-              <span>Description</span>
-              <textarea name="description" rows="3" placeholder="Notes, périmètre, contraintes..."></textarea>
-            </label>
-          </div>
-
-          <div class="chantiers-form-actions">
-            <button class="btn btn-primary" type="submit">Créer le chantier</button>
-          </div>
-        </form>
-
-        <section class="chantiers-grid">
-          ${cards}
-        </section>
-      </div>
-      `
-    )
-  );
+const worksitesService = createWorksitesService({ db, normalizeChantierStatus, parsePositiveNumber });
+const worksitesController = createWorksitesController({
+  worksitesService, renderWorksitesListView, renderWorksiteDetailView, pageTemplate,
+  viewDependencies: { escHtml, formatHours, chantierStatusOptions, statuses: CHANTIER_STATUSES, renderWorksiteCard }
 });
-
-app.post('/chantiers', requireLogin, (req, res) => {
-  return res.redirect('/orders/clients');
-  const name = String(req.body.name || '').trim();
-  if (!name) return res.status(400).send('Nom du chantier requis');
-
-  let clientId = parseOptionalClientId(req.body.client_id);
-  if (clientId) {
-    const client = db.prepare('SELECT id FROM clients WHERE id = ?').get(clientId);
-    if (!client) clientId = null;
+registerWorksitesRoutes(app, {
+  requireLogin,
+  handlers: {
+    list: worksitesController.showWorksites,
+    create: worksitesController.createWorksite,
+    detail: worksitesController.showWorksite,
+    update: worksitesController.updateWorksite
   }
-
-  const description = String(req.body.description || '').trim();
-  const status = normalizeChantierStatus(req.body.status);
-  const plannedHours = parsePositiveNumber(req.body.planned_hours);
-  const startDate = String(req.body.start_date || '').trim();
-  const endDate = String(req.body.end_date || '').trim();
-
-  const result = db
-    .prepare(`
-      INSERT INTO chantiers (
-        name,
-        client_id,
-        description,
-        status,
-        planned_hours,
-        done_hours,
-        start_date,
-        end_date,
-        created_at
-      )
-      VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)
-    `)
-    .run(
-      name,
-      clientId,
-      description || null,
-      status,
-      plannedHours,
-      startDate || null,
-      endDate || null,
-      new Date().toISOString()
-    );
-
-  res.redirect(`/chantiers/${result.lastInsertRowid}`);
-});
-
-app.get('/chantiers/:id', requireLogin, (req, res) => {
-  return res.redirect('/orders/clients');
-  const chantierId = Number(req.params.id);
-  if (!Number.isInteger(chantierId) || chantierId <= 0) return res.status(400).send('Chantier invalide');
-
-  const chantier = db
-    .prepare(`
-      SELECT chantiers.*, clients.name AS client_name
-      FROM chantiers
-      LEFT JOIN clients ON clients.id = chantiers.client_id
-      WHERE chantiers.id = ?
-    `)
-    .get(chantierId);
-
-  if (!chantier) return res.status(404).send('Chantier introuvable');
-
-  const planned = Number(chantier.planned_hours || 0);
-  const done = Number(chantier.done_hours || 0);
-  const diff = done - planned;
-  const progress = chantierProgress(done, planned);
-  const statusIndex = Math.max(0, CHANTIER_STATUSES.indexOf(normalizeChantierStatus(chantier.status)));
-
-  res.send(
-    pageTemplate(
-      req,
-      `Chantier : ${chantier.name}`,
-      `
-      <div class="chantier-detail">
-        <section class="chantier-detail-hero">
-          <div>
-            <span class="chantier-status chantier-status-${statusIndex}">${escHtml(normalizeChantierStatus(chantier.status))}</span>
-            <h1>${escHtml(chantier.name)}</h1>
-          </div>
-          <a class="btn btn-secondary" href="/chantiers">Retour</a>
-        </section>
-
-        <section class="chantier-detail-grid">
-          <article class="chantier-metric"><span>Heures prévues</span><strong>${formatHours(planned)}</strong></article>
-          <article class="chantier-metric"><span>Heures réalisées</span><strong>${formatHours(done)}</strong></article>
-          <article class="chantier-metric"><span>Écart</span><strong class="${diff > 0 ? 'chantier-over' : ''}">${formatHours(diff)}</strong></article>
-          <article class="chantier-metric"><span>Avancement</span><strong>${progress}%</strong></article>
-        </section>
-
-        <section class="chantier-detail-panel">
-          <h2>Avancement</h2>
-          <div class="chantier-progress chantier-progress-large" aria-label="Avancement ${progress}%">
-            <span style="width:${progress}%"></span>
-          </div>
-          <div class="chantier-dates">
-            <span>Début : ${escHtml(chantier.start_date || '—')}</span>
-            <span>Fin prévue : ${escHtml(chantier.end_date || '—')}</span>
-          </div>
-          <p>${chantier.description ? escHtml(chantier.description) : 'Aucune description.'}</p>
-        </section>
-
-        <form method="POST" action="/chantiers/${chantier.id}" class="chantiers-form">
-          <h2>Modifier le chantier</h2>
-
-          <div class="chantiers-form-grid">
-            <label>
-              <span>Statut</span>
-              <select name="status">${chantierStatusOptions(chantier.status)}</select>
-            </label>
-
-            <label>
-              <span>Heures prévues</span>
-              <input name="planned_hours" type="number" min="0" step="0.25" value="${planned}" />
-            </label>
-
-            <label>
-              <span>Heures réalisées</span>
-              <input name="done_hours" type="number" min="0" step="0.25" value="${done}" />
-            </label>
-
-            <label>
-              <span>Date début</span>
-              <input name="start_date" type="date" value="${escHtml(chantier.start_date || '')}" />
-            </label>
-
-            <label>
-              <span>Date fin prévue</span>
-              <input name="end_date" type="date" value="${escHtml(chantier.end_date || '')}" />
-            </label>
-
-            <label class="chantiers-form-wide">
-              <span>Description</span>
-              <textarea name="description" rows="4">${escHtml(chantier.description || '')}</textarea>
-            </label>
-          </div>
-
-          <div class="chantiers-form-actions">
-            <button class="btn btn-primary" type="submit">Enregistrer</button>
-          </div>
-        </form>
-      </div>
-      `
-    )
-  );
-});
-
-app.post('/chantiers/:id', requireLogin, (req, res) => {
-  return res.redirect('/orders/clients');
-  const chantierId = Number(req.params.id);
-  if (!Number.isInteger(chantierId) || chantierId <= 0) return res.status(400).send('Chantier invalide');
-
-  const existing = db.prepare('SELECT id FROM chantiers WHERE id = ?').get(chantierId);
-  if (!existing) return res.status(404).send('Chantier introuvable');
-
-  const status = normalizeChantierStatus(req.body.status);
-  const plannedHours = parsePositiveNumber(req.body.planned_hours);
-  const doneHours = parsePositiveNumber(req.body.done_hours);
-  const description = String(req.body.description || '').trim();
-  const startDate = String(req.body.start_date || '').trim();
-  const endDate = String(req.body.end_date || '').trim();
-
-  db
-    .prepare(`
-      UPDATE chantiers
-      SET status = ?,
-          planned_hours = ?,
-          done_hours = ?,
-          description = ?,
-          start_date = ?,
-          end_date = ?
-      WHERE id = ?
-    `)
-    .run(
-      status,
-      plannedHours,
-      doneHours,
-      description || null,
-      startDate || null,
-      endDate || null,
-      chantierId
-    );
-
-  res.redirect(`/chantiers/${chantierId}`);
 });
 
 /* ===================== CLIENTS ===================== */
