@@ -14,7 +14,7 @@ assert(!/\b(?:req|res)\./.test(service));
 assert(!service.includes("require('../server"));
 assert(!service.includes("new Database("));
 for (const preserved of [
-  "app.get('/devis/:id', requireLogin",
+  'registerQuoteDetailRoute(app',
   'registerQuoteAiAnalysisRoutes(app',
   'registerQuoteAttachmentUploadRoute(app',
   'registerQuoteSketchRoutes(app',

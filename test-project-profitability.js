@@ -175,9 +175,9 @@ for (const column of ['cost_unit', 'cost_total', 'margin_pct', 'hours', 'hourly_
   assert(server.includes(`ensureColumn('quote_lines', '${column}'`), `migration ligne absente: ${column}`);
 }
 assert(clientOrderRoutes.includes("post('/api/orders/:id/actual-costs', 'createActualCost')"));
-assert(server.includes('Rentabilité prévisionnelle'));
+assert((server + fs.readFileSync('views/quoteDetailView.js', 'utf8')).includes('Rentabilité prévisionnelle'));
 assert(server.includes('Rentabilité du chantier'));
-assert(server.includes('Réanalyser le devis'));
+assert(fs.readFileSync('views/quoteDetailView.js', 'utf8').includes('Réanalyser le devis'));
 assert(server.includes('idx_project_actual_costs_supplier_invoice'), 'anti-doublon facture fournisseur absent');
 
 console.log('OK - rentabilité lots 1 à 5');

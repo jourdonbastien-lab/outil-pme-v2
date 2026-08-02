@@ -25,6 +25,6 @@ const serverSource = fs.readFileSync('server.js', 'utf8');
 assert(!serverSource.includes("app.get('/devis', requireLogin"));
 assert(!serverSource.includes("app.get('/devis/new', requireLogin"));
 assert(!serverSource.includes("app.post('/devis', requireLogin"));
-assert(serverSource.includes("app.get('/devis/:id', requireLogin"));
-assert(serverSource.indexOf('registerQuoteRoutes(app') < serverSource.indexOf("app.get('/devis/:id', requireLogin"));
+assert(serverSource.includes('registerQuoteDetailRoute(app'));
+assert(serverSource.indexOf('registerQuoteRoutes(app') < serverSource.indexOf('registerQuoteDetailRoute(app'));
 console.log('OK - routes liste et création devis');

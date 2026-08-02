@@ -18,7 +18,7 @@ for (const definition of [
   "app.get('/devis/new', requireLogin",
   "app.post('/devis', requireLogin"
 ]) assert(!server.includes(definition), `route inline restante: ${definition}`);
-assert(server.includes("app.get('/devis/:id', requireLogin"));
+assert(server.includes('registerQuoteDetailRoute(app'));
 assert(quoteLineRoutes.includes("app.post('/devis/line', requireLogin"));
 assert(!server.includes("app.post('/devis/line', requireLogin"));
 assert(server.includes('registerQuoteAcceptanceRoute(app'));

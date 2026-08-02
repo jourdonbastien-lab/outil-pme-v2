@@ -52,7 +52,7 @@ assert(server.includes('source_quote_line_id'));
 assert(profitabilityController.includes('client_order_cost_line_exclusions'));
 assert(profitabilityController.includes('`imported-${result.imported}`'));
 assert(profitabilityController.includes('importStatus=no-quote'));
-assert(server.includes("name=\"quote_id\""), 'rattachement de devis absent des formulaires commande');
+assert((server + fs.readFileSync('views/quoteDetailView.js', 'utf8')).includes("name=\"quote_id\""), 'rattachement de devis absent des formulaires commande');
 
 for (const selector of ['.profitability-global-section', '.order-cost-group', '.order-hours-summary', '.order-budget-flash']) assert(css.includes(selector));
 assert(css.includes('env(safe-area-inset-bottom)'));

@@ -9,7 +9,7 @@ for (const route of [
   "app.post('/devis/:id/margin'", "app.post('/devis/:id/delete'"
 ]) assert(!server.includes(route), route);
 for (const preserved of [
-  "app.get('/devis/:id', requireLogin",
+  'registerQuoteDetailRoute(app',
   'registerQuoteAiAnalysisRoutes(app',
   'registerQuoteAcceptanceRoute(app'
 ]) assert(server.includes(preserved), preserved);

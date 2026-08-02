@@ -14,13 +14,13 @@ for (const path of ['/api/devis/:id/profitability', '/api/devis/:id/profitabilit
   assert.strictEqual(modules.split(`'${path}'`).length - 1, path === '/api/devis/:id/profitability' ? 2 : 1, path);
 }
 assert(server.indexOf('registerQuoteProfitabilityRoutes(app') < server.indexOf('registerQuoteAiAnalysisRoutes(app'));
-assert(server.indexOf('registerQuoteAiAnalysisRoutes(app') < server.indexOf("app.get('/devis/:id', requireLogin"));
+assert(server.indexOf('registerQuoteAiAnalysisRoutes(app') < server.indexOf('registerQuoteDetailRoute(app'));
 for (const preserved of ['registerQuoteAcceptanceRoute(app', 'registerQuoteAttachmentUploadRoute(app', 'registerQuoteSketchRoutes(app', 'registerQuoteLineMutationRoutes(app', 'registerQuoteRoutes(app']) assert(server.includes(preserved), preserved);
 for (const file of ['services/quoteProfitabilityService.js', 'services/quoteAiAnalysisService.js']) {
   const source = fs.readFileSync(file, 'utf8'); assert(!/\b(?:req|res)\./.test(source)); assert(!source.includes("require('../server"));
 }
 assert(!/\b(?:SELECT|INSERT|UPDATE|DELETE)\b/.test(profitabilityRoutes + aiRoutes));
-assert(server.includes("app.get('/devis/:id', requireLogin"));
-assert(server.includes('quoteProfitabilityService.getQuoteProfitability(id)'));
+assert(server.includes('registerQuoteDetailRoute(app'));
+assert(fs.readFileSync('services/quoteDetailService.js', 'utf8').includes('quoteProfitabilityService.getQuoteProfitability(id)'));
 assert.strictEqual((fs.readFileSync('lib/quoteAiReview.js', 'utf8') + fs.readFileSync('services/quoteAiAnalysisService.js', 'utf8')).split('Tu es un contrôleur de devis spécialisé').length - 1, 1);
 console.log('OK - architecture analyse, rentabilité et IA devis');
