@@ -109,6 +109,12 @@ const { createSupplierOrdersController } = require('./controllers/supplierOrders
 const { renderSupplierOrdersListView } = require('./views/supplierOrdersListView');
 const { renderSupplierOrderCard } = require('./views/supplierOrderCardView');
 const { registerSupplierOrderRoutes, registerSupplierOrderCompletionRoutes } = require('./routes/supplierOrders');
+const { createMaterialsService } = require('./services/materialsService');
+const { createMaterialsController } = require('./controllers/materialsController');
+const { renderMaterialsListView } = require('./views/materialsListView');
+const { renderMaterialCard } = require('./views/materialCardView');
+const { renderMaterialDetailView } = require('./views/materialDetailView');
+const { registerMaterialsRoutes } = require('./routes/materials');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -2746,66 +2752,6 @@ function renderSketchBlock({ scope, id, className = 'quote-work-card' }) {
       </div>
     </section>
   `;
-}
-
-const STANDARD_MATERIALS = [
-  ...['20x20x2', '25x25x2', '30x30x2', '40x40x2', '50x50x2', '60x60x3', '80x80x3', '100x100x4']
-    .map((name) => ({ type: 'Tubes carrés acier', name, unit: 'ml' })),
-  ...['40x20x2', '50x30x2', '60x30x2', '80x40x3', '100x50x3', '120x60x4', '150x100x5']
-    .map((name) => ({ type: 'Tubes rectangulaires acier', name, unit: 'ml' })),
-  ...['Ø20x2', 'Ø26,9x2,3', 'Ø33,7x2,6', 'Ø42,4x2,6', 'Ø48,3x3,2', 'Ø60,3x3,2']
-    .map((name) => ({ type: 'Tubes ronds acier', name, unit: 'ml' })),
-  ...['25x25x3', '30x30x3', '40x40x4', '50x50x5', '60x60x6']
-    .map((name) => ({ type: 'Cornières acier', name, unit: 'ml' })),
-  ...['20x5', '30x5', '40x5', '50x8', '60x10', '80x10', '100x10']
-    .map((name) => ({ type: 'Plats acier', name, unit: 'ml' })),
-  ...['UPN 80', 'UPN 100', 'UPN 120', 'IPN 80', 'IPN 100', 'IPN 120', 'IPE 100', 'IPE 120', 'HEA 100', 'HEA 120']
-    .map((name) => ({ type: 'UPN / IPN / IPE / HEA', name, unit: 'ml' })),
-  ...['1,5 mm', '2 mm', '3 mm', '4 mm', '5 mm', '6 mm', '8 mm', '10 mm', 'larmée 3/5', 'perforée standard']
-    .map((name) => ({ type: 'Tôles acier', name, unit: 'm²' })),
-  ...['2 mm', '3 mm', '4 mm', '5 mm', 'damier 3/5']
-    .map((name) => ({ type: 'Tôles alu', name, unit: 'm²' })),
-  ...['1,5 mm', '2 mm', '3 mm', 'brossée 2 mm', 'brossée 3 mm']
-    .map((name) => ({ type: 'Tôles inox', name, unit: 'm²' })),
-  ...['caillebotis 30x30', 'caillebotis 30x10', 'marche caillebotis standard']
-    .map((name) => ({ type: 'Caillebotis', name, unit: 'm²' })),
-  ...[
-    'platine 100x100x8',
-    'platine 150x150x10',
-    'paumelle portail',
-    'gond réglable',
-    'serrure portail',
-    'bouchon tube carré 40',
-    'bouchon tube carré 50',
-    'bouchon tube rectangulaire 80x40',
-    'main courante ronde inox',
-    'câble inox',
-    'tendeur inox'
-  ].map((name) => ({ type: 'Accessoires courants', name, unit: 'pièce' }))
-];
-
-function seedStandardMaterials() {
-  const findExisting = db.prepare('SELECT id FROM materials WHERE lower(type) = lower(?) AND lower(name) = lower(?) LIMIT 1');
-  const insertMaterial = db.prepare(
-    'INSERT INTO materials (type, name, unit, price, kg_per_m, density, created_at) VALUES (?, ?, ?, 0, NULL, NULL, ?)'
-  );
-  const now = new Date().toISOString();
-
-  const run = db.transaction((items) => {
-    let inserted = 0;
-    for (const item of items) {
-      const type = String(item.type || '').trim();
-      const name = String(item.name || '').trim();
-      const unit = String(item.unit || '').trim();
-      if (!type || !name) continue;
-      if (findExisting.get(type, name)) continue;
-      insertMaterial.run(type, name, unit, now);
-      inserted += 1;
-    }
-    return inserted;
-  });
-
-  return run(STANDARD_MATERIALS);
 }
 
 // Statistiques sidebar
@@ -7645,357 +7591,29 @@ registerQuoteFooterSettingsRoutes(app, {
 });
 
 /* ===================== MATIÈRES ===================== */
-app.get('/materials', requireLogin, (req, res) => {
-  const q = String(req.query.q || '').trim();
-  const totalMaterials = db.prepare('SELECT COUNT(*) AS c FROM materials').get().c;
-  const materials = q
-    ? db.prepare(`
-        SELECT *
-        FROM materials
-        WHERE lower(COALESCE(type, '')) LIKE lower(?)
-           OR lower(COALESCE(name, '')) LIKE lower(?)
-           OR lower(COALESCE(unit, '')) LIKE lower(?)
-        ORDER BY type, name
-      `).all(`%${q}%`, `%${q}%`, `%${q}%`)
-    : db.prepare('SELECT * FROM materials ORDER BY type, name').all();
-  const isAdmin = req.session?.user?.role !== 'atelier';
-  const seeded = req.query.seeded === '1';
-  const saved = req.query.saved === '1';
-  const added = Number(req.query.added || 0);
-
-  const groupedMaterials = materials.reduce((groups, material) => {
-    const type = String(material.type || 'Sans type').trim() || 'Sans type';
-    if (!groups[type]) groups[type] = [];
-    groups[type].push(material);
-    return groups;
-  }, {});
-
-  const materialGroups = Object.keys(groupedMaterials).length
-    ? Object.keys(groupedMaterials)
-        .sort((a, b) => a.localeCompare(b, 'fr'))
-        .map((type) => {
-          const rows = groupedMaterials[type]
-            .map((m) => {
-              const priceValue = Number(m.price || 0).toFixed(2);
-              return (
-                '<a class="material-list-row" href="/materials/' + m.id + '">' +
-                  '<div class="material-list-main">' +
-                    '<strong>' + escHtml(String(m.name || 'Matière')) + '</strong>' +
-                    '<span>' + escHtml(type) + '</span>' +
-                  '</div>' +
-                  '<div class="material-list-meta">' +
-                    '<span>' + priceValue + ' €</span>' +
-                    '<small>' + escHtml(String(m.unit || '—')) + '</small>' +
-                  '</div>' +
-                  '<b aria-hidden="true">›</b>' +
-                '</a>'
-              );
-            })
-            .join('');
-          return (
-            '<section class="materials-category">' +
-              '<header>' +
-                '<h2>' + escHtml(type) + '</h2>' +
-                '<span>' + groupedMaterials[type].length + ' matière(s)</span>' +
-              '</header>' +
-              '<div class="materials-compact-list">' + rows + '</div>' +
-            '</section>'
-          );
-        })
-        .join('')
-    : '<div class="empty-state material-empty-state">' + (q ? 'Aucune matière trouvée.' : 'Aucune matière enregistrée') + '</div>';
-
-  const html =
-    '<div class="materials-page modern-page">' +
-      '<section class="materials-hero">' +
-        '<div class="clients-create-head">' +
-          clientPageIcon('materials', 'clients-create-icon') +
-          '<div>' +
-            
-            '<h1>Bibliothèque matière</h1>' +
-          '</div>' +
-        '</div>' +
-        '<div class="materials-hero-actions">' +
-          '<span class="materials-count">' + totalMaterials + ' matière(s)</span>' +
-          (isAdmin
-            ? '<form method="POST" action="/materials/seed" class="materials-seed-form">' +
-              
-                (seeded ? '<span>' + added + ' matière(s) ajoutée(s)</span>' : '') +
-              '</form>'
-            : '') +
-        '</div>' +
-      '</section>' +
-
-    (seeded
-      ? '<div class="success-message">Bibliothèque matière préremplie. Vous pouvez maintenant renseigner vos tarifs.</div>'
-      : '') +
-    (saved
-      ? '<div class="success-message">Matière enregistrée.</div>'
-      : '') +
-
-    '<section class="clients-create-card materials-add-card is-collapsed" data-materials-add-card>' +
-      '<button type="button" class="materials-add-toggle" aria-expanded="false" aria-controls="materials-add-panel" data-materials-add-toggle>' +
-        '<span class="materials-add-title">' +
-          clientPageIcon('add', 'clients-create-icon') +
-          '<span>Ajouter une matière</span>' +
-        '</span>' +
-        '<span class="materials-add-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span>' +
-      '</button>' +
-      '<div class="materials-add-panel" id="materials-add-panel" hidden data-materials-add-panel>' +
-        '<form method="POST" action="/materials" class="materials-add-form">' +
-          '<div class="clients-form-grid">' +
-            '<label class="clients-field">' +
-              '<span>Type</span>' +
-              '<div class="clients-input-shell">' +
-                clientPageIcon('materials') +
-                '<input name="type" required placeholder="Ex: Tubes carrés acier">' +
-              '</div>' +
-            '</label>' +
-            '<label class="clients-field">' +
-              '<span>Nom</span>' +
-              '<div class="clients-input-shell">' +
-                clientPageIcon('postal') +
-                '<input name="name" required placeholder="Ex: 40x40x2">' +
-              '</div>' +
-            '</label>' +
-            '<label class="clients-field">' +
-              '<span>Unité</span>' +
-              '<div class="clients-input-shell">' +
-                clientPageIcon('materials') +
-                '<input name="unit" placeholder="ml, m², pièce">' +
-              '</div>' +
-            '</label>' +
-            '<label class="clients-field">' +
-              '<span>Prix (€)</span>' +
-              '<div class="clients-input-shell">' +
-                clientPageIcon('postal') +
-                '<input name="price" inputmode="decimal" placeholder="0.00">' +
-              '</div>' +
-            '</label>' +
-            '<label class="clients-field">' +
-              '<span>kg / m</span>' +
-              '<div class="clients-input-shell">' +
-                clientPageIcon('logibarre') +
-                '<input name="kg_per_m" inputmode="decimal" placeholder="Optionnel">' +
-              '</div>' +
-            '</label>' +
-            '<label class="clients-field">' +
-              '<span>Densité</span>' +
-              '<div class="clients-input-shell">' +
-                clientPageIcon('database') +
-                '<input name="density" inputmode="decimal" placeholder="Optionnel">' +
-              '</div>' +
-            '</label>' +
-          '</div>' +
-          '<div class="clients-submit-row">' +
-            '<button type="submit" class="clients-submit-btn">' +
-              clientPageIcon('add', 'clients-submit-icon') +
-              'Ajouter la matière' +
-            '</button>' +
-          '</div>' +
-        '</form>' +
-      '</div>' +
-    '</section>' +
-
-    '<form method="GET" action="/materials" class="materials-search-form">' +
-      '<div class="materials-search-shell">' +
-        clientPageIcon('search', 'materials-search-icon') +
-        '<input name="q" value="' + escHtml(q) + '" placeholder="Rechercher par type, nom ou unité..." autocomplete="off" />' +
-      '</div>' +
-      '<button type="submit" class="clients-submit-btn materials-search-btn">Rechercher</button>' +
-      (q ? '<a class="materials-reset-btn" href="/materials">Réinitialiser</a>' : '') +
-    '</form>' +
-
-    '<div class="materials-groups">' + materialGroups + '</div>' +
-    '<script>' +
-      '(function(){' +
-        'var card=document.querySelector("[data-materials-add-card]");' +
-        'if(!card)return;' +
-        'var toggle=card.querySelector("[data-materials-add-toggle]");' +
-        'var panel=card.querySelector("[data-materials-add-panel]");' +
-        'if(!toggle||!panel)return;' +
-        'toggle.addEventListener("click",function(){' +
-          'var isOpen=toggle.getAttribute("aria-expanded")==="true";' +
-          'toggle.setAttribute("aria-expanded",String(!isOpen));' +
-          'if(isOpen){' +
-            'card.classList.remove("is-open");' +
-            'card.classList.add("is-collapsed");' +
-            'window.setTimeout(function(){if(toggle.getAttribute("aria-expanded")!=="true")panel.hidden=true;},230);' +
-          '}else{' +
-            'panel.hidden=false;' +
-            'window.requestAnimationFrame(function(){card.classList.add("is-open");card.classList.remove("is-collapsed");});' +
-          '}' +
-        '});' +
-      '})();' +
-    '</script>' +
-    '</div>';
-
-  res.send(pageTemplate(req, 'Bibliothèque matière', html));
+const materialsService = createMaterialsService({ db, parseDecimalInput });
+const materialsController = createMaterialsController({
+  materialsService,
+  renderMaterialsListView,
+  renderMaterialDetailView,
+  pageTemplate,
+  formatDateLabel,
+  viewDependencies: { escHtml, clientPageIcon, renderMaterialCard }
+});
+registerMaterialsRoutes(app, {
+  requireLogin,
+  requireAdmin,
+  handlers: {
+    list: materialsController.showMaterials,
+    create: materialsController.createMaterial,
+    updateFromBody: materialsController.updateMaterialFromBody,
+    seed: materialsController.seedMaterials,
+    delete: materialsController.deleteMaterial,
+    detail: materialsController.showMaterial,
+    update: materialsController.updateMaterial
+  }
 });
 
-app.post('/materials', requireLogin, (req, res) => {
-  const type = req.body.type;
-  const name = req.body.name;
-  const unit = req.body.unit;
-  const price = parseDecimalInput(req.body.price, 0);
-  const kg_per_m = String(req.body.kg_per_m || '').trim() !== '' ? parseDecimalInput(req.body.kg_per_m, null) : null;
-  const density = String(req.body.density || '').trim() !== '' ? parseDecimalInput(req.body.density, null) : null;
-
-  db.prepare(
-    'INSERT INTO materials (type, name, unit, price, kg_per_m, density, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(
-    type,
-    name,
-    unit,
-    price,
-    kg_per_m,
-    density,
-    new Date().toISOString()
-  );
-
-  res.redirect('/materials');
-});
-
-function updateMaterialPricing(id, body) {
-  const unit = String(body.unit || '').trim();
-  const price = parseDecimalInput(body.price, 0);
-  const kgPerM = String(body.kg_per_m || '').trim() !== '' ? parseDecimalInput(body.kg_per_m, null) : null;
-  const density = String(body.density || '').trim() !== '' ? parseDecimalInput(body.density, null) : null;
-
-  db.prepare(
-    'UPDATE materials SET unit = ?, price = ?, kg_per_m = ?, density = ? WHERE id = ?'
-  ).run(unit, price, kgPerM, density, id);
-}
-
-app.post('/materials/update', requireLogin, (req, res) => {
-  const id = Number(req.body.id);
-  if (!Number.isInteger(id) || id <= 0) return res.status(400).send('ID matière invalide');
-
-  updateMaterialPricing(id, req.body);
-
-  res.redirect('/materials/' + id + '?saved=1');
-});
-
-app.post('/materials/seed', requireAdmin, (req, res) => {
-  const inserted = seedStandardMaterials();
-  res.redirect('/materials?seeded=1&added=' + inserted);
-});
-
-app.post('/materials/delete', requireLogin, (req, res) => {
-  db.prepare('DELETE FROM materials WHERE id = ?').run(req.body.id);
-  res.redirect('/materials');
-});
-
-app.get('/materials/:id', requireLogin, (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) return res.status(400).send('ID matière invalide');
-
-  const material = db.prepare('SELECT * FROM materials WHERE id = ?').get(id);
-  if (!material) return res.status(404).send('Matière introuvable');
-
-  const saved = req.query.saved === '1';
-  const priceValue = Number(material.price || 0).toFixed(2);
-  const kgValue = material.kg_per_m !== null && material.kg_per_m !== undefined ? escHtml(String(material.kg_per_m)) : '';
-  const densityValue = material.density !== null && material.density !== undefined ? escHtml(String(material.density)) : '';
-  const createdLabel = material.created_at ? formatDateLabel(material.created_at) : '—';
-
-  const html =
-    '<div class="materials-page material-detail-page modern-page">' +
-    '<section class="materials-hero material-detail-hero">' +
-      '<div class="clients-create-head">' +
-        clientPageIcon('materials', 'clients-create-icon') +
-        '<div>' +
-          '<span>' + escHtml(String(material.type || 'Matière')) + '</span>' +
-          '<h1>' + escHtml(String(material.name || 'Matière')) + '</h1>' +
-        '</div>' +
-      '</div>' +
-      '<a class="materials-reset-btn" href="/materials">Retour matières</a>' +
-    '</section>' +
-
-    (saved ? '<div class="success-message">Matière enregistrée.</div>' : '') +
-
-    '<section class="material-detail-card">' +
-      '<div class="material-detail-summary">' +
-        '<span>' + escHtml(String(material.type || '').toUpperCase()) + '</span>' +
-        '<strong>' + escHtml(String(material.name || '')) + '</strong>' +
-      '</div>' +
-      '<div class="material-detail-grid">' +
-        '<div><span>Unité</span><strong>' + escHtml(String(material.unit || '—')) + '</strong></div>' +
-        '<div><span>Prix</span><strong>' + priceValue + ' €</strong></div>' +
-        '<div><span>kg/m</span><strong>' + (kgValue || '—') + '</strong></div>' +
-        '<div><span>Densité</span><strong>' + (densityValue || '—') + '</strong></div>' +
-        '<div><span>Créée le</span><strong>' + escHtml(createdLabel) + '</strong></div>' +
-      '</div>' +
-    '</section>' +
-
-    '<form method="POST" action="/materials/' + id + '" class="clients-create-card material-detail-form">' +
-      '<div class="clients-create-head">' +
-        clientPageIcon('postal', 'clients-create-icon') +
-        '<div>' +
-          '<span>Tarifs</span>' +
-          '<h2>Modifier les informations</h2>' +
-        '</div>' +
-      '</div>' +
-      '<div class="clients-form-grid">' +
-        '<label class="clients-field">' +
-          '<span>Unité</span>' +
-          '<div class="clients-input-shell">' +
-            clientPageIcon('materials') +
-            '<input name="unit" value="' + escHtml(String(material.unit || '')) + '">' +
-          '</div>' +
-        '</label>' +
-        '<label class="clients-field">' +
-          '<span>Prix (€)</span>' +
-          '<div class="clients-input-shell">' +
-            clientPageIcon('postal') +
-            '<input name="price" value="' + priceValue + '" inputmode="decimal">' +
-          '</div>' +
-        '</label>' +
-        '<label class="clients-field">' +
-          '<span>kg / m</span>' +
-          '<div class="clients-input-shell">' +
-            clientPageIcon('logibarre') +
-            '<input name="kg_per_m" value="' + kgValue + '" inputmode="decimal">' +
-          '</div>' +
-        '</label>' +
-        '<label class="clients-field">' +
-          '<span>Densité</span>' +
-          '<div class="clients-input-shell">' +
-            clientPageIcon('database') +
-            '<input name="density" value="' + densityValue + '" inputmode="decimal">' +
-          '</div>' +
-        '</label>' +
-      '</div>' +
-      '<div class="clients-submit-row">' +
-        '<button type="submit" class="clients-submit-btn">' +
-          clientPageIcon('check', 'clients-submit-icon') +
-          'Enregistrer' +
-        '</button>' +
-      '</div>' +
-    '</form>' +
-    '<form method="POST" action="/materials/delete" class="material-delete-form" onsubmit="return confirm(\'Supprimer cette matière ?\');">' +
-      '<input type="hidden" name="id" value="' + id + '">' +
-      '<button type="submit" class="modern-danger-btn">' +
-        clientPageIcon('trash', 'modern-action-icon') +
-        'Supprimer la matière' +
-      '</button>' +
-    '</form>' +
-    '</div>';
-
-  res.send(pageTemplate(req, material.name || 'Matière', html));
-});
-
-app.post('/materials/:id', requireLogin, (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) return res.status(400).send('ID matière invalide');
-
-  const material = db.prepare('SELECT id FROM materials WHERE id = ?').get(id);
-  if (!material) return res.status(404).send('Matière introuvable');
-
-  updateMaterialPricing(id, req.body);
-
-  res.redirect('/materials/' + id + '?saved=1');
-});
 /* ===================== Logibarre ===================== */
 app.get('/outils/logibarre', requireLogin, (req, res) => {
   res.send(

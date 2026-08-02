@@ -1,0 +1,13 @@
+'use strict';
+const assert = require('assert');
+const { registerMaterialsRoutes } = require('./routes/materials');
+const calls = [];
+const app = { get(url, middleware, handler) { calls.push(['GET', url, middleware, handler]); }, post(url, middleware, handler) { calls.push(['POST', url, middleware, handler]); } };
+const login = () => {}; const admin = () => {};
+const handlers = { list() {}, create() {}, updateFromBody() {}, seed() {}, delete() {}, detail() {}, update() {} };
+registerMaterialsRoutes(app, { requireLogin: login, requireAdmin: admin, handlers });
+assert.deepStrictEqual(calls.map(([method, url]) => [method, url]), [['GET', '/materials'], ['POST', '/materials'], ['POST', '/materials/update'], ['POST', '/materials/seed'], ['POST', '/materials/delete'], ['GET', '/materials/:id'], ['POST', '/materials/:id']]);
+assert.strictEqual(calls[3][2], admin);
+for (const [index, call] of calls.entries()) if (index !== 3) assert.strictEqual(call[2], login);
+assert.strictEqual(new Set(calls.map(([method, url]) => `${method} ${url}`)).size, 7);
+console.log('OK - routes matières');

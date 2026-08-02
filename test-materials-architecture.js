@@ -1,0 +1,17 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const server = fs.readFileSync('server.js', 'utf8');
+const route = fs.readFileSync('routes/materials.js', 'utf8');
+const service = fs.readFileSync('services/materialsService.js', 'utf8');
+const views = ['views/materialCardView.js', 'views/materialsListView.js', 'views/materialDetailView.js'].map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+assert(!/app\.(?:get|post)\(['"]\/materials/.test(server), 'routes matières encore inline');
+assert.strictEqual((route.match(/app\.(?:get|post)\('/g) || []).length, 7);
+assert(!/\b(?:SELECT|INSERT|UPDATE|DELETE)\b/.test(route + views), 'SQL hors service');
+assert(!/\b(?:req|res)\./.test(service + views), 'Express hors contrôleur');
+assert(!/require\(['"].*server/.test(route + service + views));
+assert(server.includes("registerMaterialsRoutes(app"));
+assert(server.includes('function calcSheetKg('), 'helper tôle partagé déplacé');
+assert(fs.readFileSync('routes/quoteLines.js', 'utf8').includes("app.post('/devis/line/material'"));
+assert.strictEqual((route.match(/\/materials\/:id/g) || []).length, 2);
+console.log('OK - architecture matières');

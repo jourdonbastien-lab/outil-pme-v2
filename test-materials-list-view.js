@@ -1,0 +1,12 @@
+'use strict';
+const assert = require('assert');
+const { renderMaterialsListView } = require('./views/materialsListView');
+const { renderMaterialCard } = require('./views/materialCardView');
+const escHtml = (value) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+const deps = { escHtml, clientPageIcon: (name) => `<i>${name}</i>`, renderMaterialCard };
+let html = renderMaterialsListView({ q: '', totalMaterials: 0, materials: [], isAdmin: false, seeded: false, saved: false, added: 0 }, deps);
+assert(html.includes('Aucune matière enregistrée'));
+assert(!html.includes('action="/materials/seed"'));
+html = renderMaterialsListView({ q: 'acier"', totalMaterials: 2, materials: [{ id: 1, type: 'Tube', name: 'A', unit: 'ml', price: 2 }, { id: 2, type: 'Tube', name: 'B', unit: null, price: 0 }], isAdmin: true, seeded: true, saved: true, added: 2 }, deps);
+for (const token of ['Bibliothèque matière', '2 matière(s)', 'action="/materials/seed"', 'action="/materials"', 'name="type"', 'name="name"', 'name="unit"', 'name="price"', 'name="kg_per_m"', 'name="density"', 'name="q"', 'value="acier&quot;"', 'Réinitialiser', 'data-materials-add-toggle', 'setTimeout', '230', '2 matière(s) ajoutée(s)', 'Matière enregistrée.']) assert(html.includes(token), token);
+console.log('OK - vue liste matières');
