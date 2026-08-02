@@ -7,7 +7,8 @@ function createQuoteAttachmentsService(dependencies) {
     basename,
     fileExists,
     deleteFile,
-    removeStoragePath
+    removeStoragePath,
+    readDirectory
   } = dependencies || {};
   if (!photosRoot) throw new TypeError('Dossier photos devis manquant.');
   if (typeof safeResolveInside !== 'function') throw new TypeError('Résolution sécurisée photos manquante.');
@@ -31,7 +32,15 @@ function createQuoteAttachmentsService(dependencies) {
   function deleteAllQuotePhotos(quoteId) {
     return removeStoragePath(safeResolveInside(photosRoot, String(quoteId)));
   }
-  return { uploadedPhotoPath, getQuotePhoto, deleteQuotePhoto, deleteAllQuotePhotos, fileExists };
+  function listQuoteAttachments(quoteId) {
+    const directory = safeResolveInside(photosRoot, String(quoteId));
+    if (!fileExists(directory) || typeof readDirectory !== 'function') return [];
+    return readDirectory(directory, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  }
+  return { uploadedPhotoPath, getQuotePhoto, deleteQuotePhoto, deleteAllQuotePhotos, listQuoteAttachments, fileExists };
 }
 
 module.exports = { createQuoteAttachmentsService };
