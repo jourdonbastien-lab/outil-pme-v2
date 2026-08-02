@@ -1,0 +1,14 @@
+'use strict';
+const assert = require('assert');
+const { renderSupplierOrdersListView } = require('./views/supplierOrdersListView');
+const renderSupplierOrderCard = require('./views/supplierOrderCardView').renderSupplierOrderCard;
+const escHtml = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const deps = { escHtml, clientPageIcon: () => '<svg></svg>', purchaseStatusClass: () => 'todo', renderSupplierOrderCard };
+const base = { orders: [], activeCount: 0, chantierPurchases: [], statusFilter: 'all', supplierFilter: 'all', combinedSupplierItems: [], supplierChoices: [], query: {} };
+let html = renderSupplierOrdersListView(base, deps);
+for (const marker of ['Commandes fournisseurs et achats', 'new-supplier-order', 'supplier-order-add-panel', 'action="/orders/supplier"', 'name="name"', 'name="description"', 'name="date"', 'supplier-list', 'action="/orders/suppliers"', 'name="status"', 'name="supplier"', 'name="q"', 'Aucune commande fournisseur ou achat ne correspond aux filtres.', 'data-supplier-order-add-toggle', 'addEventListener']) assert(html.includes(marker), marker);
+html = renderSupplierOrdersListView({ ...base, orders: [{ id: 1 }], activeCount: 1, supplierChoices: ['Fournisseur <A>'], statusFilter: 'ordered', supplierFilter: 'Fournisseur <A>', query: { q: 'acier' }, combinedSupplierItems: [{ type: 'supplier', key: 'supplier-1', id: 1, sourceLabel: 'Commande fournisseur', subtitle: 'Tube', title: 'Fournisseur <A>', meta: [], status: 'En cours', href: '#supplier-1' }] }, deps);
+assert(html.includes('Fournisseur &lt;A&gt;'));
+assert(html.includes('value="ordered" selected'));
+assert(html.includes('value="acier"'));
+console.log('OK - vue liste commandes fournisseurs');

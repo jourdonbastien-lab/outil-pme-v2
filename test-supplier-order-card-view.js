@@ -1,0 +1,17 @@
+'use strict';
+const assert = require('assert');
+const { renderSupplierOrderCard } = require('./views/supplierOrderCardView');
+const escHtml = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const context = { escHtml, clientPageIcon: () => '<svg></svg>', purchaseStatusClass: () => 'todo', redirect: '/orders/suppliers?status=todo#supplier-list' };
+const purchase = renderSupplierOrderCard({ type: 'purchase', key: 'purchase-1', id: 1, sourceLabel: 'Achat chantier', subtitle: 'Client <A>', title: 'Acier & tube', meta: ['Réf. X'], status: 'À commander', href: '/chantier' }, context);
+assert(purchase.includes('Client &lt;A&gt;'));
+assert(purchase.includes('Acier &amp; tube'));
+assert(purchase.includes('/orders/suppliers/purchases/1/status'));
+assert(purchase.includes('name="status" value="Commandé"'));
+assert(purchase.includes('name="status" value="Reçu"'));
+const supplier = renderSupplierOrderCard({ type: 'supplier', key: 'supplier-2', id: 2, sourceLabel: 'Commande fournisseur', subtitle: 'Tubes', title: 'Fournisseur', meta: [], status: 'En cours', href: '#supplier-2' }, context);
+assert(supplier.includes('/orders/suppliers/done'));
+assert(supplier.includes('/orders/supplier/delete'));
+assert(supplier.includes("confirm('Supprimer cette commande ?')"));
+assert(supplier.includes('<svg'));
+console.log('OK - carte commande fournisseur');
