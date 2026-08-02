@@ -10,7 +10,7 @@ for (const route of [
 ]) assert(!server.includes(route), route);
 for (const preserved of [
   "app.get('/devis/:id', requireLogin",
-  "app.post('/devis/:id/ai-costs', requireLogin",
+  'registerQuoteAiAnalysisRoutes(app',
   'registerQuoteAcceptanceRoute(app'
 ]) assert(server.includes(preserved), preserved);
 assert(fs.readFileSync('routes/quoteAttachments.js', 'utf8').includes("app.post('/devis/:id/photo', requireLogin"));

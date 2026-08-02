@@ -11,7 +11,7 @@ for (const route of [
 assert(!server.includes("'/quote-photos/:id/:file',\n  requireLogin"));
 for (const preserved of [
   "app.get('/devis/:id', requireLogin",
-  "app.post('/api/devis/:id/ai-review', requireLogin",
+  'registerQuoteAiAnalysisRoutes(app',
   'registerQuoteAcceptanceRoute(app'
 ]) assert(server.includes(preserved), preserved);
 assert(server.indexOf('registerQuoteAttachmentUploadRoute(app') < server.indexOf('registerQuoteSketchRoutes(app'));

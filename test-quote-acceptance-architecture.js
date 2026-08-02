@@ -15,7 +15,7 @@ assert(!service.includes("require('../server"));
 assert(!service.includes("new Database("));
 for (const preserved of [
   "app.get('/devis/:id', requireLogin",
-  "app.post('/api/devis/:id/ai-review', requireLogin",
+  'registerQuoteAiAnalysisRoutes(app',
   'registerQuoteAttachmentUploadRoute(app',
   'registerQuoteSketchRoutes(app',
   'registerQuoteLineMutationRoutes(app',

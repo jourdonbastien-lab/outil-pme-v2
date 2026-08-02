@@ -94,6 +94,12 @@ const { registerQuoteSketchRoutes } = require('./routes/quoteSketches');
 const { createQuoteAcceptanceService } = require('./services/quoteAcceptanceService');
 const { createQuoteAcceptanceController } = require('./controllers/quoteAcceptanceController');
 const { registerQuoteAcceptanceRoute } = require('./routes/quoteAcceptance');
+const { createQuoteProfitabilityService } = require('./services/quoteProfitabilityService');
+const { createQuoteProfitabilityController } = require('./controllers/quoteProfitabilityController');
+const { registerQuoteProfitabilityRoutes } = require('./routes/quoteProfitability');
+const { createQuoteAiAnalysisService } = require('./services/quoteAiAnalysisService');
+const { createQuoteAiAnalysisController } = require('./controllers/quoteAiAnalysisController');
+const { registerQuoteAiAnalysisRoutes } = require('./routes/quoteAiAnalysis');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -7848,223 +7854,48 @@ const QUOTE_AI_COST_FIELDS = [
   'cout_motorisation', 'cout_accessoires', 'cout_transport', 'cout_consommables', 'cout_locations',
   'heures_etude', 'heures_atelier', 'heures_pose', 'cout_horaire'
 ];
-function parseJsonArray(value) {
-  try { const parsed = JSON.parse(String(value || '[]')); return Array.isArray(parsed) ? parsed : []; }
-  catch { return []; }
-}
-
-function getQuoteProfitability(quoteId) {
-  const quote = db.prepare('SELECT * FROM quotes WHERE id = ?').get(quoteId);
-  if (!quote) return null;
-  const lines = db.prepare('SELECT * FROM quote_lines WHERE quote_id = ? ORDER BY position ASC, id ASC').all(quoteId);
-  const saved = db.prepare('SELECT * FROM quote_profitability_forecasts WHERE quote_id = ?').get(quoteId) || null;
-  const adjustments = parseJsonArray(saved?.manual_adjustments_json);
-  const calculations = projectProfitability.analyzeQuoteLines({ quote, lines, adjustments });
-  return {
-    quote, lines, saved, input: quote, calculations,
-    historicalCost: Number(quote.cout_revient) > 0 ? Number(quote.cout_revient) : null,
-    historicalForecastCosts: saved ? {
-      materialCost: saved.material_cost, subcontractingCost: saved.subcontracting_cost,
-      laborCost: saved.labor_cost, totalCost: saved.total_cost_price
-    } : null,
-    detectedCategories: projectProfitability.detectWorkCategories(quote, lines)
-  };
-}
-
-function profitabilityPublic(context) {
-  return {
-    quoteId: context.quote.id,
-    saved: context.saved,
-    calculations: context.calculations,
-    historicalCost: context.historicalCost,
-    detectedCategories: context.detectedCategories,
-    availableCategories: projectProfitability.WORK_CATEGORIES,
-    lineCostCategories: projectProfitability.LINE_COST_CATEGORIES
-  };
-}
-
-function quoteAiReviewPublic(row) {
-  const parseJson = (value, fallback) => {
-    try { return JSON.parse(String(value || '')); } catch { return fallback; }
-  };
-  const checks = parseJson(row.checks_json, {});
-  const ai = parseJson(row.ai_response_json, {});
-  return {
-    id: row.id,
-    quoteId: row.quote_id,
-    riskLevel: row.risk_level,
-    summary: {
-      totalHT: row.total_ht,
-      costPrice: row.cost_price,
-      marginAmount: row.margin_amount,
-      marginOnCost: row.margin_on_cost,
-      marginOnSale: row.margin_on_sale,
-      ...(checks.summary || {})
-    },
-    warnings: checks.warnings || [],
-    positivePoints: checks.positivePoints || [],
-    recommendation: checks.recommendation || '',
-    ai: { used: Boolean(ai.used), message: String(ai.message || '') },
-    modelName: row.model_name || null,
-    createdAt: row.created_at
-  };
-}
-
-function parseOpenAiJson(text) {
-  const cleaned = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  return JSON.parse(cleaned);
-}
-
-async function requestOpenAiQuoteReview(quote, lines, deterministic) {
-  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
-  if (!apiKey) return { used: false, message: 'Analyse automatique effectuée sans interprétation IA.' };
-
-  const systemPrompt = [
-    'Tu es un contrôleur de devis spécialisé en métallerie, serrurerie et ouvrages métalliques sur mesure.',
-    'Tu analyses sans modifier les prix et sans inventer de coûts.',
-    'Les calculs financiers fournis par l’application sont fiables.',
-    'Distingue les faits certains des points à vérifier et ne présente jamais une supposition comme une certitude.',
-    'Réponds exclusivement en JSON valide avec les clés riskLevel, warnings, positivePoints et recommendation.'
-  ].join(' ');
-  const safePayload = {
-    quoteNumber: quote.id,
-    workDescription: String(quote.title || ''),
-    lines: lines.map((line) => ({
-      category: String(line.category || ''), label: String(line.label || ''),
-      quantity: Number(line.qty || 0), unit: String(line.unit || ''),
-      unitPriceHT: Number(line.unit_price || 0), totalHT: Number(line.total || 0)
-    })),
-    financialSummary: deterministic.summary,
-    deterministicWarnings: deterministic.warnings
-  };
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: OPENAI_QUOTE_REVIEW_MODEL,
-        input: [
-          { role: 'system', content: [{ type: 'input_text', text: systemPrompt }] },
-          { role: 'user', content: [{ type: 'input_text', text: JSON.stringify(safePayload) }] }
-        ]
-      }),
-      signal: controller.signal
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(`OpenAI HTTP ${response.status}: ${String(payload?.error?.message || 'erreur API').slice(0, 300)}`);
-    const parsed = parseOpenAiJson(quoteAiReview.extractResponseText(payload));
-    return { used: true, review: quoteAiReview.sanitizeAiReview(parsed, deterministic.riskLevel), message: 'Interprétation IA effectuée.' };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-app.get('/api/devis/:id/profitability', requireLogin, (req, res) => {
-  const quoteId = parseOptionalId(req.params.id);
-  if (!quoteId) return res.status(400).json({ success: false, error: 'ID devis invalide' });
-  const context = getQuoteProfitability(quoteId);
-  if (!context) return res.status(404).json({ success: false, error: 'Devis introuvable' });
-  return res.json({ success: true, profitability: profitabilityPublic(context) });
+const quoteProfitabilityService = createQuoteProfitabilityService({
+  db,
+  projectProfitability,
+  parseOptionalId,
+  round2,
+  randomUUID: crypto.randomUUID
+});
+const quoteProfitabilityController = createQuoteProfitabilityController({
+  profitabilityService: quoteProfitabilityService,
+  parseOptionalId
+});
+const quoteAiAnalysisService = createQuoteAiAnalysisService({
+  db,
+  profitabilityService: quoteProfitabilityService,
+  quoteAiReview,
+  projectProfitability,
+  costFields: QUOTE_AI_COST_FIELDS,
+  model: OPENAI_QUOTE_REVIEW_MODEL,
+  getApiKey: () => process.env.OPENAI_API_KEY,
+  fetchImpl: fetch,
+  AbortControllerImpl: AbortController,
+  parseOptionalId
+});
+const quoteAiAnalysisController = createQuoteAiAnalysisController({
+  aiAnalysisService: quoteAiAnalysisService,
+  parseOptionalId
 });
 
-app.post('/api/devis/:id/profitability', requireLogin, (req, res) => {
-  const quoteId = parseOptionalId(req.params.id);
-  if (!quoteId) return res.status(400).json({ success: false, error: 'ID devis invalide' });
-  if (!db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)) return res.status(404).json({ success: false, error: 'Devis introuvable' });
-  try {
-    const requested = Array.isArray(req.body?.adjustments) ? req.body.adjustments : [];
-    const adjustments = requested.slice(0, 50).map((item, index) => {
-      const amount = Number(String(item?.amount ?? '').replace(',', '.'));
-      if (!Number.isFinite(amount) || amount <= 0) throw new Error(`Montant invalide pour l’ajustement ${index + 1}`);
-      return { id: String(item.id || crypto.randomUUID()), label: String(item.label || '').trim() || 'Ajustement manuel',
-        type: projectProfitability.LINE_COST_CATEGORIES.includes(item.type) ? item.type : 'divers', amount: round2(amount), lineId: parseOptionalId(item.lineId) };
-    });
-    const lines = db.prepare('SELECT * FROM quote_lines WHERE quote_id = ?').all(quoteId);
-    for (const adjustment of adjustments) {
-      if (adjustment.lineId && lines.some((line) => line.id === adjustment.lineId && (line.cost_total != null || line.cost_unit != null))) {
-        throw new Error('Un ajustement ne peut pas doubler le coût déjà enregistré d’une ligne.');
-      }
-    }
-    const now = new Date().toISOString();
-    db.prepare(`
-      INSERT INTO quote_profitability_forecasts (quote_id, manual_adjustments_json, notes, created_at, updated_at, updated_by)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(quote_id) DO UPDATE SET manual_adjustments_json=excluded.manual_adjustments_json,
-        notes=excluded.notes, updated_at=excluded.updated_at, updated_by=excluded.updated_by
-    `).run(quoteId, JSON.stringify(adjustments), String(req.body?.notes || '').trim(), now, now, parseOptionalId(req.session?.user?.id));
-    return res.json({ success: true, profitability: profitabilityPublic(getQuoteProfitability(quoteId)) });
-  } catch (error) {
-    return res.status(400).json({ success: false, error: error.message || 'Chiffrage invalide' });
+registerQuoteProfitabilityRoutes(app, {
+  requireLogin,
+  handlers: {
+    get: quoteProfitabilityController.getQuoteProfitability,
+    save: quoteProfitabilityController.saveQuoteCostForecast
   }
 });
-
-app.post('/api/devis/:id/profitability/analyze', requireLogin, runQuoteProfitabilityAnalysis);
-
-async function runQuoteProfitabilityAnalysis(req, res) {
-  const quoteId = parseOptionalId(req.params.id);
-  if (!quoteId) return res.status(400).json({ success: false, error: 'ID devis invalide' });
-  const context = getQuoteProfitability(quoteId);
-  if (!context) return res.status(404).json({ success: false, error: 'Devis introuvable' });
-  const { quote, lines, input, calculations: profitability } = context;
-  const deterministic = quoteAiReview.calculateAutomaticLineReview(profitability, quote, lines);
-  let aiResult = { used: false, message: 'Analyse automatique effectuée sans interprétation IA.' };
-  try { aiResult = await requestOpenAiQuoteReview(input, lines, deterministic); }
-  catch (error) { console.error('Erreur analyse IA devis:', error?.message || error); aiResult = { used: false, message: 'Interprétation IA indisponible. Les contrôles automatiques restent valides.' }; }
-  const aiReview = aiResult.review || {};
-  const review = { ...deterministic, riskLevel: aiReview.riskLevel || deterministic.riskLevel,
-    warnings: Array.from(new Set(deterministic.warnings.concat(aiReview.warnings || []))),
-    positivePoints: Array.from(new Set(deterministic.positivePoints.concat(aiReview.positivePoints || []))),
-    recommendation: aiReview.recommendation || deterministic.recommendation };
-  const createdAt = new Date().toISOString();
-  const createdBy = parseOptionalId(req.session?.user?.id);
-  db.prepare(`INSERT INTO quote_profitability_forecasts
-    (quote_id, analysis_json, reliability_level, analyzed_at, engine_version, created_at, updated_at, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(quote_id) DO UPDATE SET analysis_json=excluded.analysis_json, reliability_level=excluded.reliability_level,
-      analyzed_at=excluded.analyzed_at, engine_version=excluded.engine_version, updated_at=excluded.updated_at, updated_by=excluded.updated_by`
-  ).run(quoteId, JSON.stringify(profitability), profitability.reliability, createdAt, profitability.engineVersion, createdAt, createdAt, createdBy);
-  const info = db.prepare(`INSERT INTO quote_ai_reviews
-    (quote_id, risk_level, total_ht, cost_price, margin_amount, margin_on_cost, margin_on_sale, checks_json, ai_response_json, model_name, created_at, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(quoteId, review.riskLevel, review.summary.totalHT, review.summary.costPrice,
-      review.summary.marginAmount, review.summary.marginOnCost, review.summary.marginOnSale, JSON.stringify(review),
-      JSON.stringify({ used: aiResult.used, message: aiResult.message }), aiResult.used ? OPENAI_QUOTE_REVIEW_MODEL : null, createdAt, createdBy);
-  return res.json({ success: true, review: { id: info.lastInsertRowid, ...review, ai: { used: aiResult.used, message: aiResult.message }, createdAt } });
-}
-
-app.post('/api/devis/:id/ai-review', requireLogin, runQuoteProfitabilityAnalysis);
-
-app.get('/api/devis/:id/ai-reviews', requireLogin, (req, res) => {
-  const quoteId = parseOptionalId(req.params.id);
-  if (!quoteId) return res.status(400).json({ success: false, error: 'ID devis invalide' });
-  if (!db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)) return res.status(404).json({ success: false, error: 'Devis introuvable' });
-  const reviews = db.prepare('SELECT * FROM quote_ai_reviews WHERE quote_id = ? ORDER BY created_at DESC, id DESC').all(quoteId).map(quoteAiReviewPublic);
-  return res.json({ success: true, reviews });
-});
-
-app.post('/devis/:id/ai-costs', requireLogin, (req, res) => {
-  const quoteId = parseOptionalId(req.params.id);
-  if (!quoteId) return res.status(400).send('ID devis invalide');
-  if (!db.prepare('SELECT id FROM quotes WHERE id = ?').get(quoteId)) return res.status(404).send('Devis introuvable');
-  try {
-    const category = String(req.body?.work_category || '').trim();
-    if (category && !projectProfitability.WORK_CATEGORIES.includes(category)) throw new Error('Catégorie d’ouvrage invalide');
-    const values = QUOTE_AI_COST_FIELDS.map((field) => {
-      const raw = String(req.body?.[field] ?? '').trim();
-      if (!raw) return null;
-      const value = Number(raw.replace(',', '.'));
-      if (!Number.isFinite(value) || value < 0) throw new Error(`Valeur invalide: ${field}`);
-      return value;
-    });
-    db.transaction(() => {
-      db.prepare(`UPDATE quotes SET ${QUOTE_AI_COST_FIELDS.map((field) => `${field} = ?`).join(', ')} WHERE id = ?`).run(...values, quoteId);
-      db.prepare('UPDATE quotes SET work_category = ? WHERE id = ?').run(category || null, quoteId);
-    })();
-  } catch (error) {
-    return res.status(400).send(error.message || 'Coûts invalides');
+registerQuoteAiAnalysisRoutes(app, {
+  requireLogin,
+  handlers: {
+    review: quoteAiAnalysisController.reviewQuote,
+    list: quoteAiAnalysisController.listQuoteAiReviews,
+    applyCosts: quoteAiAnalysisController.applyQuoteAiCosts
   }
-  return res.redirect(`/devis/${quoteId}#quote-ai-review-card`);
 });
 
 app.get('/devis/:id', requireLogin, (req, res) => {
@@ -8153,7 +7984,7 @@ const photosHtml = photos.map(photo => {
   const acceptDisabled = String(quote.status || '') === 'Accepté';
   const marginPct = Number(quote.margin_pct ?? 0);
   const totalWithMargin = round2(total * (1 + marginPct / 100));
-  const profitabilityContext = getQuoteProfitability(id);
+  const profitabilityContext = quoteProfitabilityService.getQuoteProfitability(id);
   const profitabilitySaved = profitabilityContext.saved;
   const profitabilityForecast = profitabilityContext.calculations;
   const vatRate = normalizeVatRate(quote.vat_rate);

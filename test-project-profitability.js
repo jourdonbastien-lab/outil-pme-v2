@@ -163,9 +163,11 @@ assert(
     .includes('saveProjectForecast({ ...quote, total_ht: totalWithMargin }, lines, clientOrderId)')
 );
 assert(clientOrderRoutes.includes("get('/api/orders/:id/profitability', 'profitabilityApi')"));
-assert(server.includes("app.get('/api/devis/:id/profitability', requireLogin"));
-assert(server.includes("app.post('/api/devis/:id/profitability', requireLogin"));
-assert(server.includes("app.post('/api/devis/:id/profitability/analyze', requireLogin"));
+const quoteProfitabilityRoutes = fs.readFileSync('routes/quoteProfitability.js', 'utf8');
+const quoteAiAnalysisRoutes = fs.readFileSync('routes/quoteAiAnalysis.js', 'utf8');
+assert(quoteProfitabilityRoutes.includes("app.get('/api/devis/:id/profitability', requireLogin"));
+assert(quoteProfitabilityRoutes.includes("app.post('/api/devis/:id/profitability', requireLogin"));
+assert(quoteAiAnalysisRoutes.includes("app.post('/api/devis/:id/profitability/analyze', requireLogin"));
 for (const column of ['analysis_json', 'manual_adjustments_json', 'reliability_level', 'analyzed_at', 'engine_version']) {
   assert(server.includes(`ensureColumn('quote_profitability_forecasts', '${column}'`), `migration absente: ${column}`);
 }

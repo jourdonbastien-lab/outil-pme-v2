@@ -83,22 +83,24 @@ assert(automaticReview.checks.some((check) => check.code === 'material_without_c
   }), /OpenAI HTTP 500/);
 
   const server = fs.readFileSync('server.js', 'utf8');
+  const aiRoutes = fs.readFileSync('routes/quoteAiAnalysis.js', 'utf8');
+  const aiService = fs.readFileSync('services/quoteAiAnalysisService.js', 'utf8');
   assert(server.includes('CREATE TABLE IF NOT EXISTS quote_ai_reviews'));
-  assert(server.includes("app.post('/api/devis/:id/ai-review', requireLogin"));
-  assert(server.includes("app.get('/api/devis/:id/ai-reviews', requireLogin"));
+  assert(aiRoutes.includes("app.post('/api/devis/:id/ai-review', requireLogin"));
+  assert(aiRoutes.includes("app.get('/api/devis/:id/ai-reviews', requireLogin"));
   assert(server.includes('Réanalyser le devis'));
   assert(server.includes('Cette analyse est une aide au contrôle'));
-  const openAiPayloadStart = server.indexOf('const safePayload = {', server.indexOf('async function requestOpenAiQuoteReview'));
-  const openAiPayloadEnd = server.indexOf('const controller = new AbortController()', openAiPayloadStart);
-  const openAiPayload = server.slice(openAiPayloadStart, openAiPayloadEnd);
+  const openAiPayloadStart = aiService.indexOf('const safePayload = {', aiService.indexOf('async function requestOpenAiQuoteReview'));
+  const openAiPayloadEnd = aiService.indexOf('const controller = new AbortControllerImpl()', openAiPayloadStart);
+  const openAiPayload = aiService.slice(openAiPayloadStart, openAiPayloadEnd);
   assert(!/client_name|client_email|client_phone|client_address|technicalNotes/.test(openAiPayload), 'aucune donnée client ou note libre ne doit être envoyée à OpenAI');
-  const routeStart = server.indexOf('async function runQuoteProfitabilityAnalysis');
-  const routeEnd = server.indexOf("app.get('/api/devis/:id/ai-reviews'", routeStart);
-  const analysisRoute = server.slice(routeStart, routeEnd);
+  const routeStart = aiService.indexOf('async function reviewQuote');
+  const routeEnd = aiService.indexOf('function listQuoteAiReviews', routeStart);
+  const analysisRoute = aiService.slice(routeStart, routeEnd);
   assert(!analysisRoute.includes('UPDATE quotes'), 'analyser ne doit jamais modifier le devis');
   assert(!analysisRoute.includes('UPDATE quote_lines'), 'analyser ne doit jamais modifier les lignes');
   assert(analysisRoute.includes('INSERT INTO quote_ai_reviews'), 'l historique doit etre enregistre');
-  assert(server.includes("app.post('/api/devis/:id/profitability/analyze', requireLogin"));
+  assert(aiRoutes.includes("app.post('/api/devis/:id/profitability/analyze', requireLogin"));
 
   console.log('OK - contrôle automatique des devis');
 })().catch((error) => { console.error(error); process.exitCode = 1; });
