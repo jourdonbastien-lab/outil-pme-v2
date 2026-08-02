@@ -102,10 +102,14 @@ class MemoryDatabase {
     assert(fs.existsSync(storedBeforeReject), 'rejet ayant supprimé le fichier');
 
     const server = fs.readFileSync('server.js', 'utf8');
-    for (const route of ["app.get('/documents-entrants', requireAdmin", "app.get('/documents-entrants/:id/file', requireAdmin", "app.post('/documents-entrants/:id/classify', requireAdmin", "app.post('/documents-entrants/:id/reanalyze', requireAdmin", "app.post('/documents-entrants/:id/reject', requireAdmin"]) assert(server.includes(route), `route absente: ${route}`);
-    assert(server.includes('LIMIT ? OFFSET ?'), 'pagination absente');
-    assert(server.includes("status = 'rejete'"), 'filtre/rejet absent');
-    assert(server.includes('scannerDocumentUpload.single'), 'import manuel absent');
+    assert(server.includes('registerIncomingDocumentsRoutes(app'), 'routeur documents entrants absent');
+    const routeSource = fs.readFileSync(path.join(__dirname, 'routes', 'incomingDocuments.js'), 'utf8');
+    const serviceSource = fs.readFileSync(path.join(__dirname, 'services', 'incomingDocumentsService.js'), 'utf8');
+    const controllerSource = fs.readFileSync(path.join(__dirname, 'controllers', 'incomingDocumentsController.js'), 'utf8');
+    for (const route of ["app.get('/documents-entrants', requireAdmin", "app.get('/documents-entrants/:id/file', requireAdmin", "app.post('/documents-entrants/:id/classify', requireAdmin", "app.post('/documents-entrants/:id/reanalyze', requireAdmin", "app.post('/documents-entrants/:id/reject', requireAdmin"]) assert(routeSource.includes(route), `route absente: ${route}`);
+    assert(serviceSource.includes('LIMIT ? OFFSET ?'), 'pagination absente');
+    assert(serviceSource.includes("status = 'rejete'"), 'filtre/rejet absent');
+    assert(controllerSource.includes('uploadSingle'), 'import manuel absent');
     assert(server.includes("process.once('SIGTERM'"), 'arrêt propre absent');
     console.log('OK - documents entrants scanner');
   } finally {

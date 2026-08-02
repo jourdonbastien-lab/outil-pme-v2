@@ -1,0 +1,4 @@
+'use strict';
+const assert = require('assert'); const { renderIncomingDocumentCard } = require('./views/incomingDocumentCardView');
+const html = renderIncomingDocumentCard({ id: 3, status: 'erreur', original_name: '<scan>.pdf', received_at: '', file_size: 12, source: 'upload', amount_ttc: null, document_type: 'a_classer', supplier_name: null, document_number: null, error_message: 'OCR HS' }, { escHtml: (v) => String(v).replaceAll('<','&lt;').replaceAll('>','&gt;'), formatDateTimeLabel: () => 'date', formatFileSize: () => '12 o', formatEuroFr: String, renderOptions: () => '<option>a classer</option>', documentTypes: ['a_classer'] });
+for (const token of ['incoming-document-card','is-erreur','&lt;scan&gt;.pdf','OCR HS','/documents-entrants/3/file','/reanalyze','/classify','/reject','name="reason"']) assert(html.includes(token), token); console.log('OK - carte document entrant');

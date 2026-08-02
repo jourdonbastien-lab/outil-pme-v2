@@ -1,0 +1,3 @@
+'use strict';
+const assert = require('assert'); const { createIncomingDocumentsOcrService } = require('./services/incomingDocumentsOcrService');
+(async () => { let call; const service = createIncomingDocumentsOcrService({ analyzeEbpFile: async (...args) => { call = args; return { text: 'FACTURE', warning: null }; } }); assert.strictEqual((await service.extractTextFromDocument('/a.pdf', 'application/pdf')).text, 'FACTURE'); assert.deepStrictEqual(call, ['/a.pdf', 'application/pdf']); const warning = createIncomingDocumentsOcrService({ analyzeEbpFile: async () => ({ text: '', warning: 'OCR indisponible' }) }); await assert.rejects(() => warning.extractTextFromDocument('/a.jpg', 'image/jpeg'), /OCR indisponible/); console.log('OK - OCR documents entrants'); })();

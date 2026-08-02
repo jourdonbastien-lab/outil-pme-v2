@@ -1,0 +1,4 @@
+'use strict';
+const assert = require('assert'); const { renderIncomingDocumentsListView } = require('./views/incomingDocumentsListView');
+const html = renderIncomingDocumentsListView({ status:'',type:'',period:null,search:'<x>',page:1,rows:[],counts:{},pages:1,statuses:['nouveau'],documentTypes:['a_classer'],maxFileSizeBytes:25*1024*1024 }, { escHtml:(v)=>String(v).replaceAll('<','&lt;'),clientPageIcon:()=>'',renderIncomingDocumentCard:()=>'',formatDateTimeLabel:String,formatFileSize:String,formatEuroFr:String });
+for (const token of ['Documents entrants','Aucun document entrant','action="/documents-entrants/upload"','name="document"','25 Mo maximum','name="status"','name="type"','name="period"','name="search"','value="&lt;x>"','Page 1 / 1']) assert(html.includes(token), token); console.log('OK - vue documents entrants');

@@ -1,0 +1,4 @@
+'use strict';
+const assert = require('assert'); const { registerIncomingDocumentsRoutes } = require('./routes/incomingDocuments'); const calls = [];
+const app = { get(url, middleware, handler) { calls.push(['GET', url, middleware, handler]); }, post(url, middleware, handler) { calls.push(['POST', url, middleware, handler]); } }; const admin = () => {}; const handlers = { list() {}, file() {}, upload() {}, classify() {}, reanalyze() {}, reject() {} };
+registerIncomingDocumentsRoutes(app, { requireAdmin: admin, handlers }); assert.deepStrictEqual(calls.map((c) => c.slice(0, 2)), [['GET','/documents-entrants'],['GET','/documents-entrants/:id/file'],['POST','/documents-entrants/upload'],['POST','/documents-entrants/:id/classify'],['POST','/documents-entrants/:id/reanalyze'],['POST','/documents-entrants/:id/reject']]); assert(calls.every((c) => c[2] === admin)); console.log('OK - routes documents entrants');
