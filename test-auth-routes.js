@@ -1,0 +1,17 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const { registerAuthRoutes } = require('./routes/auth');
+const calls = [];
+const app = { get: (...args) => calls.push(['GET', ...args]), post: (...args) => calls.push(['POST', ...args]) };
+const middleware = () => {};
+const controller = { home() {}, showLogin() {}, login() {}, showEmail() {}, sendEmail() {}, showCode() {}, verifyCode() {}, logout() {} };
+registerAuthRoutes(app, { requirePendingMfa: middleware, controller });
+assert.deepStrictEqual(calls.map((call) => call.slice(0, 2)), [['GET', '/'], ['GET', '/login'], ['POST', '/login'], ['GET', '/login/email'], ['POST', '/login/email'], ['GET', '/login/code'], ['POST', '/login/code'], ['GET', '/logout']]);
+for (const index of [3, 4, 5, 6]) assert.strictEqual(calls[index][2], middleware);
+assert.strictEqual(new Set(calls.map((call) => `${call[0]} ${call[1]}`)).size, calls.length);
+const source = fs.readFileSync('routes/auth.js', 'utf8');
+assert(!/\b(?:SELECT|INSERT|UPDATE|DELETE)\b/.test(source));
+assert(!source.includes('<html'));
+assert(!/nodemailer|sendMail/.test(source));
+console.log('OK - routes Auth et 2FA');

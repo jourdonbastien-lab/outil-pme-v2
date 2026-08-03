@@ -36,6 +36,13 @@ const quoteAiReview = require('./lib/quoteAiReview');
 const projectProfitability = require('./lib/projectProfitability');
 const clientOrderCostLines = require('./lib/clientOrderCostLines');
 const clientOrderFinancialSnapshot = require('./lib/clientOrderFinancialSnapshot');
+const { createUserService } = require('./services/userService');
+const { createAuthService } = require('./services/authService');
+const { createTwoFactorService } = require('./services/twoFactorService');
+const { createAuthEmailService } = require('./services/authEmailService');
+const { createAuthController } = require('./controllers/authController');
+const { createTwoFactorView } = require('./views/twoFactorView');
+const { registerAuthRoutes } = require('./routes/auth');
 const { createClientOrderProfitabilityService } = require('./services/clientOrderProfitabilityService');
 const { registerClientOrderRoutes } = require('./routes/clientOrders');
 const { createClientOrderProfitabilityController } = require('./controllers/clientOrderProfitabilityController');
@@ -270,8 +277,6 @@ const SMTP_SECURE = envBool('SMTP_SECURE', false);
 const SMTP_USER = String(process.env.SMTP_USER || '').trim();
 const SMTP_PASS = String(process.env.SMTP_PASS || '');
 const SMTP_FROM = String(process.env.SMTP_FROM || SMTP_USER || '').trim();
-
-const mfaRequestLimits = new Map();
 
 if (TRUST_PROXY) {
   app.set('trust proxy', 1);
@@ -1489,197 +1494,39 @@ function requirePendingMfa(req, res, next) {
   next();
 }
 
-function normalizeEmail(email) {
-  return String(email || '').trim().toLowerCase();
-}
-
-function getClientIp(req) {
-  return String(req.ip || req.socket?.remoteAddress || 'unknown');
-}
-
-function getMfaRequestLimit(key) {
-  const now = Date.now();
-  const current = mfaRequestLimits.get(key);
-  if (!current || current.windowExpiresAt <= now) {
-    const fresh = {
-      count: 0,
-      windowExpiresAt: now + MFA_REQUEST_WINDOW_MS,
-      cooldownUntil: 0,
-      lockUntil: 0
-    };
-    mfaRequestLimits.set(key, fresh);
-    return fresh;
-  }
-  return current;
-}
-
-function checkMfaCodeRequestLimit(email, req) {
-  const key = `${email}:${getClientIp(req)}`;
-  const limit = getMfaRequestLimit(key);
-  const now = Date.now();
-
-  if (limit.lockUntil > now) {
-    return {
-      ok: false,
-      message: 'Trop de demandes de code. Réessayez dans quelques minutes.'
-    };
-  }
-
-  if (limit.cooldownUntil > now) {
-    return {
-      ok: false,
-      message: 'Un code vient déjà d’être envoyé. Patientez avant de demander un nouveau code.'
-    };
-  }
-
-  if (limit.count >= MFA_MAX_REQUESTS_PER_WINDOW) {
-    limit.lockUntil = now + MFA_LOCK_MS;
-    return {
-      ok: false,
-      message: 'Trop de demandes de code. Réessayez dans quelques minutes.'
-    };
-  }
-
-  return { ok: true, limit };
-}
-
-function registerMfaCodeRequest(limit) {
-  const now = Date.now();
-  limit.count += 1;
-  limit.cooldownUntil = now + MFA_RESEND_COOLDOWN_MS;
-}
-
-function createMfaCode() {
-  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-}
-
-function hashMfaCode({ code, salt, userId, email }) {
-  return crypto
-    .createHmac('sha256', SESSION_SECRET)
-    .update(`${userId}:${email}:${salt}:${code}`)
-    .digest('hex');
-}
-
-function timingSafeEqualHex(a, b) {
-  const left = Buffer.from(String(a || ''), 'hex');
-  const right = Buffer.from(String(b || ''), 'hex');
-  return left.length === right.length && crypto.timingSafeEqual(left, right);
-}
-
-function getSmtpTransport() {
-  if (!SMTP_HOST || !SMTP_FROM) {
-    throw new Error('Configuration SMTP incomplète');
-  }
-
-  const options = {
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE
-  };
-
-  if (SMTP_USER || SMTP_PASS) {
-    options.auth = {
-      user: SMTP_USER,
-      pass: SMTP_PASS
-    };
-  }
-
-  return nodemailer.createTransport(options);
-}
-
-async function sendMfaCodeEmail(email, code) {
-  const transport = getSmtpTransport();
-  await transport.sendMail({
-    from: SMTP_FROM,
-    to: email,
-    subject: 'Code de vérification Outil PME',
-    text: [
-      'Votre code de vérification Outil PME est :',
-      '',
-      code,
-      '',
-      `Ce code expire dans ${MFA_CODE_TTL_MINUTES} minutes.`,
-      'Si vous n’êtes pas à l’origine de cette demande, ignorez cet e-mail.'
-    ].join('\n')
-  });
-}
-
-function renderAuthPage({ title, body }) {
-  return `
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escHtml(title)} - A2 METAL</title>
-  <link rel="stylesheet" href="/style.css?v=20260711-2" />
-</head>
-<body class="login-body">
-  <div class="login-wrapper">
-    <div class="login-card">
-      <div class="login-logo">A2 MÉTAL</div>
-      ${body}
-    </div>
-  </div>
-</body>
-</html>
-`;
-}
-
-function renderMfaEmailPage(error = '') {
-  return renderAuthPage({
-    title: 'Vérification email',
-    body: `
-      <h1>Vérification email</h1>
-      <p class="login-help">Saisissez une adresse e-mail autorisée pour recevoir votre code.</p>
-      ${error ? `<p class="login-error">${escHtml(error)}</p>` : ''}
-      <form method="POST" action="/login/email">
-        <label for="email">Adresse e-mail</label>
-        <input
-          id="email"
-          type="email"
-          name="email"
-          autocomplete="email"
-          required
-        />
-        <button type="submit">Envoyer le code</button>
-      </form>
-      <form method="GET" action="/logout" class="login-secondary-form">
-        <button type="submit" class="btn-secondary">Retour à la connexion</button>
-      </form>
-    `
-  });
-}
-
-function renderMfaCodePage(error = '') {
-  return renderAuthPage({
-    title: 'Code de vérification',
-    body: `
-      <h1>Vérification email</h1>
-      <p class="login-help">Un code de sécurité vous a été envoyé par email.</p>
-      ${error ? `<p class="login-error">${escHtml(error)}</p>` : ''}
-      <form method="POST" action="/login/code">
-        <label for="code">Code</label>
-        <input
-          id="code"
-          class="login-code-input"
-          type="text"
-          name="code"
-          inputmode="numeric"
-          autocomplete="one-time-code"
-          pattern="[0-9]{6}"
-          maxlength="6"
-          required
-        />
-        <button type="submit">Valider le code</button>
-      </form>
-      <form method="POST" action="/login/email" class="login-secondary-form">
-        <button type="submit" class="btn-secondary">Renvoyer un code</button>
-      </form>
-      <a class="login-back-link" href="/logout">Retour à la connexion</a>
-    `
-  });
-}
+const userService = createUserService({ db });
+const authService = createAuthService({ userService });
+const twoFactorService = createTwoFactorService({
+  crypto,
+  sessionSecret: SESSION_SECRET,
+  allowedEmails: MFA_ALLOWED_EMAILS,
+  codeTtlMs: MFA_CODE_TTL_MS,
+  maxCodeAttempts: MFA_MAX_CODE_ATTEMPTS,
+  lockMs: MFA_LOCK_MS,
+  resendCooldownMs: MFA_RESEND_COOLDOWN_MS,
+  requestWindowMs: MFA_REQUEST_WINDOW_MS,
+  maxRequestsPerWindow: MFA_MAX_REQUESTS_PER_WINDOW
+});
+const authEmailService = createAuthEmailService({
+  nodemailer,
+  smtpHost: SMTP_HOST,
+  smtpPort: SMTP_PORT,
+  smtpSecure: SMTP_SECURE,
+  smtpUser: SMTP_USER,
+  smtpPass: SMTP_PASS,
+  smtpFrom: SMTP_FROM,
+  codeTtlMinutes: MFA_CODE_TTL_MINUTES
+});
+const twoFactorView = createTwoFactorView({ escapeHtml: escHtml });
+const authController = createAuthController({
+  authService,
+  twoFactorService,
+  authEmailService,
+  twoFactorView,
+  loginFilePath: path.join(__dirname, 'public', 'login.html'),
+  getClientIp: (req) => String(req.ip || req.socket?.remoteAddress || 'unknown'),
+  logger: console
+});
 
 function normalizeChantierStatus(value) {
   const status = String(value || '').trim();
@@ -2397,153 +2244,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 /* ===================== AUTH ===================== */
 
-app.get('/', (req, res) => {
-  if (req.session.user) return res.redirect('/dashboard');
-  if (req.session.pendingMfaUser) {
-    return req.session.mfa?.codeHash ? res.redirect('/login/code') : res.redirect('/login/email');
-  }
-  return res.redirect('/login');
-});
-
-app.get('/login', (req, res) => {
-  if (req.session.user) return res.redirect('/dashboard');
-  res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
-
-app.post('/login', (req, res) => {
-  const username = String(req.body.username || '').trim();
-  const password = String(req.body.password || '').trim();
-
-  const user = db
-    .prepare('SELECT * FROM users WHERE username = ? AND password = ?')
-    .get(username, password);
-
-  if (!user) {
-    return res.status(401).send('Login incorrect');
-  }
-
-  req.session.pendingMfaUser = {
-    id: user.id,
-    username: user.username,
-    role: user.role
-  };
-  delete req.session.user;
-  delete req.session.mfa;
-
-  res.redirect('/login/email');
-});
-
-app.get('/login/email', requirePendingMfa, (req, res) => {
-  res.send(renderMfaEmailPage());
-});
-
-app.post('/login/email', requirePendingMfa, async (req, res) => {
-  const previousEmail = normalizeEmail(req.session.mfa?.email);
-  const email = normalizeEmail(req.body.email || previousEmail);
-  const now = Date.now();
-
-  if (req.session.mfa?.lockUntil && req.session.mfa.lockUntil > now) {
-    return res.status(429).send(renderMfaEmailPage('Trop de codes incorrects. Réessayez dans quelques minutes.'));
-  }
-
-  if (!email || !MFA_ALLOWED_EMAILS.has(email)) {
-    return res.status(403).send(renderMfaEmailPage('Adresse e-mail non autorisée.'));
-  }
-
-  const requestCheck = checkMfaCodeRequestLimit(email, req);
-  if (!requestCheck.ok) {
-    return res.status(429).send(renderMfaEmailPage(requestCheck.message));
-  }
-
-  const code = createMfaCode();
-  const salt = crypto.randomBytes(16).toString('hex');
-  const pendingUser = req.session.pendingMfaUser;
-
-  req.session.mfa = {
-    email,
-    salt,
-    codeHash: hashMfaCode({
-      code,
-      salt,
-      userId: pendingUser.id,
-      email
-    }),
-    expiresAt: Date.now() + MFA_CODE_TTL_MS,
-    attempts: 0,
-    lockUntil: 0,
-    sentAt: Date.now()
-  };
-
-  try {
-    await sendMfaCodeEmail(email, code);
-    registerMfaCodeRequest(requestCheck.limit);
-  } catch (err) {
-    delete req.session.mfa;
-    console.error('Erreur envoi code e-mail 2FA :', err.message);
-    return res.status(500).send(renderMfaEmailPage('Impossible d’envoyer le code. Vérifiez la configuration SMTP.'));
-  }
-
-  res.redirect('/login/code');
-});
-
-app.get('/login/code', requirePendingMfa, (req, res) => {
-  if (!req.session.mfa?.codeHash) return res.redirect('/login/email');
-  res.send(renderMfaCodePage());
-});
-
-app.post('/login/code', requirePendingMfa, (req, res) => {
-  const mfa = req.session.mfa;
-  const pendingUser = req.session.pendingMfaUser;
-  const code = String(req.body.code || '').trim();
-  const now = Date.now();
-
-  if (!mfa?.codeHash) {
-    return res.redirect('/login/email');
-  }
-
-  if (mfa.lockUntil && mfa.lockUntil > now) {
-    return res.status(429).send(renderMfaCodePage('Trop de codes incorrects. Réessayez dans quelques minutes.'));
-  }
-
-  if (!mfa.expiresAt || mfa.expiresAt <= now) {
-    delete req.session.mfa;
-    return res.status(400).send(renderMfaEmailPage('Le code a expiré. Demandez un nouveau code.'));
-  }
-
-  if (!/^\d{6}$/.test(code)) {
-    return res.status(400).send(renderMfaCodePage('Le code doit contenir 6 chiffres.'));
-  }
-
-  const submittedHash = hashMfaCode({
-    code,
-    salt: mfa.salt,
-    userId: pendingUser.id,
-    email: mfa.email
-  });
-
-  if (!timingSafeEqualHex(submittedHash, mfa.codeHash)) {
-    mfa.attempts = Number(mfa.attempts || 0) + 1;
-    if (mfa.attempts >= MFA_MAX_CODE_ATTEMPTS) {
-      mfa.lockUntil = now + MFA_LOCK_MS;
-      req.session.mfa = mfa;
-      return res.status(429).send(renderMfaCodePage('Trop de codes incorrects. Réessayez dans quelques minutes.'));
-    }
-
-    req.session.mfa = mfa;
-    return res.status(401).send(renderMfaCodePage('Code incorrect.'));
-  }
-
-  req.session.user = {
-    id: pendingUser.id,
-    username: pendingUser.username,
-    role: pendingUser.role
-  };
-  delete req.session.pendingMfaUser;
-  delete req.session.mfa;
-
-  res.redirect('/dashboard');
-});
-app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
+registerAuthRoutes(app, { requirePendingMfa, controller: authController });
 
 /* ===================== DASHBOARD ===================== */
 const dashboardService = createDashboardService({

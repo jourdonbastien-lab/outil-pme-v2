@@ -1,0 +1,16 @@
+'use strict';
+const assert = require('assert');
+const Database = require('better-sqlite3');
+const { createUserService } = require('./services/userService');
+const db = new Database(':memory:');
+db.exec('CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT, role TEXT)');
+db.prepare('INSERT INTO users VALUES (?, ?, ?, ?)').run(1, 'AdminTest', 'mot-de-passe-test', 'admin');
+db.prepare('INSERT INTO users VALUES (?, ?, ?, ?)').run(2, 'AtelierTest', 'atelier-test', 'atelier');
+const service = createUserService({ db });
+assert.strictEqual(service.findUserByCredentials('absent', 'x'), undefined);
+assert.strictEqual(service.findUserByCredentials('admintest', 'mot-de-passe-test'), undefined, 'la casse historique du username doit rester significative');
+assert.deepStrictEqual(service.findUserByCredentials('AdminTest', 'mot-de-passe-test'), { id: 1, username: 'AdminTest', password: 'mot-de-passe-test', role: 'admin' });
+assert.strictEqual(service.findUserByCredentials('AtelierTest', 'incorrect'), undefined);
+db.close();
+assert.throws(() => service.findUserByCredentials('AdminTest', 'mot-de-passe-test'));
+console.log('OK - service utilisateurs Auth');

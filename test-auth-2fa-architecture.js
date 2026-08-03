@@ -1,0 +1,27 @@
+'use strict';
+const assert = require('assert');
+const crypto = require('crypto');
+const fs = require('fs');
+const server = fs.readFileSync('server.js', 'utf8');
+const route = fs.readFileSync('routes/auth.js', 'utf8');
+const controller = fs.readFileSync('controllers/authController.js', 'utf8');
+const serviceFiles = ['services/userService.js', 'services/authService.js', 'services/twoFactorService.js', 'services/authEmailService.js'];
+assert(server.includes('registerAuthRoutes(app, { requirePendingMfa, controller: authController })'));
+for (const inline of ["app.get('/login'", "app.post('/login'", "app.get('/login/email'", "app.post('/login/email'", "app.get('/login/code'", "app.post('/login/code'", "app.get('/logout'"]) assert(!server.includes(inline), `${inline} encore inline`);
+for (const removed of ['function createMfaCode(', 'function hashMfaCode(', 'function sendMfaCodeEmail(', 'function renderMfaEmailPage(', 'function renderMfaCodePage(']) assert(!server.includes(removed), `${removed} encore inline`);
+assert(!server.includes('SELECT * FROM users WHERE username = ? AND password = ?'));
+assert(!route.includes('<html'));
+assert(!/\b(?:SELECT|INSERT|UPDATE|DELETE)\b/.test(route));
+assert(!/nodemailer|sendMail/.test(route));
+assert(!/\b(?:SELECT|INSERT|UPDATE|DELETE)\b/.test(fs.readFileSync('views/twoFactorView.js', 'utf8')));
+for (const file of serviceFiles) {
+  const source = fs.readFileSync(file, 'utf8');
+  assert(!source.includes("require('../server"), `${file} importe server.js`);
+  assert(!/\b(?:req|res)\./.test(source), `${file} dépend d’Express`);
+}
+assert(!/\b(?:SELECT|INSERT|UPDATE|DELETE)\b/.test(controller), 'SQL présent dans le contrôleur Auth');
+assert(!/nodemailer|sendMail/.test(controller), 'SMTP direct présent dans le contrôleur Auth');
+for (const sessionMarker of ["name: 'outil-pme.sid'", 'resave: false', 'saveUninitialized: false', 'rolling: true', 'maxAge: SESSION_MAX_AGE_MS', 'secure: SESSION_COOKIE_SECURE', 'httpOnly: true', 'sameSite: SESSION_COOKIE_SAMESITE']) assert(server.includes(sessionMarker), `session modifiée: ${sessionMarker}`);
+for (const roleMarker of ["role = 'admin'", "role === 'atelier'", 'Accès réservé aux administrateurs']) assert(server.includes(roleMarker), `rôle/permission modifié: ${roleMarker}`);
+assert.strictEqual(crypto.createHash('sha1').update(fs.readFileSync('public/login.html')).digest('hex'), '7ad8300ab5677d91761172502afda37991a733f7', 'page login statique modifiée');
+console.log('OK - architecture Auth et 2FA');
