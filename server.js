@@ -139,6 +139,20 @@ const { renderEbpScannerView } = require('./views/ebpScannerView');
 const { renderEbpValidationView } = require('./views/ebpValidationView');
 const { registerEbpScannerRoutes } = require('./routes/ebpScanner');
 const { createEbpScannerUpload } = require('./services/ebpScannerUpload');
+const { createAgendaService } = require('./services/agendaService');
+const { createGoogleCalendarService } = require('./services/googleCalendarService');
+const { createAgendaSyncService } = require('./services/agendaSyncService');
+const { createAgendaController } = require('./controllers/agendaController');
+const { createGoogleCalendarController } = require('./controllers/googleCalendarController');
+const { renderAgendaView } = require('./views/agendaView');
+const {
+  renderGoogleConfigurationError,
+  renderGoogleSyncLockedView,
+  renderGoogleSyncErrorView,
+  renderGoogleSyncSummary
+} = require('./views/googleCalendarView');
+const { registerAgendaPageRoute, registerAgendaMutationRoutes } = require('./routes/agenda');
+const { registerGoogleCalendarRoutes } = require('./routes/googleCalendar');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -313,70 +327,6 @@ function dateKeyInTimeZone(date = new Date(), timeZone = APP_TIME_ZONE) {
   }).formatToParts(date);
   const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${byType.year}-${byType.month}-${byType.day}`;
-}
-
-function timeZoneOffsetForGoogleTimeMin(date = new Date(), timeZone = APP_TIME_ZONE) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    timeZoneName: 'shortOffset'
-  }).formatToParts(date);
-  const offsetName = parts.find((part) => part.type === 'timeZoneName')?.value || 'GMT+1';
-  const match = offsetName.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/);
-  if (!match) return '+01:00';
-  const sign = match[1];
-  const hours = String(match[2]).padStart(2, '0');
-  const minutes = String(match[3] || '00').padStart(2, '0');
-  return `${sign}${hours}:${minutes}`;
-}
-
-function parisTodayStartLocal() {
-  return `${dateKeyInTimeZone(new Date(), APP_TIME_ZONE)}T00:00`;
-}
-
-function parisTodayStartGoogleTimeMin() {
-  const today = dateKeyInTimeZone(new Date(), APP_TIME_ZONE);
-  const offset = timeZoneOffsetForGoogleTimeMin(new Date(`${today}T12:00:00Z`), APP_TIME_ZONE);
-  return `${today}T00:00:00${offset}`;
-}
-
-function localAgendaDateKey(value) {
-  const normalized = googleSync.normalizeAgendaDateTime(value, APP_TIME_ZONE);
-  return normalized ? normalized.slice(0, 10) : '';
-}
-
-function eventLastVisibleDateKey(event) {
-  return localAgendaDateKey(event?.end_date) || localAgendaDateKey(event?.start_date);
-}
-
-function purgeExpiredLocalAgendaEvents() {
-  const today = dateKeyInTimeZone(new Date(), APP_TIME_ZONE);
-  const expiredIds = db
-    .prepare('SELECT id, start_date, end_date FROM events')
-    .all()
-    .filter((event) => {
-      const lastVisibleDate = eventLastVisibleDateKey(event);
-      return lastVisibleDate && lastVisibleDate < today;
-    })
-    .map((event) => event.id);
-
-  if (!expiredIds.length) return 0;
-
-  const deleteEvent = db.prepare('DELETE FROM events WHERE id = ?');
-  const deleteExpiredEvents = db.transaction((ids) => {
-    for (const id of ids) deleteEvent.run(id);
-  });
-  deleteExpiredEvents(expiredIds);
-  console.log(`Agenda: ${expiredIds.length} événement(s) passé(s) supprimé(s) localement.`);
-  return expiredIds.length;
-}
-
-function purgeExpiredLocalAgendaEventsSafely() {
-  try {
-    return purgeExpiredLocalAgendaEvents();
-  } catch (err) {
-    console.error('Erreur purge automatique agenda local :', err);
-    return 0;
-  }
 }
 
 function toMinutes(hhmm) {
@@ -2628,118 +2578,54 @@ const GOOGLE_CALENDAR_ID = String(process.env.GOOGLE_CALENDAR_ID || '').trim();
 const GOOGLE_CALENDAR_TIME_ZONE = process.env.GOOGLE_CALENDAR_TIME_ZONE || 'Europe/Paris';
 
 const oauth2Client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
-let googleSyncLocked = false;
-
-function ensureGoogleCalendarConfig(res) {
-  if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_REDIRECT_URI && GOOGLE_CALENDAR_ID && GOOGLE_CALENDAR_ID !== 'primary') {
-    return true;
+const agendaService = createAgendaService({
+  db,
+  googleSync,
+  dateKeyInTimeZone,
+  timeZone: APP_TIME_ZONE,
+  logger: console
+});
+const googleCalendarService = createGoogleCalendarService({
+  google,
+  oauth2Client,
+  clientId: GOOGLE_CLIENT_ID,
+  clientSecret: GOOGLE_CLIENT_SECRET,
+  redirectUri: GOOGLE_REDIRECT_URI,
+  calendarId: GOOGLE_CALENDAR_ID,
+  timeZone: GOOGLE_CALENDAR_TIME_ZONE,
+  logger: console
+});
+const agendaSyncService = createAgendaSyncService({
+  agendaService,
+  googleCalendarService,
+  googleSync,
+  logger: console
+});
+const agendaController = createAgendaController({
+  agendaService,
+  googleCalendarService,
+  renderAgendaView,
+  pageTemplate,
+  viewDependencies: {
+    escHtml,
+    clientPageIcon,
+    dateKeyInTimeZone,
+    agendaEventRange,
+    googleSync,
+    timeZone: APP_TIME_ZONE
   }
-
-  res.status(500).send(`
-    <h2>Configuration Google Agenda manquante</h2>
-    <p>Renseignez GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI et GOOGLE_CALENDAR_ID dans le fichier .env.</p>
-    <p>GOOGLE_CALENDAR_ID doit designer l'agenda secondaire A2 Metal, jamais primary.</p>
-    <a href="/agenda">Retour a l'agenda</a>
-  `);
-  return false;
-}
-
-function googleSyncOptions() {
-  return { timeZone: GOOGLE_CALENDAR_TIME_ZONE };
-}
-
-function getLocalSyncMin() {
-  return parisTodayStartLocal();
-}
-
-function getGoogleSyncTimeMin() {
-  return parisTodayStartGoogleTimeMin();
-}
-
-function getLocalSyncEvents(syncMin) {
-  return db.prepare(`
-    SELECT *
-    FROM events
-    WHERE start_date IS NOT NULL
-      AND COALESCE(NULLIF(end_date, ''), start_date) >= ?
-    ORDER BY start_date ASC, id ASC
-  `).all(syncMin);
-}
-
-async function getGoogleCalendarTarget(calendar) {
-  if (GOOGLE_CALENDAR_ID === 'primary') {
-    throw new Error('GOOGLE_CALENDAR_ID ne doit jamais valoir primary pour A2 Metal.');
-  }
-
-  const result = await calendar.calendarList.get({ calendarId: GOOGLE_CALENDAR_ID });
-  return {
-    id: result.data.id || GOOGLE_CALENDAR_ID,
-    summary: result.data.summary || GOOGLE_CALENDAR_ID,
-    timeZone: result.data.timeZone || GOOGLE_CALENDAR_TIME_ZONE
-  };
-}
-
-function renderErrorList(errors) {
-  if (!errors.length) return '<li>Aucune</li>';
-  return errors.map((error) => `<li>${escHtml(error.message || String(error))}</li>`).join('');
-}
-
-function syncReportCounts(actions) {
-  return {
-    link: actions.link.length,
-    importLocal: actions.importLocal.length,
-    createGoogle: actions.createGoogle.length,
-    updateLocal: actions.updateLocal.length,
-    updateGoogle: actions.updateGoogle.length,
-    deleteLocal: (actions.deleteLocal || []).length,
-    ambiguous: actions.ambiguous.length,
-    errors: actions.errors.length,
-    googleDuplicates: actions.googleDuplicates.length
-  };
-}
-
-function renderGoogleSyncSummary(req, report, options = {}) {
-  const actions = report.preview.actions;
-  const counts = syncReportCounts(actions);
-  const added = counts.importLocal + counts.createGoogle;
-  const updated = counts.link + counts.updateLocal + counts.updateGoogle;
-  const deleted = counts.deleteLocal;
-  const ignored = counts.ambiguous + counts.googleDuplicates;
-  const errors = counts.errors;
-
-  const content = `
-    <div class="page-head app-dark-page-head">
-      <div>
-        <h1>Synchronisation Google Calendar</h1>
-        <span>Agenda cible : ${escHtml(report.calendar.summary)} (${escHtml(report.calendar.id)})</span>
-      </div>
-    </div>
-
-    <section class="panel-soft">
-      <h2>Résumé</h2>
-      ${options.message ? `<p>${escHtml(options.message)}</p>` : ''}
-      <div class="dashboard-grid">
-        <div class="stat-card"><strong>${added}</strong><span>Événements ajoutés</span></div>
-        <div class="stat-card"><strong>${updated}</strong><span>Événements mis à jour</span></div>
-        <div class="stat-card"><strong>${deleted}</strong><span>Événements supprimés localement</span></div>
-        <div class="stat-card"><strong>${ignored}</strong><span>Événements ignorés</span></div>
-        <div class="stat-card"><strong>${errors}</strong><span>Erreurs</span></div>
-      </div>
-    </section>
-
-    ${actions.errors.length ? `
-      <section class="panel-soft">
-        <h2>Erreurs</h2>
-        <ul>${renderErrorList(actions.errors)}</ul>
-      </section>
-    ` : ''}
-
-    <div class="nav-actions"><a class="btn btn-secondary" href="/agenda">Retour à l'agenda</a></div>
-  `;
-
-  return pageTemplate(req, 'Synchronisation Google', content);
-}
-
+});
+const googleCalendarController = createGoogleCalendarController({
+  googleCalendarService,
+  agendaSyncService,
+  pageTemplate,
+  renderConfigurationError: renderGoogleConfigurationError,
+  renderSyncLockedView: renderGoogleSyncLockedView,
+  renderSyncErrorView: renderGoogleSyncErrorView,
+  renderSyncSummary: renderGoogleSyncSummary,
+  viewDependencies: { escHtml },
+  logger: console
+});
 /* ===================== TEMPLATES ===================== */
 
 function dashboardTemplate(req, content) {
@@ -3517,7 +3403,7 @@ app.get('/dashboard/prototype', requireLogin, (req, res) => {
 });
 
 function renderDashboardPrototype(req, res) {
-  purgeExpiredLocalAgendaEventsSafely();
+  agendaService.purgeExpiredEventsSafely();
   const todayIso = dateKeyInTimeZone(new Date(), APP_TIME_ZONE);
   const todayLabel = new Date().toLocaleDateString('fr-FR', {
     timeZone: APP_TIME_ZONE,
@@ -4243,413 +4129,7 @@ app.post('/tasks/to-invoice', requireLogin, (req, res) => {
 
 });
 /* ===================== AGENDA ===================== */
-app.get('/agenda', requireLogin, (req, res) => {
-  purgeExpiredLocalAgendaEventsSafely();
-  const requestedView = String(req.query.view || 'week').trim().toLowerCase();
-  const agendaView = ['day', 'week', 'month'].includes(requestedView) ? requestedView : 'week';
-  const requestedMonth = String(req.query.month || '').trim();
-
-  const events = db.prepare(`
-    SELECT *
-    FROM events
-    ORDER BY start_date ASC
-  `).all();
-
-  const now = new Date();
-  const todayParts = dateKeyInTimeZone(now, APP_TIME_ZONE).split('-').map(Number);
-  const todayStart = new Date(todayParts[0], todayParts[1] - 1, todayParts[2]);
-
-  const tomorrow = new Date(todayStart);
-  tomorrow.setDate(todayStart.getDate() + 1);
-
-  const monday = new Date(todayStart);
-  monday.setDate(todayStart.getDate() - ((todayStart.getDay() + 6) % 7));
-
-  const nextMonday = new Date(monday);
-  nextMonday.setDate(monday.getDate() + 7);
-
-  const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
-  const nextMonth = new Date(todayStart.getFullYear(), todayStart.getMonth() + 1, 1);
-  const selectedMonthStart = /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)
-    ? new Date(Number(requestedMonth.slice(0, 4)), Number(requestedMonth.slice(5, 7)) - 1, 1)
-    : new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
-  if (Number.isNaN(selectedMonthStart.getTime())) {
-    selectedMonthStart.setFullYear(todayStart.getFullYear(), todayStart.getMonth(), 1);
-  }
-  selectedMonthStart.setHours(0, 0, 0, 0);
-  const selectedNextMonth = new Date(selectedMonthStart.getFullYear(), selectedMonthStart.getMonth() + 1, 1);
-  const selectedMonthKey = `${selectedMonthStart.getFullYear()}-${String(selectedMonthStart.getMonth() + 1).padStart(2, '0')}`;
-
-  function localDateTime(value) {
-    return agendaEventRange.agendaDateTime(value, APP_TIME_ZONE);
-  }
-
-  function eventEndDate(event) {
-    return agendaEventRange.agendaEventEnd(event, APP_TIME_ZONE);
-  }
-
-  function isAllDayAgendaEvent(event) {
-    const startRaw = String(event?.start_date || '').trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(startRaw)) return true;
-    const start = googleSync.normalizeAgendaDateTime(event?.start_date, APP_TIME_ZONE);
-    const end = googleSync.normalizeAgendaDateTime(event?.end_date, APP_TIME_ZONE);
-    return Boolean(start && end && start.slice(11, 16) === '00:00' && end.slice(11, 16) === '23:59');
-  }
-
-  function eventOverlapsDay(event, dayStart, dayEnd) {
-    return agendaEventRange.eventOverlapsDay(event, dayStart, dayEnd, APP_TIME_ZONE);
-  }
-
-  function monthHref(monthDate) {
-    const key = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
-    return `/agenda?view=month&month=${key}`;
-  }
-
-  function formatAgendaDate(date) {
-    return date.toLocaleDateString('fr-FR', {
-      weekday: 'long',
-      day: '2-digit',
-      month: 'long'
-    });
-  }
-
-  function formatAgendaTime(value) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  }
-
-  function renderAgendaEvent(event) {
-    const start = formatAgendaTime(event.start_date);
-    const end = formatAgendaTime(event.end_date);
-    return `
-      <button
-        type="button"
-        class="planning-event ${escHtml(event.type || 'rdv')}"
-        data-event-id="${event.id}"
-        data-event-title="${escHtml(event.title || '')}"
-        data-event-type="${escHtml(event.type || 'rdv')}"
-        data-event-start="${escHtml(event.start_date || '')}"
-        data-event-end="${escHtml(event.end_date || '')}"
-      >
-        <span class="planning-event-title">${escHtml(event.title || 'Événement')}</span>
-        <span class="planning-event-time">${escHtml(start)}${end ? ' - ' + escHtml(end) : ''}</span>
-      </button>
-    `;
-  }
-
-  function renderMonthAgendaEvent(event, dayStart) {
-    const startDate = localDateTime(event.start_date);
-    const endDate = eventEndDate(event);
-    const isMultiDay = startDate && endDate && startDate.toDateString() !== endDate.toDateString();
-    const showTime = startDate && startDate.toDateString() === dayStart.toDateString();
-    const start = showTime && !isAllDayAgendaEvent(event)
-      ? startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-      : '';
-    return `
-      <button
-        type="button"
-        class="planning-event planning-month-event ${escHtml(event.type || 'rdv')}"
-        data-event-id="${event.id}"
-        data-event-title="${escHtml(event.title || '')}"
-        data-event-type="${escHtml(event.type || 'rdv')}"
-        data-event-start="${escHtml(event.start_date || '')}"
-        data-event-end="${escHtml(event.end_date || '')}"
-      >
-        ${start ? `<span class="planning-event-time">${escHtml(start)}</span>` : ''}
-        <span class="planning-event-title">${isMultiDay ? '↔ ' : ''}${escHtml(event.title || 'Événement')}</span>
-      </button>
-    `;
-  }
-
-  function renderEventsList(list) {
-    const sorted = list.slice().sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
-    return sorted.length
-      ? sorted.map(renderAgendaEvent).join('')
-      : '<div class="planning-empty">Aucun événement</div>';
-  }
-
-  const dayLabels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-  const workDayLabels = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
-
-  function renderDayView() {
-    const dayEvents = events.filter((event) => eventOverlapsDay(event, todayStart, tomorrow));
-    return `
-      <div class="planning-single-day">
-        <div class="planning-day">
-          <div class="planning-day-header">${escHtml(formatAgendaDate(todayStart))}</div>
-          <div class="planning-events">${renderEventsList(dayEvents)}</div>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderWeekView() {
-    const columns = dayLabels.map((label, index) => {
-      const dayStart = new Date(monday);
-      dayStart.setDate(monday.getDate() + index);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayStart.getDate() + 1);
-      const dayEvents = events.filter((event) => eventOverlapsDay(event, dayStart, dayEnd));
-
-      return `
-        <div class="planning-day">
-          <div class="planning-day-header">${escHtml(label)} <span>${dayStart.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}</span></div>
-          <div class="planning-events">${renderEventsList(dayEvents)}</div>
-        </div>
-      `;
-    }).join('');
-
-    return `<div class="planning-week">${columns}</div>`;
-  }
-
-  function renderMonthView() {
-    const gridStart = new Date(selectedMonthStart);
-    gridStart.setDate(selectedMonthStart.getDate() - ((selectedMonthStart.getDay() + 6) % 7));
-    const gridEnd = new Date(selectedNextMonth);
-    gridEnd.setDate(selectedNextMonth.getDate() - 1);
-    const endWeekdayOffset = (gridEnd.getDay() + 6) % 7;
-    gridEnd.setDate(gridEnd.getDate() + (4 - Math.min(endWeekdayOffset, 4)));
-
-    const previousMonth = new Date(selectedMonthStart.getFullYear(), selectedMonthStart.getMonth() - 1, 1);
-    const followingMonth = new Date(selectedMonthStart.getFullYear(), selectedMonthStart.getMonth() + 1, 1);
-    const monthTitle = selectedMonthStart.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-
-    const weeks = [];
-    for (let weekStart = new Date(gridStart); weekStart <= gridEnd; weekStart.setDate(weekStart.getDate() + 7)) {
-      const days = [];
-      for (let index = 0; index < 5; index += 1) {
-        const dayStart = new Date(weekStart);
-        dayStart.setDate(weekStart.getDate() + index);
-        const dayEnd = new Date(dayStart);
-        dayEnd.setDate(dayStart.getDate() + 1);
-        const dayEvents = events
-          .filter((event) => eventOverlapsDay(event, dayStart, dayEnd))
-          .sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
-        const visibleEvents = dayEvents.slice(0, 3);
-        const hiddenCount = dayEvents.length - visibleEvents.length;
-        const isOutsideMonth = dayStart < selectedMonthStart || dayStart >= selectedNextMonth;
-        const isToday = dayStart.toDateString() === todayStart.toDateString();
-
-        days.push(`
-          <div class="planning-month-workday${isToday ? ' today' : ''}${isOutsideMonth ? ' outside-month' : ''}">
-            <div class="planning-month-header">
-              <strong>${dayStart.toLocaleDateString('fr-FR', { day: '2-digit' })}</strong>
-              <span>${dayStart.toLocaleDateString('fr-FR', { month: 'short' })}</span>
-            </div>
-            <div class="planning-events planning-month-events">
-              ${visibleEvents.map((event) => renderMonthAgendaEvent(event, dayStart)).join('')}
-              ${hiddenCount > 0 ? `<div class="planning-month-more">+${hiddenCount} autre${hiddenCount > 1 ? 's' : ''}</div>` : ''}
-            </div>
-          </div>
-        `);
-      }
-      weeks.push(`<div class="planning-month-week">${days.join('')}</div>`);
-    }
-
-    return `
-      <section class="planning-month-shell">
-        <div class="planning-month-nav">
-          <a class="btn btn-secondary" href="${monthHref(previousMonth)}">‹ Mois précédent</a>
-          <div>
-            <h2>${escHtml(monthTitle)}</h2>
-            <span>Du lundi au vendredi</span>
-          </div>
-          <a class="btn btn-secondary" href="/agenda?view=month&month=${dateKeyInTimeZone(new Date(), APP_TIME_ZONE).slice(0, 7)}">Aujourd’hui</a>
-          <a class="btn btn-secondary" href="${monthHref(followingMonth)}">Mois suivant ›</a>
-        </div>
-        <div class="planning-month-workgrid" aria-label="Agenda mensuel ${escHtml(monthTitle)}">
-          <div class="planning-month-weekdays">
-            ${workDayLabels.map((label) => `<div><span class="weekday-long">${label}</span><span class="weekday-short">${label[0]}</span></div>`).join('')}
-          </div>
-          ${weeks.join('')}
-        </div>
-      </section>
-    `;
-  }
-
-  const agendaLabels = {
-    day: 'Planning jour',
-    week: 'Planning semaine',
-    month: 'Planning mois'
-  };
-
-  const agendaBody = agendaView === 'day'
-    ? renderDayView()
-    : agendaView === 'month'
-      ? renderMonthView()
-      : renderWeekView();
-
-  const viewSelector = `
-    <nav class="agenda-view-switch" aria-label="Vue agenda">
-      <a class="${agendaView === 'day' ? 'active' : ''}" href="/agenda?view=day">Jour</a>
-      <a class="${agendaView === 'week' ? 'active' : ''}" href="/agenda?view=week">Semaine</a>
-      <a class="${agendaView === 'month' ? 'active' : ''}" href="/agenda?view=month&month=${selectedMonthKey}">Mois</a>
-    </nav>
-  `;
-
-  const googleSyncButton = `
-    <form method="POST" action="/google/sync" class="agenda-sync-form" onsubmit="const b=this.querySelector('button'); if(b.disabled) return false; b.disabled=true; b.textContent='Synchronisation...';">
-      <button class="btn btn-secondary" type="submit">
-        Synchroniser maintenant
-      </button>
-    </form>
-  `;
-
-  const newEventButton = `
-    <button class="btn btn-primary" type="button" onclick="newEvent()">
-      + Nouvel événement
-    </button>
-  `;
-
-  const pageTitle = agendaLabels[agendaView];
-
-  const content = `
-      <div class="page-head agenda-page-head app-dark-page-head">
-        <div class="clients-create-head">
-          ${clientPageIcon('calendar', 'clients-title-icon')}
-          <div>
-            <h1>${escHtml(pageTitle)}</h1>
-            <span>${events.length} événement${events.length > 1 ? 's' : ''}</span>
-          </div>
-        </div>
-        ${viewSelector}
-      </div>
-
-      <div class="agenda-toolbar">
-        ${googleSyncButton}
-        ${newEventButton}
-      </div>
-
-      ${agendaBody}
-
-      <div id="event-editor" class="event-editor hidden">
-
-        <h3>Événement</h3>
-
-        <input type="hidden" id="edit-id">
-
-        <label>Titre</label>
-        <input id="edit-title">
-
-        <label>Type</label>
-        <select id="edit-type">
-          <option value="chantier">Chantier</option>
-          <option value="pose">Pose</option>
-          <option value="rdv">RDV</option>
-        </select>
-
-        <label>Début</label>
-        <input type="datetime-local" id="edit-start">
-
-        <label>Fin</label>
-        <input type="datetime-local" id="edit-end">
-
-        <div class="editor-actions">
-          <button id="save-event">Enregistrer</button>
-          <button id="delete-event" class="danger">Supprimer</button>
-          <button id="cancel-edit">Annuler</button>
-        </div>
-
-      </div>
-
-      <script>
-      function toLocalDateTimeValue(date) {
-        const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-        return offsetDate.toISOString().slice(0, 16);
-      }
-
-      function newEvent(){
-        document.getElementById('event-editor').classList.remove('hidden');
-        document.getElementById('edit-id').value = '';
-        document.getElementById('edit-title').value = '';
-        document.getElementById('edit-type').value = 'rdv';
-
-        const now = new Date();
-        const endDate = new Date(now.getTime() + 60 * 60 * 1000);
-
-        document.getElementById('edit-start').value = toLocalDateTimeValue(now);
-        document.getElementById('edit-end').value = toLocalDateTimeValue(endDate);
-        document.getElementById('delete-event').style.display = 'none';
-      }
-
-      function editEvent(id,title,type,start,end){
-        document.getElementById('event-editor').classList.remove('hidden');
-        document.getElementById('edit-id').value=id;
-        document.getElementById('edit-title').value=title;
-        document.getElementById('edit-type').value=type;
-        document.getElementById('edit-start').value = String(start || '').substring(0,16);
-        document.getElementById('edit-end').value = String(end || '').substring(0,16);
-        document.getElementById('delete-event').style.display = 'inline-block';
-      }
-
-      document.querySelectorAll('.planning-event').forEach(function (button) {
-        button.addEventListener('click', function () {
-          editEvent(
-            button.dataset.eventId,
-            button.dataset.eventTitle,
-            button.dataset.eventType,
-            button.dataset.eventStart,
-            button.dataset.eventEnd
-          );
-        });
-      });
-
-      document.getElementById('cancel-edit').onclick = () => {
-        document.getElementById('event-editor').classList.add('hidden');
-      };
-
-      document.getElementById('save-event').onclick = () => {
-        const payload = {
-          title: document.getElementById('edit-title').value,
-          type: document.getElementById('edit-type').value,
-          start_date: document.getElementById('edit-start').value,
-          end_date: document.getElementById('edit-end').value
-        };
-
-        const id = document.getElementById('edit-id').value;
-
-        fetch(
-          id ? '/agenda/update' : '/agenda/add',
-          {
-            method:'POST',
-            headers:{
-              'Content-Type':'application/json'
-            },
-            body: JSON.stringify(
-              id
-                ? { id, ...payload }
-                : payload
-            )
-          }
-        ).then(()=>location.reload());
-      };
-
-      document.getElementById('delete-event').onclick = () => {
-        if(!confirm('Supprimer cet événement ?')) return;
-
-        fetch('/agenda/delete',{
-          method:'POST',
-          headers:{
-            'Content-Type':'application/json'
-          },
-          body:JSON.stringify({
-            id:document.getElementById('edit-id').value
-          })
-        }).then(()=>location.reload());
-      };
-      </script>
-  `;
-
-  res.send(
-    pageTemplate(
-      req,
-      'Agenda',
-      content
-    )
-  );
-});
-
+registerAgendaPageRoute(app, { requireLogin, controller: agendaController });
 /* ===================== PRISES DE COTES ===================== */
 
 app.get('/outils/prises-cotes', requireLogin, (req, res) => {
@@ -5678,249 +5158,7 @@ app.get('/outils/prises-cotes/technical-drawing/:asset', requireLogin, (req, res
 
 /* ===================== GOOGLE OAUTH ROUTES ===================== */
 
-app.get('/google/auth', requireLogin, (req, res) => {
-  if (!ensureGoogleCalendarConfig(res)) return;
-
-  const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/calendar'],
-    prompt: 'consent',
-  });
-
-  res.redirect(url);
-});
-
-app.get('/google/callback', requireLogin, async (req, res) => {
-  if (!ensureGoogleCalendarConfig(res)) return;
-
-  try {
-    const { tokens } = await oauth2Client.getToken(req.query.code);
-    oauth2Client.setCredentials(tokens);
-    req.session.googleTokens = tokens;
-
-    res.redirect('/agenda');
-  } catch (err) {
-    console.error(err);
-    res.send('Erreur connexion Google');
-  }
-});
-
-// Synchronisation bidirectionnelle directe avec Google Agenda.
-app.get('/google/sync', requireLogin, (req, res) => {
-  res.redirect('/agenda');
-});
-
-app.post('/google/sync', requireLogin, async (req, res) => {
-  if (!ensureGoogleCalendarConfig(res)) return;
-
-  if (!req.session.googleTokens) {
-    return res.redirect('/google/auth');
-  }
-
-  if (googleSyncLocked) {
-    return res.status(409).send(pageTemplate(req, 'Synchronisation en cours', `
-      <section class="panel-soft">
-        <h1>Synchronisation deja en cours</h1>
-        <p>Une autre synchronisation Google Agenda est en cours. Reessayez dans quelques instants.</p>
-        <a class="btn btn-secondary" href="/agenda">Retour a l'agenda</a>
-      </section>
-    `));
-  }
-
-  googleSyncLocked = true;
-  oauth2Client.setCredentials(req.session.googleTokens);
-
-  const calendar = google.calendar({
-    version: 'v3',
-    auth: oauth2Client,
-  });
-
-  try {
-    purgeExpiredLocalAgendaEventsSafely();
-    const localSyncMin = getLocalSyncMin();
-    const googleSyncTimeMin = getGoogleSyncTimeMin();
-    const target = await getGoogleCalendarTarget(calendar);
-    const googleResult = await googleSync.listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, {
-      timeMin: googleSyncTimeMin
-    });
-    const googleEvents = googleResult.items;
-    const localEvents = getLocalSyncEvents(localSyncMin);
-    const cancellations = googleSync.planGoogleCancellations(localEvents, googleEvents);
-    const deleteCancelledLocal = db.prepare('DELETE FROM events WHERE id = ? AND google_event_id = ?');
-    const applyGoogleCancellations = db.transaction((items) => {
-      for (const item of items) {
-        deleteCancelledLocal.run(item.id, String(item.google_event_id || '').trim());
-      }
-    });
-
-    // Google a répondu avec succès sur toutes les pages : les suppressions
-    // exactes sont appliquées avant tout envoi ou création vers Google.
-    applyGoogleCancellations(cancellations.deleteLocal);
-
-    const preview = googleSync.buildSyncPreview(
-      cancellations.remainingLocalRows,
-      cancellations.activeGoogleRows,
-      googleSyncOptions()
-    );
-    preview.actions.deleteLocal = cancellations.deleteLocal;
-
-    if (preview.actions.ambiguous.length || preview.actions.errors.length) {
-      return res.status(409).send(renderGoogleSyncSummary(req, { calendar: target, preview }, {
-        message: 'Synchronisation annulée : des ambiguïtés ou erreurs doivent être corrigées.'
-      }));
-    }
-
-    const setGoogleEventId = db.prepare('UPDATE events SET google_event_id = ? WHERE id = ?');
-    const updateLocalFromGoogle = db.prepare(`
-      UPDATE events
-      SET title = ?,
-          start_date = ?,
-          end_date = ?,
-          type = ?,
-          google_event_id = ?
-      WHERE id = ?
-    `);
-    const insertLocalFromGoogle = db.prepare(`
-      INSERT INTO events (
-        title,
-        start_date,
-        end_date,
-        google_event_id,
-        type,
-        created_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-    for (const item of preview.actions.link) {
-      setGoogleEventId.run(item.google.normalized.id, item.local.normalized.rawId);
-    }
-
-    for (const item of preview.actions.updateLocal) {
-      const g = item.google.normalized;
-      updateLocalFromGoogle.run(
-        g.title,
-        g.start_date,
-        g.end_date,
-        item.local.row.type || 'chantier',
-        g.id,
-        item.local.normalized.rawId
-      );
-    }
-
-    for (const item of preview.actions.importLocal) {
-      const g = item.google.normalized;
-      insertLocalFromGoogle.run(g.title, g.start_date, g.end_date, g.id, 'chantier', new Date().toISOString());
-    }
-
-    const recoverOrCreateGoogle = async (localItem) => {
-      const body = googleSync.googleRequestBodyFromLocal(localItem.row, googleSyncOptions());
-      if (!body) return null;
-
-      if (cancellations.cancelledGoogleEventIds.has(localItem.normalized.googleEventId)) return null;
-
-      const refreshedResult = await googleSync.listGoogleCalendarEvents(calendar, GOOGLE_CALENDAR_ID, {
-        timeMin: googleSyncTimeMin
-      });
-      const refreshedCancellations = googleSync.planGoogleCancellations([localItem.row], refreshedResult.items);
-      for (const deletedId of refreshedCancellations.cancelledGoogleEventIds) {
-        cancellations.cancelledGoogleEventIds.add(deletedId);
-      }
-      if (refreshedCancellations.deleteLocal.length) {
-        applyGoogleCancellations(refreshedCancellations.deleteLocal);
-        return null;
-      }
-      const refreshedPreview = googleSync.buildSyncPreview(
-        refreshedCancellations.remainingLocalRows,
-        refreshedCancellations.activeGoogleRows,
-        googleSyncOptions()
-      );
-      const relink = refreshedPreview.actions.link[0] || refreshedPreview.actions.updateGoogle[0];
-      if (relink?.google?.normalized?.id) {
-        setGoogleEventId.run(relink.google.normalized.id, localItem.normalized.rawId);
-        return relink.google.normalized.id;
-      }
-
-      const created = await calendar.events.insert({
-        calendarId: GOOGLE_CALENDAR_ID,
-        requestBody: body
-      });
-      if (created.data.id) setGoogleEventId.run(created.data.id, localItem.normalized.rawId);
-      return created.data.id || null;
-    };
-
-    const applyErrors = [];
-
-    for (const item of preview.actions.updateGoogle) {
-      const body = googleSync.googleRequestBodyFromLocal(item.local.row, googleSyncOptions());
-      if (!body) continue;
-
-      try {
-        await calendar.events.update({
-          calendarId: GOOGLE_CALENDAR_ID,
-          eventId: item.google.normalized.id,
-          requestBody: body
-        });
-      } catch (err) {
-        if (googleSync.isNotFoundGoogleError(err)) {
-          try {
-            await recoverOrCreateGoogle(item.local);
-          } catch (recoverErr) {
-            console.error('Erreur recuperation lien Google Agenda :', recoverErr.response ? recoverErr.response.data : recoverErr);
-            applyErrors.push(`Recuperation impossible pour ${item.local.normalized.title}`);
-          }
-        } else {
-          console.error('Erreur mise a jour Google Agenda :', err.response ? err.response.data : err);
-          applyErrors.push(`Mise a jour Google impossible pour ${item.local.normalized.title}`);
-        }
-      }
-    }
-
-    for (const item of preview.actions.createGoogle) {
-      try {
-        await recoverOrCreateGoogle(item.local);
-      } catch (err) {
-        console.error('Erreur creation Google Agenda :', err.response ? err.response.data : err);
-        applyErrors.push(`Creation Google impossible pour ${item.local.normalized.title}`);
-      }
-    }
-
-    preview.actions.errors.push(...applyErrors.map((message) => ({ message })));
-    res.send(renderGoogleSyncSummary(req, { calendar: target, preview }, {
-      message: applyErrors.length
-        ? 'Synchronisation appliquée partiellement : certains événements sont en erreur.'
-        : `Synchronisation appliquée. ${cancellations.deleteLocal.length} suppression(s) Google appliquée(s) localement.`
-    }));
-  } catch (err) {
-    console.error('Erreur application Google Agenda :', err.response ? err.response.data : err);
-    res.status(502).send(pageTemplate(req, 'Erreur Google Agenda', `
-      <section class="panel-soft">
-        <h1>Impossible d'appliquer la synchronisation</h1>
-        <p>Google Agenda n'a pas repondu correctement. Aucune suppression automatique n'a ete executee.</p>
-        <a class="btn btn-secondary" href="/agenda">Retour a l'agenda</a>
-      </section>
-    `));
-  } finally {
-    googleSyncLocked = false;
-  }
-});
-
-app.get('/google/calendars', requireLogin, async (req, res) => {
-  if (!ensureGoogleCalendarConfig(res)) return;
-
-  oauth2Client.setCredentials(req.session.googleTokens);
-
-  const calendar = google.calendar({
-    version: 'v3',
-    auth: oauth2Client
-  });
-
-  const result = await calendar.calendarList.list();
-
-  console.log(result.data.items);
-
-  res.send('OK');
-});
+registerGoogleCalendarRoutes(app, { requireLogin, controller: googleCalendarController });
 /* ===================== CHANTIERS ===================== */
 
 const worksitesService = createWorksitesService({ db, normalizeChantierStatus, parsePositiveNumber });
@@ -7221,60 +6459,7 @@ registerSupplierOrderCompletionRoutes(app, {
     delete: supplierOrdersController.deleteSupplierOrder
   }
 });
-app.post('/agenda/add', requireLogin, (req, res) => {
-  const { title, type, start_date, end_date } = req.body;
-
-  db.prepare(`
-    INSERT INTO events (title, type, start_date, end_date, created_at)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(
-    title,
-    type || 'rdv',
-    start_date,
-    end_date,
-    new Date().toISOString()
-  );
-
-  res.json({ success: true });
-});
-app.post('/agenda/update', requireLogin, (req, res) => {
-  const { id, title, type, start_date, end_date } = req.body;
-
-  db.prepare(`
-    UPDATE events
-    SET title = ?, type = ?, start_date = ?, end_date = ?
-    WHERE id = ?
-  `).run(title, type, start_date, end_date, id);
-
-  res.json({ success: true });
-});
-app.post('/agenda/delete', requireLogin, async (req, res) => {
-  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.body.id);
-
-  if (event?.google_event_id && req.session.googleTokens) {
-    try {
-      oauth2Client.setCredentials(req.session.googleTokens);
-      const calendar = google.calendar({
-        version: 'v3',
-        auth: oauth2Client
-      });
-      await calendar.events.delete({
-        calendarId: GOOGLE_CALENDAR_ID,
-        eventId: event.google_event_id
-      });
-    } catch (err) {
-      const status = err.response?.status || err.code;
-      if (status !== 404 && status !== 410) {
-        console.error('Erreur suppression Google Agenda :', err.response ? err.response.data : err);
-        return res.status(502).json({ success: false, error: 'Erreur suppression Google Agenda' });
-      }
-    }
-  }
-
-  db.prepare('DELETE FROM events WHERE id = ?').run(req.body.id);
-  res.json({ success: true });
-});
-
+registerAgendaMutationRoutes(app, { requireLogin, controller: agendaController });
 const clientOrderProfitabilityController = createClientOrderProfitabilityController({
   db,
   pageTemplate,
@@ -7505,8 +6690,8 @@ registerClientOrderRoutes(app, {
 
 /* ===================== START ===================== */
 
-purgeExpiredLocalAgendaEventsSafely();
-const agendaPurgeTimer = setInterval(purgeExpiredLocalAgendaEventsSafely, 60 * 60 * 1000);
+agendaService.purgeExpiredEventsSafely();
+const agendaPurgeTimer = setInterval(agendaService.purgeExpiredEventsSafely, 60 * 60 * 1000);
 if (typeof agendaPurgeTimer.unref === 'function') agendaPurgeTimer.unref();
 
 if (SCANNER_IMPORT_ENABLED) incomingDocumentsImportService.startAutomaticImport();

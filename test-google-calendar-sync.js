@@ -100,12 +100,10 @@ function google(overrides = {}) {
 }
 
 {
-  const server = fs.readFileSync('server.js', 'utf8');
-  const syncRouteStart = server.indexOf("app.get('/google/sync'");
-  const syncRouteEnd = server.indexOf("app.get('/google/calendars'", syncRouteStart);
-  const syncRoutes = server.slice(syncRouteStart, syncRouteEnd);
-  assert.ok(syncRoutes.includes('googleSyncLocked'), 'sync routes must use the concurrency lock');
-  assert.ok(syncRoutes.includes('DELETE FROM events WHERE id = ? AND google_event_id = ?'), 'only the exact linked row may be deleted');
+  const controller = fs.readFileSync('controllers/googleCalendarController.js', 'utf8');
+  const agendaService = fs.readFileSync('services/agendaService.js', 'utf8');
+  assert.ok(controller.includes('syncLocked'), 'sync controller must use the concurrency lock');
+  assert.ok(agendaService.includes('DELETE FROM events WHERE id = ? AND google_event_id = ?'), 'only the exact linked row may be deleted');
 }
 
 async function runDeletionTests() {
