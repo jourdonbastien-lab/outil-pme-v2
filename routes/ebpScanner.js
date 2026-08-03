@@ -1,0 +1,3 @@
+'use strict';
+function registerEbpScannerRoutes(app,{requireLogin,handlers}){app.get('/orders/clients/incoming-ebp',requireLogin,handlers.incoming);app.get('/orders/clients/incoming-ebp/open',requireLogin,handlers.open);app.get('/orders/clients/incoming-ebp/raw',requireLogin,handlers.raw);app.post('/orders/clients/scan-ebp/analyze-incoming',requireLogin,handlers.analyzeIncoming);app.get('/orders/clients/scan-ebp',requireLogin,handlers.scanner);app.post('/orders/clients/scan-ebp/analyze',requireLogin,handlers.analyze);app.post('/orders/clients/scan-ebp/create',requireLogin,handlers.create);}
+module.exports={registerEbpScannerRoutes};
