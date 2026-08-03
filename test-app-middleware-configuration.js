@@ -1,0 +1,17 @@
+'use strict';
+const assert = require('assert');
+const { configureTrustProxy, configureMiddleware } = require('./app/configureMiddleware');
+const calls = [];
+const app = { set: (...args) => calls.push(['set', ...args]), use: (value) => calls.push(['use', value]) };
+const express = { urlencoded: (options) => ({ type: 'urlencoded', options }), json: (options) => ({ type: 'json', options }), static: (value) => ({ type: 'static', value }) };
+const session = (options) => ({ type: 'session', options });
+const store = {};
+configureTrustProxy(app, true);
+configureMiddleware(app, { express, path: require('path'), projectRoot: '/project', session, sessionSecret: 'test-secret', sessionStore: store, trustProxy: true, sessionMaxAgeMs: 1234, sessionCookieSecure: true, sessionCookieSameSite: 'lax' });
+assert.deepStrictEqual(calls[0], ['set', 'trust proxy', 1]);
+assert.deepStrictEqual(calls.slice(1).map((call) => call[1].type), ['urlencoded', 'json', 'static', 'session']);
+assert.deepStrictEqual(calls[1][1].options, { extended: true });
+assert.deepStrictEqual(calls[2][1].options, { limit: '15mb' });
+assert.strictEqual(calls[3][1].value, '/project/public');
+assert.strictEqual(calls[4][1].options.store, store);
+console.log('OK - configuration middlewares Express');

@@ -11,7 +11,7 @@ for (const file of [
   const source = fs.readFileSync(file, 'utf8');
   assert(!source.includes("require('../server"), `${file}: import server.js`);
 }
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const quoteLineRoutes = fs.readFileSync('routes/quoteLines.js', 'utf8');
 for (const definition of [
   "app.get('/devis', requireLogin",

@@ -4,9 +4,9 @@ const assert = require('assert');
 const crypto = require('crypto');
 const fs = require('fs');
 
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const service = fs.readFileSync('services/clientOrderProfitabilityService.js', 'utf8');
-assert(server.includes("require('./services/clientOrderProfitabilityService')"));
+assert(server.includes("require('../services/clientOrderProfitabilityService')"));
 assert(server.includes('createClientOrderProfitabilityService({'));
 for (const name of ['latestProjectForecast', 'saveProjectForecast', 'projectProfitabilityForOrder', 'clientOrderForecastData', 'importMissingQuoteCostLines']) {
   assert(!server.includes(`function ${name}(`), `${name} est encore inline dans server.js`);

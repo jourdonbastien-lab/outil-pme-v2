@@ -67,7 +67,7 @@ try {
     /trop volumineuse/
   );
 
-  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8') + fs.readFileSync(path.join(__dirname, 'app/createApplication.js'), 'utf8');
   const databaseSchema = fs.readFileSync(path.join(__dirname, 'database/schema.js'), 'utf8');
   const photoRoutes = fs.readFileSync(path.join(__dirname, 'routes/measurementPhotos.js'), 'utf8');
   const moduleSheet = fs.readFileSync(path.join(__dirname, 'modules/measurements/public/module-sheet.js'), 'utf8');

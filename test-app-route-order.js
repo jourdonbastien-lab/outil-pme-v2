@@ -1,0 +1,13 @@
+'use strict';
+const assert = require('assert');
+const crypto = require('crypto');
+const fs = require('fs');
+const source = fs.readFileSync('app/createApplication.js', 'utf8');
+const registrations = [...source.matchAll(/(?:app\.(?:use|get|post|put|patch|delete)\s*\(|configureMiddleware\(app|registerExpressErrorHandler\(app|register[A-Za-z0-9_]+\(app)/g)].map((match) => match[0]);
+assert.strictEqual(registrations.length, 51);
+assert.strictEqual(crypto.createHash('sha256').update(JSON.stringify(registrations)).digest('hex'), '5431b95f25250835a04a9b7228f9182ed65e8c42a1dc49da174c72ed79a602ee');
+assert.strictEqual(registrations[0], 'app.get(');
+assert.strictEqual(registrations[1], 'app.get(');
+assert(registrations.indexOf('registerExpressErrorHandler(app') < registrations.indexOf('registerTasksMutationRoutes(app'));
+assert.strictEqual(registrations.at(-1), 'registerClientOrderRoutes(app');
+console.log('OK - ordre complet composition Express');

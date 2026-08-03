@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const route = fs.readFileSync('routes/quoteAcceptance.js', 'utf8');
 const service = fs.readFileSync('services/quoteAcceptanceService.js', 'utf8');
 assert(!server.includes("app.post('/devis/:id/accept'"));

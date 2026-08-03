@@ -1,0 +1,12 @@
+'use strict';
+const assert = require('assert');
+const { registerProcessErrorHandlers, registerExpressErrorHandler } = require('./app/errorHandlers');
+const signals = {}; const errors = [];
+registerProcessErrorHandlers({ on: (name, handler) => { signals[name] = handler; } }, { error: (...args) => errors.push(args) });
+signals.uncaughtException(new Error('test')); signals.unhandledRejection(new Error('test'));
+assert.strictEqual(errors.length, 2);
+let handler; registerExpressErrorHandler({ use: (value) => { handler = value; } }, { error: (...args) => errors.push(args) });
+const res = { status(value) { this.code = value; return this; }, send(value) { this.body = value; return this; } };
+handler(new Error('express-test'), {}, res, () => {});
+assert.strictEqual(res.code, 500); assert.strictEqual(res.body, 'Erreur serveur (voir console).');
+console.log('OK - gestionnaires erreurs application');

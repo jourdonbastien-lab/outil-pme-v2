@@ -151,7 +151,7 @@ assert.strictEqual(actual.marginOnSale, 39);
 assert.strictEqual(actual.hourVariance, 12);
 assert.strictEqual(actual.hourVariancePct, 40);
 
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const databaseSchema = fs.readFileSync('database/schema.js', 'utf8');
 const databaseMigrations = fs.readFileSync('database/migrations.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');

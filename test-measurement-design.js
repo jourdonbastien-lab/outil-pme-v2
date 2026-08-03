@@ -47,7 +47,7 @@ assert(ui.includes("document.getElementById('saveBtn')"), 'le bouton Enregistrer
 assert(!ui.includes('fetch('), 'la couche de design ne doit modifier aucune donnee ni route');
 assert(!ui.includes('localStorage'), 'la couche de design ne doit modifier aucun stockage local');
 
-const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+const server = fs.readFileSync(path.join(root, 'server.js'), 'utf8') + fs.readFileSync(path.join(root, 'app/createApplication.js'), 'utf8');
 assert(server.includes("'measurement-modern.css'"), 'la feuille partagee doit etre servie en mode authentifie');
 assert(server.includes("'measurement-modern.js'"), 'le script partage doit etre servi en mode authentifie');
 

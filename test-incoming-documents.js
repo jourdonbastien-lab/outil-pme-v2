@@ -101,7 +101,7 @@ class MemoryDatabase {
     const rejected = db.prepare('SELECT * FROM incoming_documents WHERE id = ?').get(imported.id); rejected.status = 'rejete'; rejected.notes = 'test';
     assert(fs.existsSync(storedBeforeReject), 'rejet ayant supprimé le fichier');
 
-    const server = fs.readFileSync('server.js', 'utf8');
+    const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8') + fs.readFileSync('app/startApplication.js', 'utf8') + fs.readFileSync('app/shutdown.js', 'utf8'));
     assert(server.includes('registerIncomingDocumentsRoutes(app'), 'routeur documents entrants absent');
     const routeSource = fs.readFileSync(path.join(__dirname, 'routes', 'incomingDocuments.js'), 'utf8');
     const serviceSource = fs.readFileSync(path.join(__dirname, 'services', 'incomingDocumentsService.js'), 'utf8');
@@ -110,7 +110,7 @@ class MemoryDatabase {
     assert(serviceSource.includes('LIMIT ? OFFSET ?'), 'pagination absente');
     assert(serviceSource.includes("status = 'rejete'"), 'filtre/rejet absent');
     assert(controllerSource.includes('uploadSingle'), 'import manuel absent');
-    assert(server.includes("process.once('SIGTERM'"), 'arrêt propre absent');
+    assert(server.includes("processObject.once('SIGTERM'"), 'arrêt propre absent');
     console.log('OK - documents entrants scanner');
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });

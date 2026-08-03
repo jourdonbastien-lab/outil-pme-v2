@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const fs = require('fs');
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const databaseSchema = fs.readFileSync('database/schema.js', 'utf8');
 const routes = fs.readFileSync('routes/tasks.js', 'utf8');
 const service = fs.readFileSync('services/tasksService.js', 'utf8');

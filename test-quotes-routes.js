@@ -21,7 +21,7 @@ assert.strictEqual(routes[1][3], handlers.createForm);
 assert.strictEqual(routes[2][3], handlers.create);
 const routeSource = fs.readFileSync('routes/quotes.js', 'utf8');
 assert(!/SELECT |INSERT INTO|UPDATE |DELETE FROM|<form|fs\\./.test(routeSource));
-const serverSource = fs.readFileSync('server.js', 'utf8');
+const serverSource = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 assert(!serverSource.includes("app.get('/devis', requireLogin"));
 assert(!serverSource.includes("app.get('/devis/new', requireLogin"));
 assert(!serverSource.includes("app.post('/devis', requireLogin"));

@@ -55,7 +55,7 @@ const other = {
   assert.strictEqual(result.photoCount, 0, 'record without photos must be reported safely');
 }
 
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const legacyRoutes = fs.readFileSync('routes/measurementLegacy.js', 'utf8');
 const recoveryView = fs.readFileSync('views/measurementPhotoRecoveryView.js', 'utf8');
 const moduleSheet = fs.readFileSync('modules/measurements/public/module-sheet.js', 'utf8');

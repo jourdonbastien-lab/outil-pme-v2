@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const server = fs.readFileSync('server.js', 'utf8'); const routes = fs.readFileSync('routes/supplierOrders.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8')); const routes = fs.readFileSync('routes/supplierOrders.js', 'utf8');
 for (const route of ["app.get('/orders/suppliers'", "app.post('/orders/supplier'", "app.post('/orders/supplier/delete'", "app.post('/orders/suppliers/purchases/:purchaseId/status'", "app.post('/orders/suppliers/done'", "app.post('/orders/suppliers/delete'"]) assert(!server.includes(route), route);
 for (const path of ['/orders/suppliers', '/orders/supplier', '/orders/supplier/delete', '/orders/suppliers/purchases/:purchaseId/status', '/orders/suppliers/done', '/orders/suppliers/delete']) assert.strictEqual(routes.split(`'${path}'`).length - 1, 1, path);
 assert(server.indexOf('registerSupplierOrderRoutes(app') < server.indexOf('registerPcFoldersAliasRoute(app'));

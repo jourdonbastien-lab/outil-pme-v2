@@ -45,7 +45,7 @@ assert.strictEqual(importedOther.line_type, 'other');
 assert.strictEqual(costs.quoteLineToCostLine({ label: 'Tôle', qty: 4, cost_total: 100 }).unit_cost_ht, 25);
 assert.strictEqual(costs.quoteLineToCostLine({ label: 'Fourniture inconnue', qty: 1 }).incomplete_cost, true);
 
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const databaseSchema = fs.readFileSync('database/schema.js', 'utf8');
 const profitabilityService = fs.readFileSync('services/clientOrderProfitabilityService.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');

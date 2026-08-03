@@ -3,7 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const profitabilityService = fs.readFileSync('services/clientOrderProfitabilityService.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const profitabilityController = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
@@ -25,7 +25,7 @@ for (const removed of ['renderOrderActualDetails', 'renderOrderProfitabilityComp
 
 for (const heading of ['Résultat de la commande', '<h2>Budget de la commande</h2>', '<h2>Suivi des heures</h2>']) assert(profitabilityView.includes(heading), `zone absente: ${heading}`);
 for (const state of ['Rentable', 'À surveiller', 'En perte', 'Budget incomplet']) assert(profitabilityView.includes(state));
-assert(server.includes("require('./lib/clientOrderFinancialSnapshot')"));
+assert(server.includes("require('../lib/clientOrderFinancialSnapshot')"));
 assert(profitabilityView.includes('financialSnapshot.margin.forecastAmount'));
 assert(profitabilityView.includes('financialSnapshot.margin.forecastRate'));
 assert(profitabilityView.includes('financialSnapshot.budget.total'));

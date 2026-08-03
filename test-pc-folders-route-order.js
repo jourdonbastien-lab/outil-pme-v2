@@ -33,6 +33,6 @@ assert.deepStrictEqual(routes.map(([method, path]) => [method, path]), [
 assert.strictEqual(new Set(routes.map(([method, path]) => `${method} ${path}`)).size, routes.length);
 assert(routes.every((route) => route[2] === requireLogin));
 
-const serverSource = fs.readFileSync('server.js', 'utf8');
+const serverSource = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 assert(!/app\.(?:get|post)\('\/pc-folders/.test(serverSource));
 console.log('OK - ordre et unicité des routes pc-folders');

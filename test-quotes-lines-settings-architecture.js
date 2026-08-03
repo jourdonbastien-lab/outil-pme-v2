@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 for (const route of [
   "app.post('/devis/:id/notes'", "app.post('/devis/:id/status'", "app.post('/devis/:id/vat'",
   "app.get('/devis/line/:id/edit'", "app.post('/devis/line/:id/edit'", "app.post('/devis/line'",

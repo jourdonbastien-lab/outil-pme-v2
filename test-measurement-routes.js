@@ -48,7 +48,7 @@ for (const [moduleName, slug] of expectedModules) {
 
 assert.strictEqual(routes.canonicalMeasurementUrl({ id: 10, module: 'Module historique' }), '', 'unknown legacy module keeps generic detail');
 
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const measurementController = fs.readFileSync('controllers/measurementsController.js', 'utf8');
 const measurementCardView = fs.readFileSync('views/measurementCardView.js', 'utf8');
 const measurementDetailView = fs.readFileSync('views/measurementDetailShellView.js', 'utf8');

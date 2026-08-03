@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const route = fs.readFileSync('routes/quoteDetail.js', 'utf8');
 const service = fs.readFileSync('services/quoteDetailService.js', 'utf8');
 const view = fs.readFileSync('views/quoteDetailView.js', 'utf8');

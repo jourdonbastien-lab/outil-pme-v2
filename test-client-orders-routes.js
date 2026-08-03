@@ -3,7 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const routesSource = fs.readFileSync('routes/clientOrders.js', 'utf8');
-const serverSource = fs.readFileSync('server.js', 'utf8');
+const serverSource = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const clientFolderRoutesSource = fs.readFileSync('routes/clientFolders.js', 'utf8');
 const controllerSource = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
 const { registerClientOrderRoutes } = require('./routes/clientOrders');

@@ -3,7 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const routes = fs.readFileSync('routes/workshopTools.js', 'utf8');
 const controller = fs.readFileSync('controllers/workshopToolsController.js', 'utf8');
 const viewFiles = ['views/logibarreView.js', 'views/barreaudageView.js', 'views/logitoleView.js'];
@@ -17,7 +17,7 @@ for (const url of urls) {
 assert(routes.indexOf(urls[0]) < routes.indexOf(urls[1]));
 assert(routes.indexOf(urls[1]) < routes.indexOf(urls[2]));
 assert(server.indexOf('registerMaterialsRoutes(app') < server.indexOf('registerWorkshopToolsRoutes(app'));
-assert(server.indexOf('registerWorkshopToolsRoutes(app') < server.indexOf("process.on('uncaughtException'"));
+assert(server.indexOf('registerWorkshopToolsRoutes(app') < server.indexOf('registerProcessErrorHandlers(process, console)'));
 assert.strictEqual((server.match(/registerWorkshopToolsRoutes\(app/g) || []).length, 1);
 
 for (const name of ['function addRow()', 'function calculateBars()', 'function printBars()', 'function getRailingNumber(', 'function calculateBarreaudage()', 'function addSheetRow()', 'function calculateSheets()', 'function drawSheets(', 'function printSheets()']) {

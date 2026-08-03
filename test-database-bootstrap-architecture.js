@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('assert');
 const fs = require('fs');
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const bootstrap = fs.readFileSync('database/bootstrapDatabase.js', 'utf8');
 for (const sql of ['CREATE TABLE', 'ALTER TABLE', 'CREATE INDEX', 'CREATE UNIQUE INDEX']) assert(!server.includes(sql), `${sql} reste dans server.js`);
 for (const removed of ['function initializeSqlite(', 'function createSqliteTables(', 'function runSqliteMigrations(', 'function runSqliteNormalizations(', 'function initializeDefaultUsers(']) assert(!server.includes(removed), `${removed} reste dans server.js`);

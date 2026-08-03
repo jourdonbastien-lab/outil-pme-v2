@@ -2,7 +2,7 @@
 
 const assert = require('assert');
 const fs = require('fs');
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const agendaRoutes = fs.readFileSync('routes/agenda.js', 'utf8');
 const googleRoutes = fs.readFileSync('routes/googleCalendar.js', 'utf8');
 const services = ['services/agendaService.js', 'services/googleCalendarService.js', 'services/agendaSyncService.js'].map((file) => fs.readFileSync(file, 'utf8')).join('\n');

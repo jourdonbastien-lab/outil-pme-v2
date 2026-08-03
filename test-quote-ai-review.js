@@ -82,7 +82,7 @@ assert(automaticReview.checks.some((check) => check.code === 'material_without_c
     fetchImpl: async () => ({ ok: false, status: 500, json: async () => ({ error: { message: 'indisponible' } }) })
   }), /OpenAI HTTP 500/);
 
-  const server = fs.readFileSync('server.js', 'utf8');
+  const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
   const databaseSchema = fs.readFileSync('database/schema.js', 'utf8');
   const quoteDetailView = fs.readFileSync('views/quoteDetailView.js', 'utf8');
   const aiRoutes = fs.readFileSync('routes/quoteAiAnalysis.js', 'utf8');

@@ -4,7 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 
 const read = (file) => fs.readFileSync(file, 'utf8');
-const server = read('server.js');
+const server = read('server.js') + read('app/createApplication.js');
 const route = read('routes/pcFiles.js');
 const service = read('services/pcFilesService.js');
 const view = read('views/pcFilePreviewView.js');
@@ -21,5 +21,5 @@ assert(!/function safeResolveInside|function safeName|function safeSegment/.test
 for (const protectedPath of [
   './routes/quoteAttachments', './controllers/clientOrderInvoicesController',
   './controllers/measurementPhotosController', './routes/quoteSketches'
-]) assert(server.includes(protectedPath));
+]) assert(server.includes(protectedPath.replace('./', '../')));
 console.log('OK - architecture fichiers PC');

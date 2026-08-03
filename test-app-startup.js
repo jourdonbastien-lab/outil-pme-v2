@@ -1,0 +1,10 @@
+'use strict';
+const assert = require('assert');
+const { startApplication } = require('./app/startApplication');
+const order = []; const handlers = {}; const timer = { unref: () => order.push('timer.unref') }; const server = { close() {} };
+const runtime = { host: '127.0.0.1', port: 0, scannerImportEnabled: true, agendaService: { purgeExpiredEventsSafely: () => order.push('purge') }, incomingDocumentsImportService: { startAutomaticImport: () => order.push('scanner.start'), stopAutomaticImport() {} }, app: { listen(port, host, callback) { order.push(`listen:${host}:${port}`); callback(); return server; } } };
+const returned = startApplication(runtime, { processObject: { once: (name, handler) => { handlers[name] = handler; }, exit() {} }, setIntervalImpl: (handler, delay) => { order.push(`interval:${delay}`); return timer; }, clearIntervalImpl() {}, setTimeoutImpl: () => ({ unref() {} }), logger: { log: (message) => order.push(message) } });
+assert.strictEqual(returned, server);
+assert.deepStrictEqual(order, ['purge', 'interval:3600000', 'timer.unref', 'scanner.start', 'listen:127.0.0.1:0', 'Serveur démarré sur 127.0.0.1:0']);
+assert(handlers.SIGTERM && handlers.SIGINT);
+console.log('OK - démarrage application HTTP');

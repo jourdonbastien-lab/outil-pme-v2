@@ -3,7 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 
-const source = fs.readFileSync('server.js', 'utf8');
+const source = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 function between(startMarker, endMarker) {
   const start = source.indexOf(startMarker);
   const end = source.indexOf(endMarker, start + startMarker.length);

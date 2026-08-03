@@ -2,7 +2,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const { createTwoFactorView } = require('./views/twoFactorView');
-const currentServer = fs.readFileSync('server.js', 'utf8');
+const currentServer = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const routes = fs.readFileSync('routes/auth.js', 'utf8');
 for (const signature of ["get('/',", "get('/login',", "post('/login',", "get('/login/email',", "post('/login/email',", "get('/login/code',", "post('/login/code',", "get('/logout',"]) {
   assert(routes.includes(`app.${signature}`), `route extraite absente: ${signature}`);

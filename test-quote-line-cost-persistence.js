@@ -5,7 +5,7 @@ const fs = require('fs');
 const Database = require('better-sqlite3');
 const profitability = require('./lib/projectProfitability');
 
-const server = fs.readFileSync('server.js', 'utf8');
+const server = (fs.readFileSync('server.js', 'utf8') + fs.readFileSync('app/createApplication.js', 'utf8'));
 const databaseMigrations = fs.readFileSync('database/migrations.js', 'utf8');
 const quoteDetailView = fs.readFileSync('views/quoteDetailView.js', 'utf8');
 for (const name of ['cost_unit', 'margin_pct']) {
