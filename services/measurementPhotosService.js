@@ -1,0 +1,14 @@
+'use strict';
+function createMeasurementPhotosService(d = {}) {
+  const { db, fs, path, crypto, photoFiles, photoDir, now = () => new Date().toISOString() } = d;
+  const publicPhoto = (p) => ({ id:String(p.id),measurementId:Number(p.measurement_id),name:String(p.original_name||'Photo'),originalName:String(p.original_name||'Photo'),mimeType:String(p.mime_type||''),size:Number(p.size||0),caption:String(p.caption||''),hash:String(p.sha256||''),createdAt:p.created_at||null,url:`/api/measurements/${p.measurement_id}/photos/${encodeURIComponent(p.id)}/file` });
+  const listPhotos = (id) => db.prepare('SELECT id, measurement_id, stored_name, original_name, mime_type, size, caption, sha256, created_at FROM measurement_photo_files WHERE measurement_id = ? ORDER BY created_at ASC, id ASC').all(id).map(publicPhoto);
+  const getClassicMeasurement = (id) => db.prepare('SELECT id, module FROM measurements WHERE id = ?').get(id);
+  function storeUploads(id, files) { const timestamp=now(),pending=[],duplicates=[];const hashes=new Set();for(const file of files){const descriptor=photoFiles.validatePhotoFile(file),hash=photoFiles.fileSha256(file.path),existing=db.prepare('SELECT id FROM measurement_photo_files WHERE measurement_id = ? AND sha256 = ?').get(id,hash);if(existing||hashes.has(hash)){duplicates.push(file.path);continue;}hashes.add(hash);pending.push({id:crypto.randomUUID(),measurementId:id,storedName:path.basename(file.filename),originalName:descriptor.originalName,mimeType:descriptor.mimeType,size:Number(file.size||descriptor.size||0),hash,createdAt:timestamp});}const insert=db.prepare('INSERT INTO measurement_photo_files (id, measurement_id, stored_name, original_name, mime_type, size, caption, sha256, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');db.transaction(items=>items.forEach(p=>insert.run(p.id,p.measurementId,p.storedName,p.originalName,p.mimeType,p.size,'',p.hash,p.createdAt)))(pending);duplicates.forEach(file=>{if(fs.existsSync(file))fs.unlinkSync(file)});return{photos:listPhotos(id),duplicatesIgnored:duplicates.length};}
+  function updateCaption(id,photoId,caption){return db.prepare('UPDATE measurement_photo_files SET caption = ? WHERE id = ? AND measurement_id = ?').run(caption,photoId,id);}
+  const getPhoto=(id,photoId)=>db.prepare('SELECT * FROM measurement_photo_files WHERE id = ? AND measurement_id = ?').get(photoId,id);
+  function deletePhoto(id,photo){photoFiles.removeOwnedFile(photoDir,id,photo.stored_name);db.prepare('DELETE FROM measurement_photo_files WHERE id = ? AND measurement_id = ?').run(photo.id,id);}
+  function resolvePhotoFile(id,photo){return photoFiles.photoFilePath(photoDir,id,photo.stored_name);}
+  return{listPhotos,getClassicMeasurement,storeUploads,updateCaption,getPhoto,deletePhoto,resolvePhotoFile};
+}
+module.exports={createMeasurementPhotosService};

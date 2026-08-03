@@ -153,6 +153,16 @@ const {
 } = require('./views/googleCalendarView');
 const { registerAgendaPageRoute, registerAgendaMutationRoutes } = require('./routes/agenda');
 const { registerGoogleCalendarRoutes } = require('./routes/googleCalendar');
+const { createMeasurementsService } = require('./services/measurementsService');
+const { createMeasurementPhotosService } = require('./services/measurementPhotosService');
+const { createMeasurementPhotoUpload } = require('./services/measurementPhotoUpload');
+const { createMeasurementsController } = require('./controllers/measurementsController');
+const { createMeasurementPhotosController } = require('./controllers/measurementPhotosController');
+const { renderMeasurementsListView } = require('./views/measurementsListView');
+const { renderMeasurementCards: renderCommonMeasurementCards } = require('./views/measurementCardView');
+const { renderMeasurementDetailShellView } = require('./views/measurementDetailShellView');
+const { registerMeasurementsListRoutes, registerMeasurementContextRoute, registerMeasurementPersistenceRoutes, registerMeasurementDetailRoute } = require('./routes/measurements');
+const { registerMeasurementPhotoRoutes } = require('./routes/measurementPhotos');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -2288,21 +2298,9 @@ function measurementLinkBadge(row) {
 }
 
 function renderMeasurementCards(rows, options = {}) {
-  if (!rows.length) return '<div class="empty-state">Aucune prise de cote liée.</div>';
-  return `
-    <div class="measurement-linked-grid">
-      ${rows.map((row) => `
-        <article class="measurement-linked-card">
-          <div>
-            <strong>${escHtml(measurementTitle(row))}</strong>
-            <span>${escHtml(row.module || 'Prise de cote')}</span>
-          </div>
-          ${measurementLinkBadge(row)}
-          <a class="btn btn-secondary" href="${escHtml(measurementRoutes.canonicalMeasurementUrl(row, options) || `/outils/prises-cotes/fiche/${row.id}`)}">Ouvrir</a>
-        </article>
-      `).join('')}
-    </div>
-  `;
+  return renderCommonMeasurementCards(rows, {
+    escHtml, measurementTitle, measurementLinkBadge, measurementRoutes, options
+  });
 }
 
 function parseMeasurementData(data) {
@@ -4132,333 +4130,21 @@ app.post('/tasks/to-invoice', requireLogin, (req, res) => {
 registerAgendaPageRoute(app, { requireLogin, controller: agendaController });
 /* ===================== PRISES DE COTES ===================== */
 
-app.get('/outils/prises-cotes', requireLogin, (req, res) => {
-  const savedMeasurements = db
-    .prepare('SELECT * FROM measurements ORDER BY updated_at DESC, id DESC LIMIT 12')
-    .all();
-
-  const measurementTypeIcon = (name) => {
-    const icons = {
-      escalier: '<path d="M4 19h16M4 15h4v4M8 11h4v8M12 7h4v12M16 3h4v16"/>',
-      compass: '<path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/><path d="m15 9-2 5-5 2 2-5 5-2z"/>',
-      rail: '<path d="M4 18V7M20 18V7M4 9h16M7 9v9M11 9v9M15 9v9M19 9v9"/>',
-      gate: '<path d="M4 20V5M20 20V5M6 8h12M6 18h12M8 18V8M12 18V8M16 18V8"/>',
-      fence: '<path d="M4 20V9l3-4 3 4v11M10 20V9l3-4 3 4v11M16 20V9l3-4 3 4v11"/><path d="M3 13h18M3 17h18"/>',
-      pergola: '<path d="M4 9h16M6 9l2-4h8l2 4M7 9v11M17 9v11M5 20h14M9 9v4M12 9v4M15 9v4"/>',
-      window: '<path d="M5 4h14v16H5zM12 4v16M5 12h14"/><path d="M8.5 4v16M15.5 4v16"/>',
-      other: '<path d="M12 4v16M4 12h16"/><path d="M6 6l12 12M18 6 6 18"/>',
-    };
-    return `<svg class="measurement-card-svg" viewBox="0 0 24 24" aria-hidden="true">${icons[name] || icons.other}</svg>`;
-  };
-
-  const cards = [
-    {
-      href: '/outils/prises-cotes/escalier',
-      icon: 'escalier',
-      title: 'Escalier',
-      desc: 'Fiche de prises de cotes Escalier',
-    },
-    {
-      href: '/outils/prises-cotes/escalier-v2',
-      icon: 'compass',
-      title: 'Escalier V2',
-      desc: 'Prise de cotes Escalier V2 (brouillon)',
-    },
-    {
-      href: '/outils/prises-cotes/garde-corps',
-      icon: 'rail',
-      title: 'Garde-corps',
-      desc: 'Longueurs, hauteurs, angles, supports et remplissages',
-    },
-    {
-      href: '/outils/prises-cotes/portail',
-      icon: 'gate',
-      title: 'Portail',
-      desc: 'Dimensions, sens d’ouverture, piliers et motorisation',
-    },
-    {
-      href: '/outils/prises-cotes/cloture',
-      icon: 'fence',
-      title: 'Clôture',
-      desc: 'Longueurs, hauteurs, poteaux, pentes et soubassements',
-    },
-    {
-      href: '/outils/prises-cotes/pergola',
-      icon: 'pergola',
-      title: 'Pergola',
-      desc: 'Emprise, hauteurs, poteaux, toiture et fixations',
-    },
-    {
-      href: '/outils/prises-cotes/verriere',
-      icon: 'window',
-      title: 'Verrière',
-      desc: 'Ouverture, divisions, supports, vitrage et pose',
-    },
-    {
-      href: '/outils/prises-cotes/autres',
-      icon: 'other',
-      title: 'Autres',
-      desc: 'Prise de cotes libre pour un ouvrage spécifique',
-    },
-  ]
-    .map(
-      (item) => `
-      <a class="card" href="${item.href}">
-        <div class="card-icon">${measurementTypeIcon(item.icon)}</div>
-        <div class="card-main">
-          <div class="card-title">${escHtml(item.title)}</div>
-          <div class="card-sub">${escHtml(item.desc)}</div>
-        </div>
-        <div class="card-cta">Ouvrir</div>
-      </a>
-    `
-    )
-    .join('');
-
-  res.send(
-    pageTemplate(
-      req,
-      'Prises de cotes',
-      `
-      <div class="page-head app-dark-page-head">
-        <div class="clients-create-head">
-          ${clientPageIcon('measurements', 'clients-title-icon')}
-          <div>
-            <h1>Prises de cotes</h1>
-            <span>Modules chantier</span>
-          </div>
-        </div>
-      </div>
-
-      <section class="cards-grid">
-        ${cards}
-      </section>
-
-      <section class="panel-soft measurement-linked-section">
-        <h2>Fiches enregistrées</h2>
-        ${savedMeasurements.length ? renderMeasurementCards(savedMeasurements) : '<div class="empty-state">Aucune fiche enregistrée côté serveur.</div>'}
-      </section>
-      `
-    )
-  );
-});
-
-app.get('/api/measurements/link-options', requireLogin, (req, res) => {
-  const quotes = db
-    .prepare('SELECT id, title, client_name, status FROM quotes ORDER BY id DESC')
-    .all()
-    .map((q) => ({
-      id: q.id,
-      label: `#${q.id} - ${q.client_name || 'Client non renseigné'} - ${q.title || 'Sans titre'} - ${normalizeQuoteStatus(q.status)}`
-    }));
-
-  const clientOrders = db
-    .prepare('SELECT id, name, description, status FROM client_orders ORDER BY id DESC')
-    .all()
-    .map((o) => ({
-      id: o.id,
-      label: `#${o.id} - ${o.name || 'Client'} - ${o.description || 'Commande'} - ${o.status || 'En cours'}`
-    }));
-
-  res.json({ quotes, clientOrders });
-});
-
-const measurementPhotoStorage = multer.diskStorage({
-  destination(req, file, cb) {
-    try {
-      const measurementId = parseOptionalId(req.params.id);
-      if (!measurementId) return cb(new Error('ID fiche invalide'));
-      const row = db.prepare('SELECT id, module FROM measurements WHERE id = ?').get(measurementId);
-      if (!row || row.module === 'Escalier V2') return cb(new Error('Fiche de mesure classique introuvable'));
-      const dir = measurementPhotoFiles.measurementPhotoDir(MEASUREMENT_PHOTO_DIR, measurementId);
-      ensureDir(dir);
-      cb(null, dir);
-    } catch (error) {
-      cb(error);
-    }
-  },
-  filename(req, file, cb) {
-    try {
-      cb(null, measurementPhotoFiles.generatedStoredName(file));
-    } catch (error) {
-      cb(error);
-    }
-  }
-});
-
-const measurementPhotoUpload = multer({
-  storage: measurementPhotoStorage,
-  limits: { fileSize: measurementPhotoFiles.MAX_FILE_SIZE, files: 20 },
-  fileFilter(req, file, cb) {
-    try {
-      measurementPhotoFiles.validatePhotoFile(file);
-      cb(null, true);
-    } catch (error) {
-      cb(error);
-    }
-  }
-});
-
-app.get('/api/measurements/context', requireLogin, (req, res) => {
-  const quoteId = parseOptionalId(req.query.quote_id);
-  if (!quoteId) return res.status(400).json({ ok: false, error: 'ID devis invalide' });
-  const quote = db.prepare('SELECT id, title, client_name FROM quotes WHERE id = ?').get(quoteId);
-  if (!quote) return res.status(404).json({ ok: false, error: 'Devis introuvable' });
-  return res.json({ ok: true, quote: {
-    id: quote.id,
-    client: String(quote.client_name || '').trim(),
-    chantier: String(quote.title || '').trim()
-  } });
-});
-
+const measurementsService = createMeasurementsService({ db, parseOptionalId, normalizeMeasurementLink, preserveTechnicalSketches: preserveTechnicalSketchesInMeasurementPayload, formatDateLabel, isoDate, measurementRoutes, removeStoragePathIfExists, sketchPath, safeResolveInside, measurementPhotoDir: MEASUREMENT_PHOTO_DIR });
+const measurementViewDependencies = { escHtml, clientPageIcon, measurementTitle, measurementLinkBadge, measurementRoutes, formatDateLabel, renderSketchBlock, renderMeasurementCards: (rows) => renderCommonMeasurementCards(rows, { escHtml, measurementTitle, measurementLinkBadge, measurementRoutes }) };
+const measurementsController = createMeasurementsController({ s: measurementsService, renderList: renderMeasurementsListView, renderDetail: renderMeasurementDetailShellView, pageTemplate, viewDeps: measurementViewDependencies, parseOptionalId, normalizeQuoteStatus, measurementRoutes, measurementTitle });
+registerMeasurementsListRoutes(app, { requireLogin, c: measurementsController });
+const measurementPhotoUpload = createMeasurementPhotoUpload({ multer, db, parseOptionalId, photoFiles: measurementPhotoFiles, photoDir: MEASUREMENT_PHOTO_DIR, ensureDir });
+registerMeasurementContextRoute(app, { requireLogin, c: measurementsController });
 app.get('/api/measurements/photo-recovery-access', requireLogin, (req, res) => {
   const measurementId = parseOptionalId(req.query.id);
   const isAdmin = req.session?.user?.role !== 'atelier';
   return res.json({ ok: true, allowed: Boolean(isAdmin && measurementId === 9) });
 });
 
-function measurementPhotoPublic(photo) {
-  return {
-    id: String(photo.id),
-    measurementId: Number(photo.measurement_id),
-    name: String(photo.original_name || 'Photo'),
-    originalName: String(photo.original_name || 'Photo'),
-    mimeType: String(photo.mime_type || ''),
-    size: Number(photo.size || 0),
-    caption: String(photo.caption || ''),
-    hash: String(photo.sha256 || ''),
-    createdAt: photo.created_at || null,
-    url: `/api/measurements/${photo.measurement_id}/photos/${encodeURIComponent(photo.id)}/file`
-  };
-}
-
-function listMeasurementPhotos(measurementId) {
-  return db.prepare(`
-    SELECT id, measurement_id, stored_name, original_name, mime_type, size, caption, sha256, created_at
-    FROM measurement_photo_files
-    WHERE measurement_id = ?
-    ORDER BY created_at ASC, id ASC
-  `).all(measurementId).map(measurementPhotoPublic);
-}
-
-app.get('/api/measurements/:id/photos', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  if (!id) return res.status(400).json({ ok: false, error: 'ID fiche invalide' });
-  const row = db.prepare('SELECT id, module FROM measurements WHERE id = ?').get(id);
-  if (!row || row.module === 'Escalier V2') return res.status(404).json({ ok: false, error: 'Fiche classique introuvable' });
-  return res.json({ ok: true, photos: listMeasurementPhotos(id) });
-});
-
-app.post('/api/measurements/:id/photos', requireLogin, (req, res) => {
-  measurementPhotoUpload.array('photos', 20)(req, res, (uploadError) => {
-    const uploadedFiles = Array.isArray(req.files) ? req.files : [];
-    const cleanupUploaded = () => uploadedFiles.forEach((file) => {
-      if (file?.path && fs.existsSync(file.path)) fs.unlinkSync(file.path);
-    });
-    if (uploadError) {
-      cleanupUploaded();
-      return res.status(400).json({ ok: false, error: uploadError.message || 'Upload impossible' });
-    }
-
-    const id = parseOptionalId(req.params.id);
-    if (!id || !uploadedFiles.length) {
-      cleanupUploaded();
-      return res.status(400).json({ ok: false, error: id ? 'Aucune photo recue' : 'ID fiche invalide' });
-    }
-
-    let metadataCommitted = false;
-    try {
-      const now = new Date().toISOString();
-      const pending = [];
-      const duplicateFiles = [];
-      const hashesInBatch = new Set();
-      for (const file of uploadedFiles) {
-        const descriptor = measurementPhotoFiles.validatePhotoFile(file);
-        const hash = measurementPhotoFiles.fileSha256(file.path);
-        const existing = db.prepare('SELECT id FROM measurement_photo_files WHERE measurement_id = ? AND sha256 = ?').get(id, hash);
-        if (existing || hashesInBatch.has(hash)) {
-          duplicateFiles.push(file.path);
-          continue;
-        }
-        hashesInBatch.add(hash);
-        pending.push({
-          id: crypto.randomUUID(),
-          measurementId: id,
-          storedName: path.basename(file.filename),
-          originalName: descriptor.originalName,
-          mimeType: descriptor.mimeType,
-          size: Number(file.size || descriptor.size || 0),
-          caption: '',
-          hash,
-          createdAt: now
-        });
-      }
-
-      const insert = db.prepare(`
-        INSERT INTO measurement_photo_files
-          (id, measurement_id, stored_name, original_name, mime_type, size, caption, sha256, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      db.transaction((items) => {
-        items.forEach((photo) => insert.run(
-          photo.id, photo.measurementId, photo.storedName, photo.originalName,
-          photo.mimeType, photo.size, photo.caption, photo.hash, photo.createdAt
-        ));
-      })(pending);
-      metadataCommitted = true;
-      duplicateFiles.forEach((filePath) => { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); });
-      return res.json({ ok: true, photos: listMeasurementPhotos(id), duplicatesIgnored: duplicateFiles.length });
-    } catch (error) {
-      if (!metadataCommitted) cleanupUploaded();
-      console.error('Erreur stockage photo prise de cote:', error);
-      return res.status(500).json({ ok: false, error: 'Impossible de stocker la photo' });
-    }
-  });
-});
-
-app.patch('/api/measurements/:id/photos/:photoId', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  const photoId = String(req.params.photoId || '').trim();
-  if (!id || !photoId) return res.status(400).json({ ok: false, error: 'Parametres invalides' });
-  const caption = String(req.body?.caption || '').trim().slice(0, 300);
-  const result = db.prepare('UPDATE measurement_photo_files SET caption = ? WHERE id = ? AND measurement_id = ?')
-    .run(caption, photoId, id);
-  if (!result.changes) return res.status(404).json({ ok: false, error: 'Photo introuvable' });
-  return res.json({ ok: true, photos: listMeasurementPhotos(id) });
-});
-
-app.delete('/api/measurements/:id/photos/:photoId', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  const photoId = String(req.params.photoId || '').trim();
-  if (!id || !photoId) return res.status(400).json({ ok: false, error: 'Parametres invalides' });
-  const photo = db.prepare('SELECT * FROM measurement_photo_files WHERE id = ? AND measurement_id = ?').get(photoId, id);
-  if (!photo) return res.status(404).json({ ok: false, error: 'Photo introuvable' });
-  try {
-    measurementPhotoFiles.removeOwnedFile(MEASUREMENT_PHOTO_DIR, id, photo.stored_name);
-    db.prepare('DELETE FROM measurement_photo_files WHERE id = ? AND measurement_id = ?').run(photoId, id);
-    return res.json({ ok: true, photos: listMeasurementPhotos(id) });
-  } catch (error) {
-    console.error('Erreur suppression photo prise de cote:', error);
-    return res.status(500).json({ ok: false, error: 'Suppression photo impossible' });
-  }
-});
-
-app.get('/api/measurements/:id/photos/:photoId/file', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  const photoId = String(req.params.photoId || '').trim();
-  if (!id || !photoId) return res.status(400).send('Parametres invalides');
-  const photo = db.prepare('SELECT * FROM measurement_photo_files WHERE id = ? AND measurement_id = ?').get(photoId, id);
-  if (!photo) return res.status(404).send('Photo introuvable');
-  try {
-    const filePath = measurementPhotoFiles.photoFilePath(MEASUREMENT_PHOTO_DIR, id, photo.stored_name);
-    if (!fs.existsSync(filePath)) return res.status(404).send('Fichier photo introuvable');
-    res.type(photo.mime_type || 'application/octet-stream');
-    return res.sendFile(filePath);
-  } catch {
-    return res.status(400).send('Chemin photo invalide');
-  }
-});
-
+const measurementPhotosService = createMeasurementPhotosService({ db, fs, path, crypto, photoFiles: measurementPhotoFiles, photoDir: MEASUREMENT_PHOTO_DIR });
+const measurementPhotosController = createMeasurementPhotosController({ s: measurementPhotosService, parseOptionalId, upload: (req, res, callback) => measurementPhotoUpload.array('photos', 20)(req, res, callback), fs, logger: console });
+registerMeasurementPhotoRoutes(app, { requireLogin, c: measurementPhotosController });
 app.get('/api/measurements/escalier-v2/bootstrap', requireLogin, (req, res) => {
   const moduleName = 'Escalier V2';
   const requestedId = parseOptionalId(req.query.id);
@@ -4718,91 +4404,7 @@ app.get('/api/measurements/escalier-v2/:id/photos/:photoId/file', requireLogin, 
   return res.sendFile(filePath);
 });
 
-app.post('/api/measurements', requireLogin, (req, res) => {
-  let body = req.body || {};
-  const fields = body.fields && typeof body.fields === 'object' ? body.fields : {};
-  const { quoteId, orderId } = normalizeMeasurementLink(body.quote_id ?? fields.quote_id, body.client_order_id ?? fields.client_order_id);
-  const id = parseOptionalId(body.server_id || body.id);
-  const moduleName = String(body.module || body.moduleLabel || fields.module || 'Prise de cote').trim();
-  const recordName = String(body.recordName || '').trim() || `Fiche ${moduleName.toLowerCase()} ${formatDateLabel(isoDate())}`;
-  const client = String(fields.client || '').trim() || null;
-  const chantier = String(fields.chantier || '').trim() || null;
-  const measureDate = String(fields.date || '').trim() || null;
-  const now = new Date().toISOString();
-
-  if (id) {
-    const existing = db.prepare('SELECT id FROM measurements WHERE id = ?').get(id);
-    if (existing) {
-      body = preserveTechnicalSketchesInMeasurementPayload(body, id);
-      const data = JSON.stringify(body);
-      db.prepare(`
-        UPDATE measurements
-        SET module = ?, record_name = ?, client = ?, chantier = ?, measure_date = ?,
-            quote_id = ?, client_order_id = ?, data = ?, updated_at = ?
-        WHERE id = ?
-      `).run(moduleName, recordName, client, chantier, measureDate, quoteId, orderId, data, now, id);
-      return res.json({ ok: true, id });
-    }
-  }
-
-  const byName = db.prepare('SELECT id FROM measurements WHERE module = ? AND record_name = ?').get(moduleName, recordName);
-  if (byName) {
-    body = preserveTechnicalSketchesInMeasurementPayload(body, byName.id);
-    const data = JSON.stringify(body);
-    db.prepare(`
-      UPDATE measurements
-      SET client = ?, chantier = ?, measure_date = ?, quote_id = ?, client_order_id = ?, data = ?, updated_at = ?
-      WHERE id = ?
-    `).run(client, chantier, measureDate, quoteId, orderId, data, now, byName.id);
-    return res.json({ ok: true, id: byName.id });
-  }
-
-  const data = JSON.stringify(body);
-  const info = db.prepare(`
-    INSERT INTO measurements
-      (module, record_name, client, chantier, measure_date, quote_id, client_order_id, data, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(moduleName, recordName, client, chantier, measureDate, quoteId, orderId, data, now, now);
-
-  res.json({ ok: true, id: info.lastInsertRowid });
-});
-
-app.get('/api/measurements/:id', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  if (!id) return res.status(400).json({ ok: false, error: 'ID prise de cote invalide' });
-  const measurement = db.prepare('SELECT * FROM measurements WHERE id = ?').get(id);
-  if (!measurement) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
-  const quoteId = parseOptionalId(measurement.quote_id);
-  const quote = quoteId ? db.prepare('SELECT id, title, client_name FROM quotes WHERE id = ?').get(quoteId) : null;
-  return res.json({
-    ok: true,
-    measurement: measurementRoutes.buildMeasurementEditorPayload(measurement, quote),
-    returnUrl: quoteId ? `/devis/${quoteId}#quote-section-measurements` : '/outils/prises-cotes'
-  });
-});
-
-app.delete('/api/measurements/:id', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  if (!id) return res.status(400).json({ ok: false, error: 'ID prise de cote invalide' });
-
-  const measurement = db.prepare('SELECT id FROM measurements WHERE id = ?').get(id);
-  if (!measurement) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
-
-  try {
-    removeStoragePathIfExists(sketchPath('measurements', id));
-    removeStoragePathIfExists(safeResolveInside(MEASUREMENT_PHOTO_DIR, String(id)));
-    const result = db.transaction((measurementId) => {
-      db.prepare('DELETE FROM measurement_photo_files WHERE measurement_id = ?').run(measurementId);
-      return db.prepare('DELETE FROM measurements WHERE id = ?').run(measurementId);
-    })(id);
-    if (!result.changes) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
-    return res.json({ ok: true, deletedId: id, redirect: '/outils/prises-cotes' });
-  } catch (error) {
-    console.error('Erreur suppression prise de cote:', error);
-    return res.status(500).json({ ok: false, error: 'Erreur suppression prise de cote' });
-  }
-});
-
+registerMeasurementPersistenceRoutes(app, { requireLogin, c: measurementsController });
 app.get('/api/measurements/:id/croquis', requireLogin, (req, res) => {
   const entry = readMeasurementForSketches(req.params.id);
   if (!entry) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
@@ -4934,61 +4536,7 @@ app.post('/api/measurements/:id/sketch', requireLogin, (req, res) => {
   }
 });
 
-app.get('/outils/prises-cotes/fiche/:id', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  if (!id) return res.status(400).send('ID prise de cote invalide');
-
-  const measurement = db.prepare('SELECT * FROM measurements WHERE id = ?').get(id);
-  if (!measurement) return res.status(404).send('Prise de cote introuvable');
-
-  const canonicalUrl = measurementRoutes.canonicalMeasurementUrl(measurement, { fromQuoteId: req.query.from_quote });
-  if (canonicalUrl) return res.redirect(302, canonicalUrl);
-  const linkedQuoteId = parseOptionalId(measurement.quote_id);
-  const linkedQuote = linkedQuoteId
-    ? db.prepare('SELECT id, title, client_name FROM quotes WHERE id = ?').get(linkedQuoteId)
-    : null;
-  const editorPayload = measurementRoutes.buildMeasurementEditorPayload(measurement, linkedQuote);
-
-  res.send(
-    pageTemplate(
-      req,
-      measurementTitle(measurement),
-      `
-      <div class="page-head">
-        <h1>${escHtml(measurementTitle(measurement))}</h1>
-      </div>
-
-      <section class="panel-soft measurement-detail">
-        ${measurementLinkBadge(measurement)}
-        <div class="measurement-detail-grid">
-          <div><span>Module</span><strong>${escHtml(measurement.module || '—')}</strong></div>
-          <div><span>Client</span><strong>${escHtml(editorPayload.fields.client || '—')}</strong></div>
-          <div><span>Chantier</span><strong>${escHtml(editorPayload.fields.chantier || '—')}</strong></div>
-          <div><span>Date</span><strong>${escHtml(formatDateLabel(measurement.measure_date))}</strong></div>
-        </div>
-        <div class="nav-actions">
-          <a class="btn btn-secondary" href="/outils/prises-cotes">Retour prises de cotes</a>
-        </div>
-      </section>
-
-      ${renderSketchBlock({ scope: 'measurements', id, className: 'panel-soft' })}
-      <script src="/sketchpad.js"></script>
-      <script>
-      window.initSketchPad && window.initSketchPad({
-        root: document.querySelector('[data-sketchpad][data-sketch-scope="measurements"]'),
-        getSaveUrl: function (root) {
-          return '/api/measurements/' + root.dataset.sketchId + '/sketch';
-        },
-        getImageUrl: function (root) {
-          return root.dataset.sketchImageUrl;
-        }
-      });
-      </script>
-      `
-    )
-  );
-});
-
+registerMeasurementDetailRoute(app, { requireLogin, c: measurementsController });
 app.get('/outils/prises-cotes/recuperation-photos', requireAdmin, (req, res) => {
   res.send(pageTemplate(req, 'Récupération photos Portail', `
     <div class="page-head app-dark-page-head">

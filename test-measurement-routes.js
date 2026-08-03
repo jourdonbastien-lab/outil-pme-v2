@@ -49,14 +49,18 @@ for (const [moduleName, slug] of expectedModules) {
 assert.strictEqual(routes.canonicalMeasurementUrl({ id: 10, module: 'Module historique' }), '', 'unknown legacy module keeps generic detail');
 
 const server = fs.readFileSync('server.js', 'utf8');
+const measurementController = fs.readFileSync('controllers/measurementsController.js', 'utf8');
+const measurementCardView = fs.readFileSync('views/measurementCardView.js', 'utf8');
+const measurementDetailView = fs.readFileSync('views/measurementDetailShellView.js', 'utf8');
+const quoteDetailView = fs.readFileSync('views/quoteDetailView.js', 'utf8');
 const moduleSheet = fs.readFileSync('modules/measurements/public/module-sheet.js', 'utf8');
 const stairSheet = fs.readFileSync('modules/measurements/public/measurements.js', 'utf8');
-assert.ok(server.includes('if (canonicalUrl) return res.redirect(302, canonicalUrl)'), 'generic detail must redirect known modules');
-assert.ok(server.includes('measurementRoutes.canonicalMeasurementUrl(row, options)'), 'measurement cards must use canonical links');
-assert.ok(server.includes('renderMeasurementCards(linkedMeasurements, { fromQuoteId: id })'), 'quote cards must keep quote return context');
+assert.ok(measurementController.includes('if(canonical)return res.redirect(302,canonical)'), 'generic detail must redirect known modules');
+assert.ok(measurementCardView.includes('measurementRoutes.canonicalMeasurementUrl(row,options)'), 'measurement cards must use canonical links');
+assert.ok(quoteDetailView.includes('renderMeasurementCards(linkedMeasurements, { fromQuoteId: id })'), 'quote cards must keep quote return context');
 assert.ok(moduleSheet.includes('if (initialServerId) await loadServerRecord(initialServerId)'), 'module editors must load server data by id');
 assert.ok(stairSheet.includes('if (initialServerId) await loadServerRecord(initialServerId)'), 'Escalier editor must load server data by id');
 assert.ok(moduleSheet.includes("const returnUrl = fromQuoteId ? `/devis/${fromQuoteId}#quote-section-measurements` : '/outils/prises-cotes'"), 'quote return and direct-list return must coexist');
-assert.ok(server.includes("${renderSketchBlock({ scope: 'measurements', id, className: 'panel-soft' })}"), 'legacy generic sketch remains available for unknown modules');
+assert.ok(measurementDetailView.includes("renderSketchBlock({scope:'measurements',id,className:'panel-soft'})"), 'legacy generic sketch remains available for unknown modules');
 
 console.log('measurement route tests ok');
