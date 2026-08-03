@@ -64,6 +64,11 @@ const { createClientFolderNavigationService } = require('./services/clientFolder
 const { createClientFolderNavigationController } = require('./controllers/clientFolderNavigationController');
 const { renderClientFolderNavigationView } = require('./views/clientFolderNavigationView');
 const { registerClientFolderRoutes } = require('./routes/clientFolders');
+const { registerPcFilesRoutes } = require('./routes/pcFiles');
+const { createPcFilesService } = require('./services/pcFilesService');
+const { createPcFilesController } = require('./controllers/pcFilesController');
+const { renderPcFilePreviewView } = require('./views/pcFilePreviewView');
+const { createPcFileUpload } = require('./middleware/pcFileUpload');
 const { createClientsService } = require('./services/clientsService');
 const { createClientsController } = require('./controllers/clientsController');
 const { renderClientsListView } = require('./views/clientsListView');
@@ -1828,29 +1833,19 @@ const storage = multer.diskStorage({
 const upload = multer({ storage }); // conservé
 
 // Upload direct dans dossier PC : /pc-folders/:client/:order/:type/upload
-const pcStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    try {
-      const client = safeName(req.params.client);
-      const order = safeName(req.params.order);
-      const type = String(req.params.type || '').trim();
-
-      if (!client || !order || !type) return cb(new Error('Dossier cible invalide'));
-      if (!STANDARD_SUBFOLDERS.includes(type)) return cb(new Error('Type de dossier interdit'));
-
-      const dir = safeResolveInside(CLIENT_PC_DIR, client, order, type);
-      ensureDir(dir);
-      cb(null, dir);
-    } catch (e) {
-      cb(e);
-    }
-  },
-  filename: (req, file, cb) => {
-    const safeFileName = `${Date.now()}-${safeSegment(file.originalname || 'file')}`;
-    cb(null, safeFileName);
-  },
+const pcFilesService = createPcFilesService({
+  fs,
+  clientPcDir: CLIENT_PC_DIR,
+  standardSubfolders: STANDARD_SUBFOLDERS,
+  safeName,
+  safeResolveInside,
+  ensureDir
 });
-const pcUpload = multer({ storage: pcStorage });
+const pcUpload = createPcFileUpload({ multer, pcFilesService, safeSegment });
+const pcFilesController = createPcFilesController({
+  pcFilesService,
+  renderPreviewView: renderPcFilePreviewView
+});
 const quotePhotoStorage = multer.diskStorage({
 
   destination(req, file, cb) {
@@ -3487,109 +3482,15 @@ registerClientFolderRoutes(app, {
     showClientFolders: (req, res) => clientFolderNavigationController.showClientFolders(req, res),
     showClientOrderRootFolder: (req, res) => clientOrderFoldersController.showClientOrderRootFolder(req, res),
     showClientOrderFolder: (req, res) => clientOrderFoldersController.showClientOrderFolder(req, res),
-    uploadClientOrderFolderFile: (req, res) => clientOrderFoldersController.uploadClientOrderFolderFile(req, res)
+    uploadClientOrderFolderFile: pcFilesController.uploadFile
   }
 });
 
-// ⚠️ Windows + sécurité : on re-sécurise le filename avant lecture disque
-app.get('/pc-file/:client/:order/:type/:file', requireLogin, (req, res) => {
-
-  const client = encodeURIComponent(req.params.client);
-  const order = encodeURIComponent(req.params.order);
-  const type = encodeURIComponent(req.params.type);
-  const file = encodeURIComponent(req.params.file);
-
-  res.send(`
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-
-<style>
-html,body{
-  margin:0;
-  height:100%;
-}
-
-.topbar{
-  position:fixed;
-  top:15px;
-  right:15px;
-  z-index:99999;
-}
-
-.close-btn{
-  min-width:96px;
-  height:44px;
-  padding:0 18px;
-  border:none;
-  border-radius:999px;
-  background:#ff7a00;
-  color:#fff;
-  font-size:15px;
-  font-weight:bold;
-  box-shadow:0 4px 12px rgba(0,0,0,.25);
-}
-
-iframe{
-  width:100%;
-  height:100vh;
-  border:none;
-}
-</style>
-</head>
-
-<body>
-
-<div class="topbar">
-  <button class="close-btn" onclick="history.back()">Retour</button>
-</div>
-
-${file.toLowerCase().endsWith('.pdf')
-  ? `
-    <embed
-      src="/pc-file-raw/${client}/${order}/${type}/${file}"
-      type="application/pdf"
-      width="100%"
-      height="100%">
-  `
-  : `
-    <iframe
-      src="/pc-file-raw/${client}/${order}/${type}/${file}">
-    </iframe>
-  `
-}
-
-</body>
-</html>
-`);
-});
-
-app.get('/pc-file-raw/:client/:order/:type/:file', requireLogin, (req, res) => {
-  try {
-    const client = safeName(req.params.client);
-    const order = safeName(req.params.order);
-    const type = String(req.params.type || '').trim();
-    const file = decodeURIComponent(req.params.file || '');
-
-    if (!STANDARD_SUBFOLDERS.includes(type))
-      return res.status(400).send('Type de dossier invalide');
-
-    const filePath = safeResolveInside(
-      CLIENT_PC_DIR,
-      client,
-      order,
-      type,
-      file
-    );
-
-    if (!fs.existsSync(filePath))
-      return res.status(404).send('Fichier introuvable');
-
-    res.sendFile(filePath);
-
-  } catch (e) {
-    return res.status(400).send('Chemin invalide');
+registerPcFilesRoutes(app, {
+  requireLogin,
+  handlers: {
+    showFilePreview: pcFilesController.showFilePreview,
+    serveRawFile: pcFilesController.serveRawFile
   }
 });
 /* ===================== DEVIS ===================== */
@@ -4041,8 +3942,7 @@ const clientOrderFoldersController = createClientOrderFoldersController({
     return db.prepare('SELECT * FROM measurements WHERE client_order_id = ? ORDER BY updated_at DESC, id DESC').all(orderId);
   },
   renderMeasurements: renderMeasurementCards,
-  chantierStatusOptions,
-  safeName
+  chantierStatusOptions
 });
 const clientOrdersController = createClientOrdersController({
   orderService: clientOrderService,
