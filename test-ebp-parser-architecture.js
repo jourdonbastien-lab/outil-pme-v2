@@ -1,0 +1,7 @@
+'use strict';
+const assert=require('assert'),fs=require('fs'),crypto=require('crypto');
+const server=fs.readFileSync('server.js','utf8'),helpers=fs.readFileSync('lib/ebpParserHelpers.js','utf8'),service=fs.readFileSync('services/ebpDocumentParserService.js','utf8');
+for(const name of ['parseFrenchAmount','pickAmountWithLabel','normalizeOcrLine','extractLabeledValue','pickBestAmountFromText','guessClientFromLines','guessTitleFromLines','extractEbpFieldsFromText','extractEbpInvoiceFieldsFromText'])assert(!server.includes(`function ${name}`));
+assert(server.includes('extractQuoteFields: ebpDocumentParserService.parseQuote'));assert(server.includes('ebpDocumentParserService.parseInvoice(extractedText)'));assert(!/require\([^)]*server/.test(helpers+service));assert(!/\b(?:req|res)\./.test(helpers+service));assert(!/SELECT|INSERT|UPDATE|DELETE/.test(helpers+service));assert(!/pdfParse|Tesseract|sharp\(/.test(helpers+service));
+const protectedHashes={'lib/ebpQuoteParser.js':'4ab86e192f37794173caae307f99c538db48e853','services/documentTextExtractionService.js':'a8075d280c6cfbb213c4da593b7e78c14540e97c','services/ebpScannerUpload.js':'39d8876287834c8c9e7aeae0cdb413ac236df012','routes/ebpScanner.js':'108fd7a2dca32e75933f9d0d085c84f3dc972881','routes/incomingDocuments.js':'28ba2422524fd094539a8c844c66d43336bb2d4c'};for(const[file,hash]of Object.entries(protectedHashes))assert.strictEqual(crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex'),hash);
+console.log('OK - architecture parsers EBP');

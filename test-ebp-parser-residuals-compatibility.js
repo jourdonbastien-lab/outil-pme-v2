@@ -1,0 +1,10 @@
+'use strict';
+const assert=require('assert');
+const parser=require('./lib/ebpQuoteParser');
+const {createEbpParserHelpers}=require('./lib/ebpParserHelpers');
+const {createEbpDocumentParserService}=require('./services/ebpDocumentParserService');
+const normalizeSearchText=value=>String(value||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim(),round2=n=>Math.round((Number(n)+Number.EPSILON)*100)/100;
+const helpers=createEbpParserHelpers({normalizeSearchText,roundAmount:round2}),service=createEbpDocumentParserService({parseEbpQuoteText:parser.parseEbpQuoteText,parseEbpInvoiceText:parser.parseEbpInvoiceText,parserHelpers:helpers});
+const corpus=require('./test-fixtures/ebp-parser-residuals.json');
+for(const item of corpus.quotes)assert.deepStrictEqual(service.parseQuote(item.text),item.expected);for(const item of corpus.invoices)assert.deepStrictEqual(service.parseInvoice(item.text),item.expected);
+console.log('OK - compatibilité parsers EBP résiduels');

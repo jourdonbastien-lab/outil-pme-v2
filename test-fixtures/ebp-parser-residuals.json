@@ -1,0 +1,559 @@
+{
+  "quotes": [
+    {
+      "text": "",
+      "expected": {
+        "recognized": false,
+        "matched": false,
+        "reason": "Marqueurs EBP insuffisants (0/7)",
+        "markersFound": [],
+        "markersMissing": [
+          "clientBlock",
+          "dateValidite",
+          "numero",
+          "devis",
+          "quoteNumberDE",
+          "tableHeader",
+          "totalHTNet",
+          "totalTTC"
+        ],
+        "inputLength": 0,
+        "primaryTextLength": 0,
+        "diagnostic": {
+          "matched": false,
+          "reason": "Marqueurs EBP insuffisants (0/7)",
+          "markersFound": [],
+          "markersMissing": [
+            "clientBlock",
+            "dateValidite",
+            "numero",
+            "devis",
+            "quoteNumberDE",
+            "tableHeader",
+            "totalHTNet",
+            "totalTTC"
+          ],
+          "inputLength": 0,
+          "primaryTextLength": 0,
+          "pageCount": 1
+        },
+        "analysisUsed": "Analyse générique",
+        "parserName": "Analyse générique",
+        "client_name": "",
+        "amount_ht": null,
+        "amount_ttc": null,
+        "quote_number": "",
+        "quote_date": "",
+        "title": ""
+      }
+    },
+    {
+      "text": "Bruit sans champ",
+      "expected": {
+        "recognized": false,
+        "matched": false,
+        "reason": "Marqueurs EBP insuffisants (0/7)",
+        "markersFound": [],
+        "markersMissing": [
+          "clientBlock",
+          "dateValidite",
+          "numero",
+          "devis",
+          "quoteNumberDE",
+          "tableHeader",
+          "totalHTNet",
+          "totalTTC"
+        ],
+        "inputLength": 16,
+        "primaryTextLength": 16,
+        "diagnostic": {
+          "matched": false,
+          "reason": "Marqueurs EBP insuffisants (0/7)",
+          "markersFound": [],
+          "markersMissing": [
+            "clientBlock",
+            "dateValidite",
+            "numero",
+            "devis",
+            "quoteNumberDE",
+            "tableHeader",
+            "totalHTNet",
+            "totalTTC"
+          ],
+          "inputLength": 16,
+          "primaryTextLength": 16,
+          "pageCount": 1
+        },
+        "analysisUsed": "Analyse générique",
+        "parserName": "Analyse générique",
+        "client_name": "",
+        "amount_ht": null,
+        "amount_ttc": null,
+        "quote_number": "",
+        "quote_date": "",
+        "title": "Bruit sans champ"
+      }
+    },
+    {
+      "text": "Devis N° D-1\nClient : Dupont\nDate : 03/08/2026\nObjet : Portail\nTotal HT 1 000,00\nTotal TTC 1 200,00",
+      "expected": {
+        "recognized": false,
+        "matched": false,
+        "reason": "Marqueurs EBP insuffisants (1/7)",
+        "markersFound": [
+          "totalTTC"
+        ],
+        "markersMissing": [
+          "clientBlock",
+          "dateValidite",
+          "numero",
+          "devis",
+          "quoteNumberDE",
+          "tableHeader",
+          "totalHTNet"
+        ],
+        "inputLength": 99,
+        "primaryTextLength": 99,
+        "diagnostic": {
+          "matched": false,
+          "reason": "Marqueurs EBP insuffisants (1/7)",
+          "markersFound": [
+            "totalTTC"
+          ],
+          "markersMissing": [
+            "clientBlock",
+            "dateValidite",
+            "numero",
+            "devis",
+            "quoteNumberDE",
+            "tableHeader",
+            "totalHTNet"
+          ],
+          "inputLength": 99,
+          "primaryTextLength": 99,
+          "pageCount": 1
+        },
+        "analysisUsed": "Analyse générique",
+        "parserName": "Analyse générique",
+        "client_name": "Dupont",
+        "amount_ht": 1000,
+        "amount_ttc": 1200,
+        "quote_number": "D-1",
+        "quote_date": "2026-08-03",
+        "title": "Portail"
+      }
+    },
+    {
+      "text": "Devis numéro D-2\nDate : 2026-08-03\nTotal HT 1234.56\nTotal TTC 1481.47",
+      "expected": {
+        "recognized": false,
+        "matched": false,
+        "reason": "Marqueurs EBP insuffisants (1/7)",
+        "markersFound": [
+          "totalTTC"
+        ],
+        "markersMissing": [
+          "clientBlock",
+          "dateValidite",
+          "numero",
+          "devis",
+          "quoteNumberDE",
+          "tableHeader",
+          "totalHTNet"
+        ],
+        "inputLength": 69,
+        "primaryTextLength": 69,
+        "diagnostic": {
+          "matched": false,
+          "reason": "Marqueurs EBP insuffisants (1/7)",
+          "markersFound": [
+            "totalTTC"
+          ],
+          "markersMissing": [
+            "clientBlock",
+            "dateValidite",
+            "numero",
+            "devis",
+            "quoteNumberDE",
+            "tableHeader",
+            "totalHTNet"
+          ],
+          "inputLength": 69,
+          "primaryTextLength": 69,
+          "pageCount": 1
+        },
+        "analysisUsed": "Analyse générique",
+        "parserName": "Analyse générique",
+        "client_name": "",
+        "amount_ht": 123,
+        "amount_ttc": 148,
+        "quote_number": "num",
+        "quote_date": "2026-08-03",
+        "title": ""
+      }
+    },
+    {
+      "text": "DEVIS\nClient : Martin\fPage 2\nConditions générales",
+      "expected": {
+        "recognized": false,
+        "matched": false,
+        "reason": "Marqueurs EBP insuffisants (1/7)",
+        "markersFound": [
+          "devis"
+        ],
+        "markersMissing": [
+          "clientBlock",
+          "dateValidite",
+          "numero",
+          "quoteNumberDE",
+          "tableHeader",
+          "totalHTNet",
+          "totalTTC"
+        ],
+        "inputLength": 49,
+        "primaryTextLength": 21,
+        "diagnostic": {
+          "matched": false,
+          "reason": "Marqueurs EBP insuffisants (1/7)",
+          "markersFound": [
+            "devis"
+          ],
+          "markersMissing": [
+            "clientBlock",
+            "dateValidite",
+            "numero",
+            "quoteNumberDE",
+            "tableHeader",
+            "totalHTNet",
+            "totalTTC"
+          ],
+          "inputLength": 49,
+          "primaryTextLength": 21,
+          "pageCount": 2
+        },
+        "analysisUsed": "Analyse générique",
+        "parserName": "Analyse générique",
+        "client_name": "Martin Page 2",
+        "amount_ht": null,
+        "amount_ttc": null,
+        "quote_number": "Client",
+        "quote_date": "",
+        "title": "Conditions générales"
+      }
+    },
+    {
+      "text": "Devis : D-3\nObjet : Escalier\nTotal HT 500,00\nTotal TTC 600,00",
+      "expected": {
+        "recognized": false,
+        "matched": false,
+        "reason": "Marqueurs EBP insuffisants (1/7)",
+        "markersFound": [
+          "totalTTC"
+        ],
+        "markersMissing": [
+          "clientBlock",
+          "dateValidite",
+          "numero",
+          "devis",
+          "quoteNumberDE",
+          "tableHeader",
+          "totalHTNet"
+        ],
+        "inputLength": 61,
+        "primaryTextLength": 61,
+        "diagnostic": {
+          "matched": false,
+          "reason": "Marqueurs EBP insuffisants (1/7)",
+          "markersFound": [
+            "totalTTC"
+          ],
+          "markersMissing": [
+            "clientBlock",
+            "dateValidite",
+            "numero",
+            "devis",
+            "quoteNumberDE",
+            "tableHeader",
+            "totalHTNet"
+          ],
+          "inputLength": 61,
+          "primaryTextLength": 61,
+          "pageCount": 1
+        },
+        "analysisUsed": "Analyse générique",
+        "parserName": "Analyse générique",
+        "client_name": "",
+        "amount_ht": 500,
+        "amount_ttc": 600,
+        "quote_number": "D-3",
+        "quote_date": "",
+        "title": "Escalier"
+      }
+    }
+  ],
+  "invoices": [
+    {
+      "text": "",
+      "expected": {
+        "matched": false,
+        "recognized": false,
+        "reason": "Champs facture manquants: invoice_number, invoice_date, amount_ht, amount_ttc",
+        "markersFound": [],
+        "markersMissing": [
+          "facture",
+          "invoiceNumber",
+          "invoiceDate",
+          "clientName",
+          "totalHT",
+          "totalTTC"
+        ],
+        "inputLength": 0,
+        "primaryTextLength": 0,
+        "pageCount": 1,
+        "analysisUsed": "Analyse facture generique",
+        "parserName": "Analyse facture generique",
+        "client_name": "",
+        "client": "",
+        "invoice_number": "",
+        "invoiceNumber": "",
+        "invoice_date": "",
+        "date": "",
+        "amount_ht": null,
+        "amountHT": null,
+        "vat_amount": null,
+        "vatAmount": null,
+        "amount_ttc": null,
+        "amountTTC": null,
+        "primary_text": "",
+        "diagnostic": {
+          "matched": false,
+          "reason": "Champs facture manquants: invoice_number, invoice_date, amount_ht, amount_ttc",
+          "markersFound": [],
+          "markersMissing": [
+            "facture",
+            "invoiceNumber",
+            "invoiceDate",
+            "clientName",
+            "totalHT",
+            "totalTTC"
+          ],
+          "inputLength": 0,
+          "primaryTextLength": 0,
+          "pageCount": 1
+        }
+      }
+    },
+    {
+      "text": "Facture numéro F-1\nClient : Dupont\nDate : 03/08/2026\nTotal HT 100,00\nTVA 20,00\nTotal TTC 120,00",
+      "expected": {
+        "matched": false,
+        "recognized": false,
+        "reason": "Champs facture manquants: invoice_number, amount_ht",
+        "markersFound": [
+          "facture",
+          "invoiceDate",
+          "totalTTC"
+        ],
+        "markersMissing": [
+          "invoiceNumber",
+          "clientName",
+          "totalHT"
+        ],
+        "inputLength": 95,
+        "primaryTextLength": 95,
+        "pageCount": 1,
+        "analysisUsed": "Analyse facture generique",
+        "parserName": "Analyse facture generique",
+        "client_name": "Dupont",
+        "client": "",
+        "invoice_number": "NUM",
+        "invoiceNumber": "",
+        "invoice_date": "2026-08-03",
+        "date": "03/08/2026",
+        "amount_ht": null,
+        "amountHT": null,
+        "vat_amount": null,
+        "vatAmount": null,
+        "amount_ttc": 120,
+        "amountTTC": 120,
+        "primary_text": "Facture numéro F-1\nClient : Dupont\nDate : 03/08/2026\nTotal HT 100,00\nTVA 20,00\nTotal TTC 120,00",
+        "diagnostic": {
+          "matched": false,
+          "reason": "Champs facture manquants: invoice_number, amount_ht",
+          "markersFound": [
+            "facture",
+            "invoiceDate",
+            "totalTTC"
+          ],
+          "markersMissing": [
+            "invoiceNumber",
+            "clientName",
+            "totalHT"
+          ],
+          "inputLength": 95,
+          "primaryTextLength": 95,
+          "pageCount": 1
+        }
+      }
+    },
+    {
+      "text": "FACTURE FOURNISSEUR N° FF-9\nSARL FOURNISSEUR\nDate 2026-08-03\nTotal HT 1 000,00\nTotal TVA 200,00\nNet à payer 1 200,00",
+      "expected": {
+        "matched": false,
+        "recognized": false,
+        "reason": "Champs facture manquants: invoice_number, invoice_date, amount_ht",
+        "markersFound": [
+          "facture",
+          "totalTTC"
+        ],
+        "markersMissing": [
+          "invoiceNumber",
+          "invoiceDate",
+          "clientName",
+          "totalHT"
+        ],
+        "inputLength": 116,
+        "primaryTextLength": 116,
+        "pageCount": 1,
+        "analysisUsed": "Analyse facture generique",
+        "parserName": "Analyse facture generique",
+        "client_name": "Net à payer 1 200,00",
+        "client": "",
+        "invoice_number": "FOURNISSEUR",
+        "invoiceNumber": "",
+        "invoice_date": "",
+        "date": "",
+        "amount_ht": null,
+        "amountHT": null,
+        "vat_amount": 200,
+        "vatAmount": 200,
+        "amount_ttc": 1200,
+        "amountTTC": 1200,
+        "primary_text": "FACTURE FOURNISSEUR N° FF-9\nSARL FOURNISSEUR\nDate 2026-08-03\nTotal HT 1 000,00\nTotal TVA 200,00\nNet à payer 1 200,00",
+        "diagnostic": {
+          "matched": false,
+          "reason": "Champs facture manquants: invoice_number, invoice_date, amount_ht",
+          "markersFound": [
+            "facture",
+            "totalTTC"
+          ],
+          "markersMissing": [
+            "invoiceNumber",
+            "invoiceDate",
+            "clientName",
+            "totalHT"
+          ],
+          "inputLength": 116,
+          "primaryTextLength": 116,
+          "pageCount": 1
+        }
+      }
+    },
+    {
+      "text": "Facture\nClient : Martin\nTotal HT 10.00\nTotal TTC 12.00",
+      "expected": {
+        "matched": false,
+        "recognized": false,
+        "reason": "Champs facture manquants: invoice_number, invoice_date, amount_ht",
+        "markersFound": [
+          "facture",
+          "totalTTC"
+        ],
+        "markersMissing": [
+          "invoiceNumber",
+          "invoiceDate",
+          "clientName",
+          "totalHT"
+        ],
+        "inputLength": 54,
+        "primaryTextLength": 54,
+        "pageCount": 1,
+        "analysisUsed": "Analyse facture generique",
+        "parserName": "Analyse facture generique",
+        "client_name": "Martin",
+        "client": "",
+        "invoice_number": "CLIENT",
+        "invoiceNumber": "",
+        "invoice_date": "",
+        "date": "",
+        "amount_ht": null,
+        "amountHT": null,
+        "vat_amount": null,
+        "vatAmount": null,
+        "amount_ttc": 12,
+        "amountTTC": 12,
+        "primary_text": "Facture\nClient : Martin\nTotal HT 10.00\nTotal TTC 12.00",
+        "diagnostic": {
+          "matched": false,
+          "reason": "Champs facture manquants: invoice_number, invoice_date, amount_ht",
+          "markersFound": [
+            "facture",
+            "totalTTC"
+          ],
+          "markersMissing": [
+            "invoiceNumber",
+            "invoiceDate",
+            "clientName",
+            "totalHT"
+          ],
+          "inputLength": 54,
+          "primaryTextLength": 54,
+          "pageCount": 1
+        }
+      }
+    },
+    {
+      "text": "Texte bruité facture sans numéro ni date",
+      "expected": {
+        "matched": false,
+        "recognized": false,
+        "reason": "Champs facture manquants: invoice_number, invoice_date, amount_ht, amount_ttc",
+        "markersFound": [
+          "facture"
+        ],
+        "markersMissing": [
+          "invoiceNumber",
+          "invoiceDate",
+          "clientName",
+          "totalHT",
+          "totalTTC"
+        ],
+        "inputLength": 40,
+        "primaryTextLength": 40,
+        "pageCount": 1,
+        "analysisUsed": "Analyse facture generique",
+        "parserName": "Analyse facture generique",
+        "client_name": "",
+        "client": "",
+        "invoice_number": "SANS",
+        "invoiceNumber": "",
+        "invoice_date": "",
+        "date": "",
+        "amount_ht": null,
+        "amountHT": null,
+        "vat_amount": null,
+        "vatAmount": null,
+        "amount_ttc": null,
+        "amountTTC": null,
+        "primary_text": "Texte bruité facture sans numéro ni date",
+        "diagnostic": {
+          "matched": false,
+          "reason": "Champs facture manquants: invoice_number, invoice_date, amount_ht, amount_ttc",
+          "markersFound": [
+            "facture"
+          ],
+          "markersMissing": [
+            "invoiceNumber",
+            "invoiceDate",
+            "clientName",
+            "totalHT",
+            "totalTTC"
+          ],
+          "inputLength": 40,
+          "primaryTextLength": 40,
+          "pageCount": 1
+        }
+      }
+    }
+  ]
+}
