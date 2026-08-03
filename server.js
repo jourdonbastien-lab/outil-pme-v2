@@ -36,6 +36,7 @@ const quoteAiReview = require('./lib/quoteAiReview');
 const projectProfitability = require('./lib/projectProfitability');
 const clientOrderCostLines = require('./lib/clientOrderCostLines');
 const clientOrderFinancialSnapshot = require('./lib/clientOrderFinancialSnapshot');
+const { createClientOrderProfitabilityService } = require('./services/clientOrderProfitabilityService');
 const { registerClientOrderRoutes } = require('./routes/clientOrders');
 const { createClientOrderProfitabilityController } = require('./controllers/clientOrderProfitabilityController');
 const { renderClientOrderProfitabilityView } = require('./views/clientOrderProfitabilityView');
@@ -729,225 +730,14 @@ function validateExistingInvoiceFile(order, fileName) {
   };
 }
 
-function parseJsonObject(value, fallback = {}) {
-  try {
-    const parsed = JSON.parse(String(value || ''));
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function latestProjectForecast(clientOrderId) {
-  const row = db.prepare(`
-    SELECT * FROM project_profitability_forecasts
-    WHERE client_order_id = ?
-    ORDER BY created_at DESC, id DESC LIMIT 1
-  `).get(clientOrderId);
-  if (!row) return null;
-  const snapshot = parseJsonObject(row.snapshot_json, {});
-  if (Object.keys(snapshot).length) return { ...snapshot, forecastId: row.id };
-  return {
-    forecastId: row.id,
-    quoteId: row.quote_id,
-    totalHT: Number(row.total_ht || 0),
-    breakdown: {
-      material: Number(row.material_cost || 0), subcontracting: Number(row.subcontracting_cost || 0),
-      galvanizing: Number(row.galvanizing_cost || 0), powderCoating: Number(row.powder_coating_cost || 0),
-      motorization: Number(row.motorization_cost || 0), accessories: Number(row.accessories_cost || 0),
-      transport: Number(row.transport_cost || 0), consumables: Number(row.consumables_cost || 0),
-      rental: Number(row.rental_cost || 0)
-    },
-    hours: { study: Number(row.study_hours || 0), workshop: Number(row.workshop_hours || 0), installation: Number(row.installation_hours || 0) },
-    hourlyCost: Number(row.hourly_cost || projectProfitability.PROFITABILITY_RULES.defaultHourlyCost),
-    forecastCost: Number(row.forecast_cost || 0), margin: Number(row.forecast_margin || 0),
-    marginOnSale: row.forecast_margin_rate === null ? null : Number(row.forecast_margin_rate), category: row.work_category || 'autre'
-  };
-}
-
-function saveProjectForecast(quote, lines, clientOrderId) {
-  const snapshot = projectProfitability.buildForecastSnapshot(quote, lines);
-  db.prepare(`
-    INSERT INTO project_profitability_forecasts
-      (quote_id, client_order_id, total_ht, material_cost, subcontracting_cost, galvanizing_cost,
-       powder_coating_cost, motorization_cost, accessories_cost, transport_cost, consumables_cost,
-       rental_cost, study_hours, workshop_hours, installation_hours, hourly_cost, forecast_cost,
-       forecast_margin, forecast_margin_rate, work_category, snapshot_json, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    quote.id, clientOrderId, snapshot.totalHT, snapshot.breakdown.material, snapshot.breakdown.subcontracting,
-    snapshot.breakdown.galvanizing, snapshot.breakdown.powderCoating, snapshot.breakdown.motorization,
-    snapshot.breakdown.accessories, snapshot.breakdown.transport, snapshot.breakdown.consumables,
-    snapshot.breakdown.rental, snapshot.hours.study, snapshot.hours.workshop, snapshot.hours.installation,
-    snapshot.hourlyCost, snapshot.forecastCost, snapshot.margin, snapshot.marginOnSale, snapshot.category,
-    JSON.stringify(snapshot), new Date().toISOString()
-  );
-  return snapshot;
-}
-
-function projectProfitabilityForOrder(order) {
-  const forecast = latestProjectForecast(order.id);
-  const hours = db.prepare(`
-    SELECT * FROM chantier_hours
-    WHERE client_order_id = ? OR (client_order_id IS NULL AND client = ? AND order_name = ?)
-  `).all(order.id, safeName(order.name), safeName(order.description || `Commande_${order.id}`));
-  const costs = db.prepare('SELECT * FROM project_actual_costs WHERE client_order_id = ? ORDER BY cost_date DESC, id DESC').all(order.id);
-  const invoices = db.prepare('SELECT * FROM client_order_invoices WHERE client_order_id = ? ORDER BY invoice_date DESC, id DESC').all(order.id);
-  return { forecast, hours, costs, invoices, actual: projectProfitability.calculateActual({ order, forecast, hours, costs, invoices }) };
-}
-
-function renderProjectProfitabilityCard(order, data) {
-  const forecast = data.forecast;
-  const actual = data.actual;
-  const money = (value) => formatEuroFr(Number(value || 0));
-  const percent = (value) => value == null ? 'Non calculable' : `${Number(value).toFixed(2)} %`;
-  const metric = (label, value, className = '') => `<div><span>${escHtml(label)}</span><strong class="${className}">${escHtml(value)}</strong></div>`;
-  const forecastHtml = forecast
-    ? [
-        metric('Chiffre d’affaires HT', money(forecast.totalHT)),
-        metric('Coût matière', money(forecast.breakdown?.material)),
-        metric('Sous-traitance', money(forecast.breakdown?.subcontracting)),
-        metric('Main-d’œuvre', money(forecast.laborCost)),
-        metric('Coût de revient', money(forecast.forecastCost)),
-        metric('Marge', money(forecast.margin)),
-        metric('Marge sur vente', percent(forecast.marginOnSale)),
-        metric('Heures prévues', `${Number(forecast.hours?.total || 0).toFixed(2)} h`)
-      ].join('')
-    : '<p class="profitability-empty">Aucun instantané prévisionnel : commande ancienne ou créée manuellement.</p>';
-  const actualHtml = [
-    metric('Montant facturé HT', money(actual.invoicedHT)),
-    metric('Achats et coûts réels', money(actual.purchasesCost)),
-    metric('Sous-traitance réelle', money(actual.costsByType.subcontracting)),
-    metric('Main-d’œuvre réelle', money(actual.laborCost)),
-    metric('Autres coûts', money(actual.costsByType.other)),
-    metric('Coût réel total', money(actual.actualCost)),
-    metric('Marge réelle', money(actual.margin)),
-    metric('Marge réelle sur vente', percent(actual.marginOnSale)),
-    metric('Heures réalisées', `${actual.actualHours.toFixed(2)} h`)
-  ].join('');
-  const costRows = data.costs.length
-    ? data.costs.map((cost) => `<article class="profitability-cost-row"><div><strong>${escHtml(cost.description || cost.cost_type)}</strong><span>${escHtml(cost.cost_type)} · ${escHtml(cost.cost_date || '')}</span></div><strong>${money(cost.amount_ht)}</strong><button type="button" class="modern-danger-btn" data-delete-actual-cost="${cost.id}">Supprimer</button></article>`).join('')
-    : '<p class="profitability-empty">Aucun coût réel manuel ou fournisseur rattaché.</p>';
-  return `
-    <section class="pc-modern-panel project-profitability-card" data-project-profitability data-order-id="${order.id}">
-      <div class="modern-section-title"><span class="quote-ai-review-icon">${clientPageIcon('quotes')}</span><div><h2>Rentabilité du chantier</h2><p>Comparaison de l’instantané accepté avec les données réellement saisies.</p></div></div>
-      <div class="project-profitability-columns">
-        <article><h3>Prévisionnel</h3><div class="project-profitability-metrics">${forecastHtml}</div></article>
-        <article><h3>Réel</h3><div class="project-profitability-metrics">${actualHtml}</div></article>
-      </div>
-      <div class="project-profitability-variances">
-        ${metric('Écart coût prévu / réel', money(actual.costVariance), actual.costVariance > 0 ? 'profit-negative' : 'profit-positive')}
-        ${metric('Écart de marge', actual.marginPointVariance == null ? 'Non calculable' : `${actual.marginPointVariance > 0 ? '+' : ''}${actual.marginPointVariance.toFixed(2)} points`, actual.marginPointVariance < 0 ? 'profit-negative' : 'profit-positive')}
-        ${metric('Écart heures', `${actual.hourVariance > 0 ? '+' : ''}${actual.hourVariance.toFixed(2)} h (${percent(actual.hourVariancePct)})`, actual.hourVariance > 0 ? 'profit-negative' : 'profit-positive')}
-        ${metric('Cause principale', actual.mainVarianceCause ? `${actual.mainVarianceCause.type} : +${money(actual.mainVarianceCause.variance)}` : 'Aucun dépassement identifié')}
-      </div>
-      <details class="profitability-costs"><summary>Coûts réels rattachés</summary><div class="profitability-cost-list">${costRows}</div>
-        <form class="profitability-cost-form" data-actual-cost-form>
-          <label><span>Type</span><select name="cost_type" required>${projectProfitability.ACTUAL_COST_TYPES.map((type) => `<option value="${type}">${type}</option>`).join('')}</select></label>
-          <label><span>Description</span><input name="description" placeholder="Carburant, péage, grue…"></label>
-          <label><span>Montant HT</span><input type="number" name="amount_ht" min="0" step="0.01" required></label>
-          <label><span>Date</span><input type="date" name="cost_date" value="${isoDate()}"></label>
-          <button class="clients-submit-btn" type="submit">Ajouter le coût réel</button><span data-cost-status></span>
-        </form>
-      </details>
-      <p class="quote-ai-disclaimer">Les calculs n’altèrent aucune heure, facture ou commande. Les coûts ne sont ajoutés qu’après validation explicite de ce formulaire.</p>
-      <script>(function(){var root=document.querySelector('[data-project-profitability][data-order-id="${order.id}"]');if(!root)return;var orderId=root.dataset.orderId;var form=root.querySelector('[data-actual-cost-form]');var status=root.querySelector('[data-cost-status]');form.addEventListener('submit',async function(event){event.preventDefault();status.textContent='Enregistrement…';var body=Object.fromEntries(new FormData(form).entries());try{var response=await fetch('/api/orders/'+orderId+'/actual-costs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var data=await response.json();if(!response.ok)throw new Error(data.error||'Erreur');location.reload();}catch(error){status.textContent=error.message||'Erreur';}});root.querySelectorAll('[data-delete-actual-cost]').forEach(function(button){button.addEventListener('click',async function(){if(!confirm('Supprimer uniquement ce coût réel ?'))return;var response=await fetch('/api/orders/'+orderId+'/actual-costs/'+button.dataset.deleteActualCost+'/delete',{method:'POST'});if(response.ok)location.reload();});});})();</script>
-    </section>`;
-}
-
-function clientOrderDetailRedirect(order) {
-  return `/orders/client/${order.id}/profitability#order-budget`;
-}
-
-function clientOrderFolderUrl(order) {
-  return `/pc-folders/${encodeURIComponent(safeName(order.name))}/${encodeURIComponent(clientOrderFolderName(order))}`;
-}
-
-function importMissingQuoteCostLines(clientOrderId, quoteId) {
-  const orderId = Number(clientOrderId || 0);
-  const linkedQuoteId = Number(quoteId || 0);
-  if (!Number.isInteger(orderId) || orderId <= 0 || !Number.isInteger(linkedQuoteId) || linkedQuoteId <= 0) {
-    return { imported: 0, available: 0 };
-  }
-  const quoteLines = db.prepare('SELECT * FROM quote_lines WHERE quote_id = ? ORDER BY position, id').all(linkedQuoteId);
-  const excluded = new Set(db.prepare('SELECT source_quote_line_id FROM client_order_cost_line_exclusions WHERE client_order_id = ?').all(orderId).map((row) => Number(row.source_quote_line_id)));
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO client_order_cost_lines
-      (client_order_id, line_type, category, designation, quantity, unit, unit_cost_ht, unit_sale_ht,
-       planned_minutes, hourly_cost_ht, hourly_sale_ht, notes, source_type, source_quote_line_id,
-       sort_order, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'quote', ?, ?, ?, ?)
-  `);
-  let imported = 0;
-  db.transaction(() => {
-    quoteLines.forEach((quoteLine, index) => {
-      if (excluded.has(Number(quoteLine.id))) return;
-      const line = clientOrderCostLines.quoteLineToCostLine(quoteLine);
-      const note = line.incomplete_cost ? 'Coût à compléter : le devis ne contient pas de coût d’achat fiable.' : null;
-      const result = insert.run(orderId, line.line_type, line.category, line.designation, line.quantity, line.unit,
-        line.unit_cost_ht, line.unit_sale_ht, line.planned_minutes, line.hourly_cost_ht, line.hourly_sale_ht,
-        note, quoteLine.id, Number(quoteLine.position || index), new Date().toISOString(), new Date().toISOString());
-      imported += Number(result.changes || 0);
-    });
-  })();
-  return { imported, available: quoteLines.length };
-}
-
-function clientOrderForecastData(order) {
-  const lines = db.prepare('SELECT * FROM client_order_cost_lines WHERE client_order_id = ? ORDER BY sort_order, id').all(order.id);
-  const actualMinutes = Number(db.prepare(`
-    SELECT COALESCE(SUM(minutes_total), 0) AS total FROM chantier_hours
-    WHERE client_order_id = ? OR (client_order_id IS NULL AND client = ? AND order_name = ?)
-  `).get(order.id, safeName(order.name), clientOrderFolderName(order))?.total || 0);
-  const actualMaterialRows = db.prepare("SELECT amount_ht FROM project_actual_costs WHERE client_order_id = ? AND cost_type = 'material'").all(order.id);
-  const actualMaterialCost = actualMaterialRows.length ? actualMaterialRows.reduce((sum, row) => sum + Number(row.amount_ht || 0), 0) : null;
-  const quoteLines = order.quote_id
-    ? db.prepare('SELECT * FROM quote_lines WHERE quote_id = ? ORDER BY position, id').all(order.quote_id)
-    : [];
-  return { lines, quoteLines, summary: clientOrderCostLines.summarize(lines, order.price, actualMinutes, actualMaterialCost) };
-}
-
-function renderOrderActualDetails(order, realData) {
-  const actual = realData.actual;
-  const hasHours = realData.hours.length > 0;
-  const hasCosts = realData.costs.length > 0;
-  const material = hasCosts ? actual.costsByType.material : null;
-  const other = hasCosts ? round2(actual.purchasesCost - actual.costsByType.material) : null;
-  const folderUrl = clientOrderFolderUrl(order);
-  const value = (amount) => amount === null ? '<strong class="profit-missing">Non renseigné</strong>' : `<strong>${formatEuroFr(amount)}</strong>`;
-  return `<section class="pc-modern-panel profitability-real-section">
-    <div class="modern-section-title"><span class="quote-ai-review-icon">${pcFolderIcon('Rentabilité', 'clients-ui-icon')}</span><div><h2>Réel</h2><p>Totaux issus uniquement des données rattachées à cette commande.</p></div></div>
-    <div class="profitability-real-grid profitability-real-summary">
-      <article><span>Main-d’œuvre réelle</span>${value(hasHours ? actual.laborCost : null)}</article>
-      <article><span>Matière réelle</span>${value(material)}</article>
-      <article><span>Autres coûts réels</span>${value(other)}</article>
-      <article><span>Coût réel total</span>${value(hasHours || hasCosts ? actual.actualCost : null)}</article>
-      <article><span>Heures réalisées</span><strong class="${hasHours ? '' : 'profit-missing'}">${hasHours ? `${actual.actualHours.toFixed(2)} h` : 'Non renseigné'}</strong></article>
-    </div>
-    <nav class="profitability-folder-links" aria-label="Consulter les données détaillées"><a href="${folderUrl}/Heure%20chantier">Voir les heures</a><a href="${folderUrl}/Factures">Voir les factures</a><a href="${folderUrl}/Devis">Voir les devis</a></nav>
-  </section>`;
-}
-
-function renderOrderProfitabilityComparison(forecastData, realData) {
-  const forecast = forecastData.summary;
-  const actual = realData.actual;
-  const hasHours = realData.hours.length > 0;
-  const hasCosts = realData.costs.length > 0;
-  const actualMaterial = hasCosts ? actual.costsByType.material : null;
-  const rows = [
-    ['Heures', forecast.plannedHours, hasHours ? actual.actualHours : null, 'hours'],
-    ['Main-d’œuvre', forecast.groups.labor.cost, hasHours ? actual.laborCost : null, 'money'],
-    ['Matière', forecast.groups.material.cost, actualMaterial, 'money'],
-    ['Coût total', forecast.totalCost, hasHours || hasCosts ? actual.actualCost : null, 'money']
-  ];
-  const renderValue = (value, type) => value === null ? 'Donnée non renseignée' : type === 'hours' ? `${Number(value).toFixed(2)} h` : formatEuroFr(value);
-  return `<section class="pc-modern-panel profitability-comparison-section"><div class="modern-section-title"><span class="quote-ai-review-icon">${pcFolderIcon('Rentabilité', 'clients-ui-icon')}</span><div><h2>Écarts</h2><p>Un dépassement de coût apparaît en rouge.</p></div></div><div class="profitability-comparison-grid">
-    ${rows.map(([label, planned, real, type]) => {
-      const difference = real === null ? null : round2(Number(real || 0) - Number(planned || 0));
-      return `<article><h3>${label}</h3><div><span>Prévu</span><strong>${renderValue(planned, type)}</strong></div><div><span>Réel</span><strong class="${real === null ? 'profit-missing' : ''}">${renderValue(real, type)}</strong></div><div><span>Écart</span><strong class="${difference === null ? 'profit-missing' : difference > 0 ? 'profit-negative' : difference < 0 ? 'profit-positive' : ''}">${difference === null ? 'Non renseigné' : `${difference > 0 ? '+' : ''}${renderValue(difference, type)}`}</strong></div></article>`;
-    }).join('')}
-  </div></section>`;
-}
+const clientOrderProfitabilityService = createClientOrderProfitabilityService({
+  db,
+  projectProfitability,
+  clientOrderCostLines,
+  safeName,
+  clientOrderFolderName,
+  getClientOrderFinancialSnapshot: clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot
+});
 
 function uniqueFilePath(baseDir, desiredFileName) {
   const cleanName = safeSegment(desiredFileName || 'document.pdf');
@@ -3146,8 +2936,8 @@ const quoteAcceptanceService = createQuoteAcceptanceService({
   isoDate,
   parseOptionalVatRate,
   detectWorkCategory: projectProfitability.detectWorkCategory,
-  saveProjectForecast,
-  importMissingQuoteCostLines
+  saveProjectForecast: clientOrderProfitabilityService.saveProjectForecast,
+  importMissingQuoteCostLines: clientOrderProfitabilityService.importMissingQuoteCostLines
 });
 const quoteAcceptanceController = createQuoteAcceptanceController({
   acceptanceService: quoteAcceptanceService
@@ -3362,20 +3152,20 @@ const clientOrderProfitabilityController = createClientOrderProfitabilityControl
   escapeHtml: escHtml,
   formatEuroFr,
   isoDate,
-  getClientOrderFinancialSnapshot: clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot,
+  getClientOrderFinancialSnapshot: clientOrderProfitabilityService.getFinancialSnapshot,
   validateClientOrderCostLine: clientOrderCostLines.validateLine,
-  clientOrderForecastData,
-  projectProfitabilityForOrder,
+  clientOrderForecastData: clientOrderProfitabilityService.getOrderForecastData,
+  projectProfitabilityForOrder: clientOrderProfitabilityService.getOrderProfitability,
   renderClientOrderProfitabilityView,
   clientPageIcon,
   pcFolderIcon,
   calculateCostLine: clientOrderCostLines.calculateLine,
   laborCategories: clientOrderCostLines.LABOR_CATEGORIES,
   materialUnits: clientOrderCostLines.MATERIAL_UNITS,
-  clientOrderFolderUrl,
+  clientOrderFolderUrl: clientOrderProfitabilityService.clientOrderFolderUrl,
   roundAmount: round2,
-  clientOrderDetailRedirect,
-  importMissingQuoteCostLines,
+  clientOrderDetailRedirect: clientOrderProfitabilityService.clientOrderDetailRedirect,
+  importMissingQuoteCostLines: clientOrderProfitabilityService.importMissingQuoteCostLines,
   actualCostTypes: projectProfitability.ACTUAL_COST_TYPES
 });
 const clientOrderPurchaseService = createClientOrderPurchaseService({ db });
@@ -3405,7 +3195,7 @@ const clientOrderInvoicesController = createClientOrderInvoicesController({
   uniqueFilePath,
   copyFile: fs.copyFileSync,
   deleteFile: fs.unlinkSync,
-  getClientOrderFinancialSnapshot: (orderId) => clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, orderId),
+  getClientOrderFinancialSnapshot: clientOrderProfitabilityService.getFinancialSnapshot,
   renderClientOrderInvoicesView,
   escapeHtml: escHtml,
   formatEuroFr,
@@ -3510,10 +3300,10 @@ const clientOrdersController = createClientOrdersController({
   parseOptionalId,
   parseDecimalInput,
   isoDate,
-  importMissingQuoteCostLines,
+  importMissingQuoteCostLines: clientOrderProfitabilityService.importMissingQuoteCostLines,
   safeName,
   getProgressFromChantierStatus,
-  getFinancialSnapshot: (orderId) => clientOrderFinancialSnapshot.getClientOrderFinancialSnapshot(db, orderId),
+  getFinancialSnapshot: clientOrderProfitabilityService.getFinancialSnapshot,
   listClientFolders() {
     try {
       return fs.readdirSync(CLIENT_PC_DIR, { withFileTypes: true })
