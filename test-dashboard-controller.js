@@ -1,0 +1,8 @@
+'use strict';
+const assert=require('assert'),fs=require('fs'),{createDashboardController}=require('./controllers/dashboardController');
+const calls=[],service={getClassicDashboardData(){calls.push('classic-service');return{classic:true}},getModernDashboardData(){calls.push('modern-service');return{modern:true}}},agenda={purgeExpiredEventsSafely(){calls.push('purge')}},deps={x:1};
+const c=createDashboardController({dashboardService:service,agendaService:agenda,renderDashboardView:(data,d)=>{calls.push(['modern-view',data,d]);return'MODERN'},renderDashboardClassicView:(data,d)=>{calls.push(['classic-view',data,d]);return'CLASSIC'},pageTemplate:(req,title,body)=>{calls.push(['template',req,title,body]);return`PAGE:${body}`},viewDependencies:deps});
+const req={session:{user:{username:'admin',role:'admin'}}},sent=[],redirects=[],res={send:x=>sent.push(x),redirect:x=>redirects.push(x)};
+c.showClassicDashboard(req,res);c.showDashboard(req,res);c.redirectDashboardPrototype(req,res);c.redirectDashboardPrototypeLegacy(req,res);
+assert.deepStrictEqual(sent,['PAGE:CLASSIC','PAGE:MODERN']);assert.deepStrictEqual(redirects,['/dashboard','/dashboard']);assert(calls.indexOf('purge')<calls.indexOf('modern-service'));assert(calls.some(x=>Array.isArray(x)&&x[0]==='classic-view'&&x[1].username==='admin'&&x[1].role==='admin'));assert(calls.some(x=>Array.isArray(x)&&x[0]==='modern-view'&&x[1].userName==='admin'));assert(calls.filter(x=>Array.isArray(x)&&x[0]==='template').every(x=>x[2]==='Dashboard'));
+const source=fs.readFileSync('controllers/dashboardController.js','utf8');assert(!/SELECT |<section|<script/.test(source));console.log('OK - contrôleur Dashboard');
