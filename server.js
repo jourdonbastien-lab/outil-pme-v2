@@ -168,6 +168,9 @@ const { createMeasurementStairV2PhotosService } = require('./services/measuremen
 const { createMeasurementStairV2Upload } = require('./middleware/measurementStairV2Upload');
 const { createMeasurementStairV2Controller } = require('./controllers/measurementStairV2Controller');
 const { registerMeasurementStairV2ApiRoutes, registerMeasurementStairV2PageRoute } = require('./routes/measurementStairV2');
+const { createMeasurementTechnicalDrawingService } = require('./services/measurementTechnicalDrawingService');
+const { createMeasurementTechnicalDrawingController } = require('./controllers/measurementTechnicalDrawingController');
+const { registerMeasurementTechnicalDrawingApiRoutes, registerMeasurementTechnicalDrawingPageRoute } = require('./routes/measurementTechnicalDrawing');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -2333,66 +2336,6 @@ function buildEscalierV2PhotoPublicSlots(measurementId, slots) {
   }));
 }
 
-function makeTechnicalSketchId() {
-  return `sketch-${crypto.randomUUID()}`;
-}
-
-function normalizeTechnicalSketches(value) {
-  const list = Array.isArray(value) ? value : [];
-  return list
-    .filter((item) => item && typeof item === 'object')
-    .map((item, index) => ({
-      id: String(item.id || makeTechnicalSketchId()).trim(),
-      title: String(item.title || `Croquis ${index + 1}`).trim(),
-      data: item.data && typeof item.data === 'object' ? item.data : item,
-      preview: typeof item.preview === 'string' ? item.preview : '',
-      updatedAt: String(item.updatedAt || new Date().toISOString()),
-    }));
-}
-
-function readMeasurementForSketches(measurementId) {
-  const id = parseOptionalId(measurementId);
-  if (!id) return null;
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ?').get(id);
-  if (!row) return null;
-  const payload = parseMeasurementData(row.data);
-  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-  return { id, row, payload, fields, sketches: normalizeTechnicalSketches(fields.technical_drawing_sketches) };
-}
-
-function saveMeasurementTechnicalSketches(entry, sketches) {
-  const nextSketches = normalizeTechnicalSketches(sketches);
-  entry.payload.fields = {
-    ...(entry.fields || {}),
-    technical_drawing_sketches: nextSketches,
-    technical_drawing_version: 2,
-  };
-  db.prepare('UPDATE measurements SET data = ?, updated_at = ? WHERE id = ?')
-    .run(JSON.stringify(entry.payload), new Date().toISOString(), entry.id);
-  return nextSketches;
-}
-
-function preserveTechnicalSketchesInMeasurementPayload(nextBody, existingId) {
-  const body = nextBody && typeof nextBody === 'object' ? nextBody : {};
-  const fields = body.fields && typeof body.fields === 'object' ? body.fields : {};
-  if (Object.prototype.hasOwnProperty.call(fields, 'technical_drawing_sketches')) return body;
-  const existing = parseOptionalId(existingId)
-    ? db.prepare('SELECT data FROM measurements WHERE id = ?').get(existingId)
-    : null;
-  if (!existing) return body;
-  const previousPayload = parseMeasurementData(existing.data);
-  const previousFields = previousPayload.fields && typeof previousPayload.fields === 'object' ? previousPayload.fields : {};
-  if (!Array.isArray(previousFields.technical_drawing_sketches)) return body;
-  return {
-    ...body,
-    fields: {
-      ...fields,
-      technical_drawing_sketches: previousFields.technical_drawing_sketches,
-      technical_drawing_version: previousFields.technical_drawing_version || 2,
-    },
-  };
-}
-
 function sketchPath(scope, id) {
   return safeResolveInside(SKETCHES_DIR, scope, `${id}.png`);
 }
@@ -4042,7 +3985,8 @@ app.post('/tasks/to-invoice', requireLogin, (req, res) => {
 registerAgendaPageRoute(app, { requireLogin, controller: agendaController });
 /* ===================== PRISES DE COTES ===================== */
 
-const measurementsService = createMeasurementsService({ db, parseOptionalId, normalizeMeasurementLink, preserveTechnicalSketches: preserveTechnicalSketchesInMeasurementPayload, formatDateLabel, isoDate, measurementRoutes, removeStoragePathIfExists, sketchPath, safeResolveInside, measurementPhotoDir: MEASUREMENT_PHOTO_DIR });
+const measurementTechnicalDrawingService = createMeasurementTechnicalDrawingService({ db, parseOptionalId, parseMeasurementData, randomUUID: () => crypto.randomUUID(), buildStairPhotoSlots: buildEscalierV2PhotoPublicSlots });
+const measurementsService = createMeasurementsService({ db, parseOptionalId, normalizeMeasurementLink, preserveTechnicalSketches: measurementTechnicalDrawingService.preserve, formatDateLabel, isoDate, measurementRoutes, removeStoragePathIfExists, sketchPath, safeResolveInside, measurementPhotoDir: MEASUREMENT_PHOTO_DIR });
 const measurementViewDependencies = { escHtml, clientPageIcon, measurementTitle, measurementLinkBadge, measurementRoutes, formatDateLabel, renderSketchBlock, renderMeasurementCards: (rows) => renderCommonMeasurementCards(rows, { escHtml, measurementTitle, measurementLinkBadge, measurementRoutes }) };
 const measurementsController = createMeasurementsController({ s: measurementsService, renderList: renderMeasurementsListView, renderDetail: renderMeasurementDetailShellView, pageTemplate, viewDeps: measurementViewDependencies, parseOptionalId, normalizeQuoteStatus, measurementRoutes, measurementTitle });
 registerMeasurementsListRoutes(app, { requireLogin, c: measurementsController });
@@ -4063,117 +4007,8 @@ const escalierV2PhotoUpload = createMeasurementStairV2Upload({ multer, path, par
 const measurementStairV2Controller = createMeasurementStairV2Controller({ s: measurementStairV2Service, photos: measurementStairV2PhotosService, parseOptionalId, upload: (req, res, callback) => escalierV2PhotoUpload.array('photos', 30)(req, res, callback), fs, path, publicDir: MEASUREMENTS_PUBLIC_DIR, logger: console });
 registerMeasurementStairV2ApiRoutes(app, { requireLogin, c: measurementStairV2Controller });
 registerMeasurementPersistenceRoutes(app, { requireLogin, c: measurementsController });
-app.get('/api/measurements/:id/croquis', requireLogin, (req, res) => {
-  const entry = readMeasurementForSketches(req.params.id);
-  if (!entry) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
-  return res.json({
-    ok: true,
-    measurement: {
-      id: entry.row.id,
-      module: entry.row.module,
-      recordName: entry.row.record_name,
-    },
-    sketches: entry.sketches.map((sketch, index) => ({
-      id: sketch.id,
-      title: sketch.title || `Croquis ${index + 1}`,
-      preview: sketch.preview || '',
-      updatedAt: sketch.updatedAt || null,
-      url: `/outils/prises-cotes/${entry.id}/croquis/${encodeURIComponent(sketch.id)}`,
-    })),
-  });
-});
-
-app.post('/api/measurements/:id/croquis', requireLogin, (req, res) => {
-  const entry = readMeasurementForSketches(req.params.id);
-  if (!entry) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
-  const title = String(req.body?.title || '').trim() || `Croquis ${entry.sketches.length + 1}`;
-  const sketch = {
-    id: makeTechnicalSketchId(),
-    title,
-    data: {
-      id: makeTechnicalSketchId(),
-      title,
-      strokes: [],
-      annotations: [],
-      backgroundImage: '',
-      updatedAt: new Date().toISOString(),
-    },
-    preview: '',
-    updatedAt: new Date().toISOString(),
-  };
-  const sketches = saveMeasurementTechnicalSketches(entry, entry.sketches.concat(sketch));
-  const saved = sketches.find((item) => item.id === sketch.id) || sketch;
-  return res.json({
-    ok: true,
-    sketch: saved,
-    url: `/outils/prises-cotes/${entry.id}/croquis/${encodeURIComponent(saved.id)}`,
-  });
-});
-
-app.get('/api/measurements/:id/croquis/:sketchId', requireLogin, (req, res) => {
-  const entry = readMeasurementForSketches(req.params.id);
-  if (!entry) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
-  const sketchId = String(req.params.sketchId || '').trim();
-  const sketch = entry.sketches.find((item) => item.id === sketchId);
-  if (!sketch) return res.status(404).json({ ok: false, error: 'Croquis introuvable' });
-  const availablePhotos = String(entry.row.module || '') === 'Escalier V2'
-    ? buildEscalierV2PhotoPublicSlots(entry.id, entry.fields.photo_slots)
-    : [{
-      category: 'Photos',
-      count: Array.isArray(entry.payload.photos) ? entry.payload.photos.length : 0,
-      photos: (Array.isArray(entry.payload.photos) ? entry.payload.photos : []).map((photo, index) => ({
-        id: String(photo.id || photo.name || `photo-${index}`),
-        fileName: String(photo.name || `Photo ${index + 1}`),
-        caption: String(photo.caption || photo.name || `Photo ${index + 1}`),
-        url: String(photo.dataUrl || photo.url || ''),
-      })).filter((photo) => photo.url),
-    }];
-  return res.json({
-    ok: true,
-    measurement: {
-      id: entry.row.id,
-      module: entry.row.module,
-      recordName: entry.row.record_name,
-    },
-    sketch,
-    availablePhotos,
-    returnUrl: `/outils/prises-cotes/${String(entry.row.module || '').toLowerCase().replace(/\s+/g, '-')}`,
-  });
-});
-
-app.post('/api/measurements/:id/croquis/:sketchId', requireLogin, (req, res) => {
-  const entry = readMeasurementForSketches(req.params.id);
-  if (!entry) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
-  const sketchId = String(req.params.sketchId || '').trim();
-  const index = entry.sketches.findIndex((item) => item.id === sketchId);
-  if (index < 0) return res.status(404).json({ ok: false, error: 'Croquis introuvable' });
-
-  const title = String(req.body?.title || entry.sketches[index].title || '').trim() || `Croquis ${index + 1}`;
-  const data = req.body?.data && typeof req.body.data === 'object' ? req.body.data : {};
-  const preview = typeof req.body?.preview === 'string' ? req.body.preview : entry.sketches[index].preview;
-  const sketches = entry.sketches.slice();
-  sketches[index] = {
-    id: sketchId,
-    title,
-    data,
-    preview,
-    updatedAt: new Date().toISOString(),
-  };
-
-  const saved = saveMeasurementTechnicalSketches(entry, sketches)[index];
-  return res.json({ ok: true, sketch: saved });
-});
-
-app.delete('/api/measurements/:id/croquis/:sketchId', requireLogin, (req, res) => {
-  const entry = readMeasurementForSketches(req.params.id);
-  if (!entry) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
-  const sketchId = String(req.params.sketchId || '').trim();
-  const sketches = entry.sketches.filter((item) => item.id !== sketchId);
-  if (sketches.length === entry.sketches.length) return res.status(404).json({ ok: false, error: 'Croquis introuvable' });
-  saveMeasurementTechnicalSketches(entry, sketches);
-  return res.json({ ok: true, deletedId: sketchId });
-});
-
+const measurementTechnicalDrawingController = createMeasurementTechnicalDrawingController({ service: measurementTechnicalDrawingService, path, publicDir: MEASUREMENTS_PUBLIC_DIR });
+registerMeasurementTechnicalDrawingApiRoutes(app, { requireLogin, c: measurementTechnicalDrawingController });
 app.get('/sketches/measurements/:id.png', requireLogin, (req, res) => {
   const id = parseOptionalId(req.params.id);
   const measurement = id ? db.prepare('SELECT id FROM measurements WHERE id = ?').get(id) : null;
@@ -4335,13 +4170,7 @@ app.get('/outils/prises-cotes/:module', requireLogin, (req, res, next) => {
   return res.sendFile(filePath);
 });
 
-app.get('/outils/prises-cotes/:measurementId/croquis/:sketchId', requireLogin, (req, res, next) => {
-  const measurementId = parseOptionalId(req.params.measurementId);
-  const sketchId = String(req.params.sketchId || '').trim();
-  if (!measurementId || !sketchId) return next();
-  return res.sendFile(path.join(MEASUREMENTS_PUBLIC_DIR, 'croquis-technique.html'));
-});
-
+registerMeasurementTechnicalDrawingPageRoute(app, { requireLogin, c: measurementTechnicalDrawingController });
 app.get('/outils/prises-cotes/:asset', requireLogin, (req, res, next) => {
   const asset = String(req.params.asset || '').trim();
   if (!MEASUREMENTS_ASSETS.has(asset)) return next();
