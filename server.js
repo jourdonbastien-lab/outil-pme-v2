@@ -163,6 +163,11 @@ const { renderMeasurementCards: renderCommonMeasurementCards } = require('./view
 const { renderMeasurementDetailShellView } = require('./views/measurementDetailShellView');
 const { registerMeasurementsListRoutes, registerMeasurementContextRoute, registerMeasurementPersistenceRoutes, registerMeasurementDetailRoute } = require('./routes/measurements');
 const { registerMeasurementPhotoRoutes } = require('./routes/measurementPhotos');
+const { createMeasurementStairV2Service } = require('./services/measurementStairV2Service');
+const { createMeasurementStairV2PhotosService } = require('./services/measurementStairV2PhotosService');
+const { createMeasurementStairV2Upload } = require('./middleware/measurementStairV2Upload');
+const { createMeasurementStairV2Controller } = require('./controllers/measurementStairV2Controller');
+const { registerMeasurementStairV2ApiRoutes, registerMeasurementStairV2PageRoute } = require('./routes/measurementStairV2');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -1856,76 +1861,6 @@ const quotePhotoStorage = multer.diskStorage({
 const quotePhotoUpload =
   multer({ storage: quotePhotoStorage });
 
-const ESCALIER_V2_PHOTO_ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif']);
-const ESCALIER_V2_PHOTO_ALLOWED_MIME = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-  'image/heif',
-]);
-const ESCALIER_V2_PHOTO_EXT_BY_MIME = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/heic': '.heic',
-  'image/heif': '.heif',
-};
-
-const escalierV2PhotoStorage = multer.diskStorage({
-  destination(req, file, cb) {
-    try {
-      const measurementId = parseOptionalId(req.params.id);
-      if (!measurementId) return cb(new Error('ID fiche invalide'));
-      const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(measurementId, 'Escalier V2');
-      if (!row) return cb(new Error('Fiche Escalier V2 introuvable'));
-
-      const clientOrderId = parseOptionalId(row.client_order_id);
-      let dir = safeResolveInside(ESCALIER_V2_PHOTO_DIR, String(measurementId));
-
-      if (clientOrderId) {
-        const order = db.prepare('SELECT * FROM client_orders WHERE id = ?').get(clientOrderId);
-        if (order) {
-          dir = safeResolveInside(
-            CLIENT_PC_DIR,
-            safeName(order.name),
-            clientOrderFolderName(order),
-            'Photos',
-            'prises-cotes-escalier-v2',
-            String(measurementId)
-          );
-        }
-      }
-
-      ensureDir(dir);
-      req.escalierV2PhotoDir = dir;
-      cb(null, dir);
-    } catch (error) {
-      cb(error);
-    }
-  },
-
-  filename(req, file, cb) {
-    const extFromName = path.extname(String(file.originalname || '')).toLowerCase();
-    const ext = ESCALIER_V2_PHOTO_ALLOWED_EXT.has(extFromName)
-      ? extFromName
-      : (ESCALIER_V2_PHOTO_EXT_BY_MIME[String(file.mimetype || '').toLowerCase()] || '.jpg');
-    const base = safeSegment(path.basename(String(file.originalname || 'photo'), extFromName) || 'photo');
-    cb(null, `${Date.now()}-${base}${ext}`);
-  }
-});
-
-const escalierV2PhotoUpload = multer({
-  storage: escalierV2PhotoStorage,
-  limits: { fileSize: 15 * 1024 * 1024, files: 30 },
-  fileFilter(req, file, cb) {
-    const ext = path.extname(String(file.originalname || '')).toLowerCase();
-    const mime = String(file.mimetype || '').toLowerCase();
-    if (ESCALIER_V2_PHOTO_ALLOWED_EXT.has(ext) || ESCALIER_V2_PHOTO_ALLOWED_MIME.has(mime)) return cb(null, true);
-    cb(new Error('Format photo non supporte. Utilisez JPG, PNG, WEBP ou HEIC.'));
-  }
-});
-
 const EBP_SCAN_MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 const EBP_SCAN_ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.heic', '.heif', '.pdf']);
 const EBP_SCAN_MIME_BY_EXT = {
@@ -2455,29 +2390,6 @@ function preserveTechnicalSketchesInMeasurementPayload(nextBody, existingId) {
       technical_drawing_sketches: previousFields.technical_drawing_sketches,
       technical_drawing_version: previousFields.technical_drawing_version || 2,
     },
-  };
-}
-
-function updateEscalierV2PhotoSlots(measurementId, updater) {
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(measurementId, 'Escalier V2');
-  if (!row) return null;
-
-  const payload = parseMeasurementData(row.data);
-  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-  const slots = normalizeEscalierV2PhotoSlots(fields.photo_slots);
-  const nextSlots = normalizeEscalierV2PhotoSlots(updater(slots) || slots);
-
-  payload.fields = {
-    ...fields,
-    photo_slots: nextSlots,
-  };
-
-  db.prepare('UPDATE measurements SET data = ?, updated_at = ? WHERE id = ?')
-    .run(JSON.stringify(payload), new Date().toISOString(), measurementId);
-
-  return {
-    row,
-    slots: nextSlots,
   };
 }
 
@@ -4145,265 +4057,11 @@ app.get('/api/measurements/photo-recovery-access', requireLogin, (req, res) => {
 const measurementPhotosService = createMeasurementPhotosService({ db, fs, path, crypto, photoFiles: measurementPhotoFiles, photoDir: MEASUREMENT_PHOTO_DIR });
 const measurementPhotosController = createMeasurementPhotosController({ s: measurementPhotosService, parseOptionalId, upload: (req, res, callback) => measurementPhotoUpload.array('photos', 20)(req, res, callback), fs, logger: console });
 registerMeasurementPhotoRoutes(app, { requireLogin, c: measurementPhotosController });
-app.get('/api/measurements/escalier-v2/bootstrap', requireLogin, (req, res) => {
-  const moduleName = 'Escalier V2';
-  const requestedId = parseOptionalId(req.query.id);
-  const clientOrderId = parseOptionalId(req.query.client_order_id);
-  const prefill = {
-    client: '',
-    commande: '',
-    client_order_id: clientOrderId,
-  };
-  let linkedDraftId = null;
-
-  if (clientOrderId) {
-    const order = db.prepare('SELECT id, name, description FROM client_orders WHERE id = ?').get(clientOrderId);
-    if (order) {
-      prefill.client = String(order.name || '').trim();
-      prefill.commande = String(order.description || `Commande_${order.id}`).trim();
-      const linked = db
-        .prepare('SELECT id FROM measurements WHERE module = ? AND client_order_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1')
-        .get(moduleName, clientOrderId);
-      if (linked) linkedDraftId = linked.id;
-    }
-  }
-
-  let currentDraftId = null;
-  if (requestedId) {
-    const exists = db.prepare('SELECT id FROM measurements WHERE id = ? AND module = ?').get(requestedId, moduleName);
-    if (exists) currentDraftId = exists.id;
-  }
-  if (!currentDraftId && linkedDraftId) currentDraftId = linkedDraftId;
-
-  res.json({
-    module: moduleName,
-    prefill,
-    linkedDraftId,
-    currentDraftId,
-  });
-});
-
-app.get('/api/measurements/escalier-v2/list', requireLogin, (req, res) => {
-  const moduleName = 'Escalier V2';
-  const clientOrderId = parseOptionalId(req.query.client_order_id);
-  const rows = clientOrderId
-    ? db
-        .prepare('SELECT * FROM measurements WHERE module = ? AND client_order_id = ? ORDER BY updated_at DESC, id DESC')
-        .all(moduleName, clientOrderId)
-    : db.prepare('SELECT * FROM measurements WHERE module = ? ORDER BY updated_at DESC, id DESC').all(moduleName);
-
-  const items = rows.map((row) => {
-    const payload = parseMeasurementData(row.data);
-    const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-    return {
-      id: row.id,
-      recordName: row.record_name || `Fiche Escalier V2 #${row.id}`,
-      client: row.client || fields.client || '',
-      commande: fields.commande || '',
-      chantier: row.chantier || fields.chantier || '',
-      date: row.measure_date || fields.date || '',
-      metreur: fields.metreur || '',
-      referenceInterne: fields.reference_interne || '',
-      typeEscalier: fields.type_escalier || 'Autre',
-      statut: fields.statut || 'Brouillon',
-      quote_id: parseOptionalId(row.quote_id),
-      client_order_id: parseOptionalId(row.client_order_id),
-      updatedAt: row.updated_at || row.created_at || null,
-    };
-  });
-
-  res.json({ ok: true, items });
-});
-
-app.get('/api/measurements/escalier-v2/:id', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  if (!id) return res.status(400).json({ ok: false, error: 'ID invalide' });
-
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-  if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-  const payload = parseMeasurementData(row.data);
-  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-
-  res.json({
-    ok: true,
-    item: {
-      id: row.id,
-      module: row.module,
-      recordName: row.record_name,
-      quote_id: parseOptionalId(row.quote_id),
-      client_order_id: parseOptionalId(row.client_order_id),
-      fields,
-      photoSlots: buildEscalierV2PhotoPublicSlots(row.id, fields.photo_slots),
-      updatedAt: row.updated_at || row.created_at || null,
-    },
-  });
-});
-
-app.delete('/api/measurements/escalier-v2/:id', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  if (!id) return res.status(400).json({ ok: false, error: 'ID invalide' });
-
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-  if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-  try {
-    const photoDirs = [
-      measurementEscalierV2PhotoBaseDir(row),
-      safeResolveInside(ESCALIER_V2_PHOTO_DIR, String(id)),
-    ];
-    const uniquePhotoDirs = Array.from(new Set(photoDirs.map((dir) => path.resolve(dir))));
-    uniquePhotoDirs.forEach((dir) => removeStoragePathIfExists(dir));
-    removeStoragePathIfExists(sketchPath('measurements', id));
-
-    const result = db.prepare('DELETE FROM measurements WHERE id = ? AND module = ?').run(id, 'Escalier V2');
-    if (!result.changes) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-    return res.json({ ok: true, deletedId: id, redirect: '/outils/prises-cotes/escalier-v2' });
-  } catch (error) {
-    console.error('Erreur suppression fiche Escalier V2:', error);
-    return res.status(500).json({ ok: false, error: 'Erreur suppression fiche Escalier V2' });
-  }
-});
-
-app.get('/api/measurements/escalier-v2/:id/photos', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  if (!id) return res.status(400).json({ ok: false, error: 'ID invalide' });
-
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-  if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-  const payload = parseMeasurementData(row.data);
-  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-  return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, fields.photo_slots) });
-});
-
-app.post('/api/measurements/escalier-v2/:id/photos', requireLogin, (req, res) => {
-  escalierV2PhotoUpload.array('photos', 30)(req, res, (err) => {
-    if (err) {
-      return res.status(400).json({ ok: false, error: err.message || 'Upload impossible' });
-    }
-
-    const id = parseOptionalId(req.params.id);
-    if (!id) return res.status(400).json({ ok: false, error: 'ID invalide' });
-
-    const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-    if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-    if (!Array.isArray(req.files) || !req.files.length) {
-      return res.status(400).json({ ok: false, error: 'Aucune photo recue' });
-    }
-
-    const category = normalizeEscalierV2Category(req.body?.category);
-    const updated = updateEscalierV2PhotoSlots(id, (slots) => {
-      const next = normalizeEscalierV2PhotoSlots(slots);
-      const target = next.find((slot) => slot.category === category);
-      if (!target) return next;
-
-      req.files.forEach((file) => {
-        target.photos.push({
-          id: crypto.randomUUID(),
-          fileName: path.basename(file.filename),
-          caption: '',
-          size: Number(file.size || 0),
-          mimeType: String(file.mimetype || ''),
-          createdAt: new Date().toISOString(),
-        });
-      });
-
-      return next;
-    });
-
-    if (!updated) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-    return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, updated.slots) });
-  });
-});
-
-app.patch('/api/measurements/escalier-v2/:id/photos/:photoId', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  const photoId = String(req.params.photoId || '').trim();
-  if (!id || !photoId) return res.status(400).json({ ok: false, error: 'Parametres invalides' });
-
-  const caption = String(req.body?.caption || '').trim().slice(0, 300);
-  const updated = updateEscalierV2PhotoSlots(id, (slots) => {
-    const next = normalizeEscalierV2PhotoSlots(slots);
-    next.forEach((slot) => {
-      slot.photos.forEach((photo) => {
-        if (photo.id === photoId) photo.caption = caption;
-      });
-    });
-    return next;
-  });
-
-  if (!updated) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-  return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, updated.slots) });
-});
-
-app.delete('/api/measurements/escalier-v2/:id/photos/:photoId', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  const photoId = String(req.params.photoId || '').trim();
-  if (!id || !photoId) return res.status(400).json({ ok: false, error: 'Parametres invalides' });
-
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-  if (!row) return res.status(404).json({ ok: false, error: 'Fiche Escalier V2 introuvable' });
-
-  const payload = parseMeasurementData(row.data);
-  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-  const slots = normalizeEscalierV2PhotoSlots(fields.photo_slots);
-  let removedFileName = null;
-
-  slots.forEach((slot) => {
-    slot.photos = slot.photos.filter((photo) => {
-      if (photo.id !== photoId) return true;
-      removedFileName = photo.fileName;
-      return false;
-    });
-  });
-
-  if (!removedFileName) return res.status(404).json({ ok: false, error: 'Photo introuvable' });
-
-  const baseDir = measurementEscalierV2PhotoBaseDir(row);
-  ensureDir(baseDir);
-  const filePath = safeResolveInside(baseDir, path.basename(removedFileName));
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
-  payload.fields = {
-    ...fields,
-    photo_slots: slots,
-  };
-
-  db.prepare('UPDATE measurements SET data = ?, updated_at = ? WHERE id = ?')
-    .run(JSON.stringify(payload), new Date().toISOString(), id);
-
-  return res.json({ ok: true, slots: buildEscalierV2PhotoPublicSlots(id, slots) });
-});
-
-app.get('/api/measurements/escalier-v2/:id/photos/:photoId/file', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  const photoId = String(req.params.photoId || '').trim();
-  if (!id || !photoId) return res.status(400).send('Parametres invalides');
-
-  const row = db.prepare('SELECT * FROM measurements WHERE id = ? AND module = ?').get(id, 'Escalier V2');
-  if (!row) return res.status(404).send('Fiche Escalier V2 introuvable');
-
-  const payload = parseMeasurementData(row.data);
-  const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : {};
-  const slots = normalizeEscalierV2PhotoSlots(fields.photo_slots);
-
-  let fileName = null;
-  slots.forEach((slot) => {
-    slot.photos.forEach((photo) => {
-      if (photo.id === photoId) fileName = photo.fileName;
-    });
-  });
-
-  if (!fileName) return res.status(404).send('Photo introuvable');
-  const filePath = safeResolveInside(measurementEscalierV2PhotoBaseDir(row), path.basename(fileName));
-  if (!fs.existsSync(filePath)) return res.status(404).send('Fichier introuvable');
-  return res.sendFile(filePath);
-});
-
+const measurementStairV2Service = createMeasurementStairV2Service({ db, parseOptionalId, parseMeasurementData, buildPhotoSlots: buildEscalierV2PhotoPublicSlots, photoBaseDir: measurementEscalierV2PhotoBaseDir, safeResolveInside, photoRoot: ESCALIER_V2_PHOTO_DIR, path, removeStoragePathIfExists, sketchPath });
+const measurementStairV2PhotosService = createMeasurementStairV2PhotosService({ db, fs, path, crypto, parseMeasurementData, normalizeCategory: normalizeEscalierV2Category, normalizeSlots: normalizeEscalierV2PhotoSlots, buildPublicSlots: buildEscalierV2PhotoPublicSlots, photoBaseDir: measurementEscalierV2PhotoBaseDir, safeResolveInside, ensureDir });
+const escalierV2PhotoUpload = createMeasurementStairV2Upload({ multer, path, parseOptionalId, getMeasurement: measurementStairV2Service.get, photoBaseDir: measurementEscalierV2PhotoBaseDir, ensureDir, safeSegment });
+const measurementStairV2Controller = createMeasurementStairV2Controller({ s: measurementStairV2Service, photos: measurementStairV2PhotosService, parseOptionalId, upload: (req, res, callback) => escalierV2PhotoUpload.array('photos', 30)(req, res, callback), fs, path, publicDir: MEASUREMENTS_PUBLIC_DIR, logger: console });
+registerMeasurementStairV2ApiRoutes(app, { requireLogin, c: measurementStairV2Controller });
 registerMeasurementPersistenceRoutes(app, { requireLogin, c: measurementsController });
 app.get('/api/measurements/:id/croquis', requireLogin, (req, res) => {
   const entry = readMeasurementForSketches(req.params.id);
@@ -4666,11 +4324,7 @@ app.get('/outils/prises-cotes/recuperation-photos', requireAdmin, (req, res) => 
   `));
 });
 
-app.get('/outils/prises-cotes/escalier-v2', requireLogin, (req, res) => {
-  const filePath = path.join(MEASUREMENTS_PUBLIC_DIR, 'escalier-v2.html');
-  return res.sendFile(filePath);
-});
-
+registerMeasurementStairV2PageRoute(app, { requireLogin, c: measurementStairV2Controller });
 app.get('/outils/prises-cotes/:module', requireLogin, (req, res, next) => {
   const moduleName = String(req.params.module || '').trim().toLowerCase();
   const fileName = MEASUREMENT_SHEETS[moduleName];
