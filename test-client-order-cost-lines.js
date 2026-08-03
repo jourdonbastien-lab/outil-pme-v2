@@ -46,6 +46,7 @@ assert.strictEqual(costs.quoteLineToCostLine({ label: 'Tôle', qty: 4, cost_tota
 assert.strictEqual(costs.quoteLineToCostLine({ label: 'Fourniture inconnue', qty: 1 }).incomplete_cost, true);
 
 const server = fs.readFileSync('server.js', 'utf8');
+const profitabilityService = fs.readFileSync('services/clientOrderProfitabilityService.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const profitabilityController = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
 const clientOrdersController = fs.readFileSync('controllers/clientOrdersController.js', 'utf8');
@@ -62,12 +63,12 @@ for (const route of [
   "post('/orders/client/:orderId/cost-lines/import-quote', 'importQuoteCostLines')"
 ]) assert(clientOrderRoutes.includes(route), `route absente: ${route}`);
 assert(profitabilityController.includes('WHERE id = ? AND client_order_id = ?'), 'isolation commande/ligne absente');
-assert(server.includes('INSERT OR IGNORE INTO client_order_cost_lines'), 'import anti-doublon absent');
+assert(profitabilityService.includes('INSERT OR IGNORE INTO client_order_cost_lines'), 'import anti-doublon absent');
 assert(profitabilityController.includes('client_order_cost_line_exclusions'), 'mémoire des suppressions absente');
-assert(server.includes('importMissingQuoteCostLines'), 'import à l’acceptation du devis absent');
+assert(server.includes('importMissingQuoteCostLines: clientOrderProfitabilityService.importMissingQuoteCostLines'), 'injection de l’import absente');
 assert(fs.readFileSync('services/quoteAcceptanceService.js', 'utf8').includes('importMissingQuoteCostLines(clientOrderId, quoteId)'), 'import à l’acceptation du devis absent');
 assert(clientOrdersController.includes('if (quoteId) importMissingQuoteCostLines(orderId, quoteId)'), 'import à la création manuelle liée absent');
-assert(server.includes("source_type, source_quote_line_id"));
+assert(profitabilityService.includes("source_type, source_quote_line_id"));
 assert(profitabilityView.includes('Le devis d’origine reste inchangé'));
 assert(profitabilityView.includes('Aucune matière ni main-d’œuvre renseignée'));
 assert(css.includes('.order-cost-groups'));

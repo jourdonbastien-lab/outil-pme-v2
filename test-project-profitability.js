@@ -176,7 +176,7 @@ for (const column of ['cost_unit', 'cost_total', 'margin_pct', 'hours', 'hourly_
 }
 assert(clientOrderRoutes.includes("post('/api/orders/:id/actual-costs', 'createActualCost')"));
 assert((server + fs.readFileSync('views/quoteDetailView.js', 'utf8')).includes('Rentabilité prévisionnelle'));
-assert(server.includes('Rentabilité du chantier'));
+assert(fs.readFileSync('views/clientOrderProfitabilityView.js', 'utf8').includes('Résultat de la commande'));
 assert(fs.readFileSync('views/quoteDetailView.js', 'utf8').includes('Réanalyser le devis'));
 assert(server.includes('idx_project_actual_costs_supplier_invoice'), 'anti-doublon facture fournisseur absent');
 

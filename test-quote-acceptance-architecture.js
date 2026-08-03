@@ -22,6 +22,6 @@ for (const preserved of [
   'registerQuoteFooterSettingsRoutes(app',
   'registerQuoteRoutes(app'
 ]) assert(server.includes(preserved), preserved);
-assert(server.includes('saveProjectForecast,'));
-assert(server.includes('importMissingQuoteCostLines'));
+assert(server.includes('saveProjectForecast: clientOrderProfitabilityService.saveProjectForecast'));
+assert(server.includes('importMissingQuoteCostLines: clientOrderProfitabilityService.importMissingQuoteCostLines'));
 console.log('OK - architecture acceptation devis');

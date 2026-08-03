@@ -4,6 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 
 const server = fs.readFileSync('server.js', 'utf8');
+const profitabilityService = fs.readFileSync('services/clientOrderProfitabilityService.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const profitabilityController = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
 const profitabilityView = fs.readFileSync('views/clientOrderProfitabilityView.js', 'utf8');
@@ -14,7 +15,7 @@ const css = fs.readFileSync('public/style.css', 'utf8');
 
 assert(clientOrderRoutes.includes("get('/orders/client/:orderId/profitability', 'profitabilityPage')"));
 assert(clientOrderFolderView.includes('pc-profitability-access'));
-assert(server.includes("return `/orders/client/${order.id}/profitability#order-budget`;"));
+assert(profitabilityService.includes("return `/orders/client/${order.id}/profitability#order-budget`;"));
 
 const routeStart = profitabilityController.indexOf('function showProfitability');
 const routeEnd = profitabilityController.indexOf('function getProfitabilityApi', routeStart);
@@ -46,9 +47,9 @@ const hoursRenderer = profitabilityView.slice(hoursStart, hoursEnd);
 for (const label of ['Heures prévues', 'Heures réalisées', 'Écart', 'Voir les heures']) assert(hoursRenderer.includes(label));
 assert(!hoursRenderer.includes('laborCost'));
 
-assert(server.includes('function importMissingQuoteCostLines'));
-assert(server.includes('INSERT OR IGNORE INTO client_order_cost_lines'));
-assert(server.includes('source_quote_line_id'));
+assert(profitabilityService.includes('function importMissingQuoteCostLines'));
+assert(profitabilityService.includes('INSERT OR IGNORE INTO client_order_cost_lines'));
+assert(profitabilityService.includes('source_quote_line_id'));
 assert(profitabilityController.includes('client_order_cost_line_exclusions'));
 assert(profitabilityController.includes('`imported-${result.imported}`'));
 assert(profitabilityController.includes('importStatus=no-quote'));
