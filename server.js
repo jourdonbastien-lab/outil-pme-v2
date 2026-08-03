@@ -120,6 +120,11 @@ const { createWorkshopToolsController } = require('./controllers/workshopToolsCo
 const { renderLogibarreView } = require('./views/logibarreView');
 const { renderBarreaudageView } = require('./views/barreaudageView');
 const { renderLogitoleView } = require('./views/logitoleView');
+const { registerTasksPageRoutes, registerTasksMutationRoutes } = require('./routes/tasks');
+const { createTasksService } = require('./services/tasksService');
+const { createTasksController } = require('./controllers/tasksController');
+const { renderTasksListView } = require('./views/tasksListView');
+const { renderTaskCard } = require('./views/taskCardView');
 const { createWorksitesService } = require('./services/worksitesService');
 const { createWorksitesController } = require('./controllers/worksitesController');
 const { renderWorksitesListView } = require('./views/worksitesListView');
@@ -3852,139 +3857,17 @@ app.get('/api/weather', requireLogin, async (req, res) => {
 
 
 /* ===================== TASKS ===================== */
-
-app.get('/tasks', requireLogin, (req, res) => {
-  const tasks = db
-    .prepare('SELECT * FROM tasks ORDER BY created_at DESC, id DESC')
-    .all();
-
-  const taskCards = tasks.length
-    ? tasks
-        .map((t) => {
-          const status = String(t.status || 'À faire');
-          const statusClass = status === 'Terminée' ? 'done' : status === 'En cours' ? 'progress' : 'todo';
-          return `
-        <article class="modern-task-card">
-          <div class="modern-task-main">
-            ${clientPageIcon('tasks', 'modern-page-icon')}
-            <div>
-              <h2>${escHtml(t.title)}</h2>
-              <span class="modern-status-badge ${statusClass}">${escHtml(status)}</span>
-            </div>
-          </div>
-
-          <div class="modern-task-actions">
-            ${
-              status !== 'Terminée'
-                ? `
-                <form method="POST" action="/tasks/done" class="modern-task-done-form">
-                  <input type="hidden" name="id" value="${t.id}" />
-                  <button class="modern-secondary-btn modern-task-done-btn" type="submit">✓ Terminer</button>
-                </form>
-                `
-                : `
-                ${
-                  Number(t.to_invoice || 0) === 1
-                    ? `<div class="modern-invoice-badge">À facturer</div>`
-                    : `
-                    <form method="POST" action="/tasks/to-invoice">
-                      <input type="hidden" name="id" value="${t.id}" />
-                      <button class="modern-secondary-btn" type="submit">À facturer</button>
-                    </form>
-                    `
-                }
-
-                <form method="POST"
-                      action="/tasks/delete"
-                      onsubmit="return confirm('Supprimer cette tâche ?');">
-                  <input type="hidden" name="id" value="${t.id}" />
-                  <button class="modern-danger-btn" type="submit">${clientPageIcon('trash', 'modern-action-icon')} Supprimer</button>
-                </form>
-                `
-            }
-          </div>
-        </article>
-      `;
-        })
-        .join('')
-    : '<div class="empty-state">Aucune tâche</div>';
-
-  res.send(
-    pageTemplate(
-      req,
-      'Tâches',
-      `
-      <div class="modern-page">
-        <form method="POST" action="/tasks" class="clients-create-card modern-form-card">
-          <div class="clients-create-head">
-            ${clientPageIcon('tasks', 'clients-title-icon')}
-            <h1>Tâches</h1>
-          </div>
-
-          <div class="modern-form-grid">
-            <label class="clients-field">
-              <span>Titre tâche</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('postal')}
-                <input name="title" placeholder="Nouvelle tâche" required />
-              </div>
-            </label>
-
-            <label class="clients-field">
-              <span>Statut</span>
-              <div class="clients-input-shell">
-                ${clientPageIcon('add')}
-                <select name="status">
-                  <option>À faire</option>
-              
-                  <option>À facturer</option>
-                </select>
-              </div>
-            </label>
-          </div>
-
-          <button class="clients-submit-btn" type="submit">
-            <span>${clientPageIcon('add', 'clients-submit-icon')}</span>
-            Ajouter la tâche
-          </button>
-        </form>
-
-        <section class="modern-list-head">
-          <div>
-            <h2>Liste des tâches</h2>
-            <span>${tasks.length} au total</span>
-          </div>
-        </section>
-
-        <div class="modern-task-grid">
-          ${taskCards}
-        </div>
-      </div>
-      `
-    )
-  );
+const tasksService = createTasksService({ db });
+const tasksController = createTasksController({
+  tasksService,
+  renderTasksListView,
+  renderTaskCard,
+  pageTemplate,
+  viewDependencies: { escHtml, clientPageIcon }
 });
-app.post('/tasks/to-invoice', requireLogin, (req, res) => {
-
-  db.prepare(`
-    UPDATE tasks
-    SET to_invoice = 1
-    WHERE id = ?
-  `).run(req.body.id);
-
-  res.redirect('/tasks');
-
-});
-app.post('/tasks/to-invoice', requireLogin, (req, res) => {
-
-  db.prepare(`
-    UPDATE tasks
-    SET to_invoice = 1
-    WHERE id = ?
-  `).run(req.body.id);
-
-  res.redirect('/tasks');
-
+registerTasksPageRoutes(app, {
+  requireLogin,
+  handlers: tasksController
 });
 /* ===================== AGENDA ===================== */
 registerAgendaPageRoute(app, { requireLogin, controller: agendaController });
@@ -4783,47 +4666,9 @@ app.use((err, req, res, next) => {
   res.status(500).send('Erreur serveur (voir console).');
 });
 /* ===================== TÂCHES ===================== */
-
-// ➕ Ajouter une tâche
-app.post('/tasks', requireLogin, (req, res) => {
-  const title = String(req.body.title || '').trim();
-  const status = String(req.body.status || 'À faire').trim();
-
-  if (!title) {
-    return res.redirect('/tasks');
-  }
-
-  db.prepare(`
-    INSERT INTO tasks (title, status, created_at)
-    VALUES (?, ?, ?)
-  `).run(title, status, new Date().toISOString());
-
-  res.redirect('/tasks');
-});
-
-// ✔️ Terminer une tâche
-app.post('/tasks/done', requireLogin, (req, res) => {
-  const id = req.body.id;
-
-  db.prepare(`
-    UPDATE tasks
-    SET status = 'Terminée'
-    WHERE id = ?
-  `).run(id);
-
-  res.redirect('/tasks');
-});
-
-// 🗑️ Supprimer une tâche
-app.post('/tasks/delete', requireLogin, (req, res) => {
-  const id = req.body.id;
-
-  db.prepare(`
-    DELETE FROM tasks
-    WHERE id = ?
-  `).run(id);
-
-  res.redirect('/tasks');
+registerTasksMutationRoutes(app, {
+  requireLogin,
+  handlers: tasksController
 });
 /* ===================== COMMANDES FOURNISSEURS ===================== */
 
