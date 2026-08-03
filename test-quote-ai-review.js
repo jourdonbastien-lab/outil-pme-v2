@@ -83,10 +83,11 @@ assert(automaticReview.checks.some((check) => check.code === 'material_without_c
   }), /OpenAI HTTP 500/);
 
   const server = fs.readFileSync('server.js', 'utf8');
+  const databaseSchema = fs.readFileSync('database/schema.js', 'utf8');
   const quoteDetailView = fs.readFileSync('views/quoteDetailView.js', 'utf8');
   const aiRoutes = fs.readFileSync('routes/quoteAiAnalysis.js', 'utf8');
   const aiService = fs.readFileSync('services/quoteAiAnalysisService.js', 'utf8');
-  assert(server.includes('CREATE TABLE IF NOT EXISTS quote_ai_reviews'));
+  assert(databaseSchema.includes('CREATE TABLE IF NOT EXISTS quote_ai_reviews'));
   assert(aiRoutes.includes("app.post('/api/devis/:id/ai-review', requireLogin"));
   assert(aiRoutes.includes("app.get('/api/devis/:id/ai-reviews', requireLogin"));
   assert(quoteDetailView.includes('Réanalyser le devis'));

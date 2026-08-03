@@ -68,11 +68,12 @@ try {
   );
 
   const server = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
+  const databaseSchema = fs.readFileSync(path.join(__dirname, 'database/schema.js'), 'utf8');
   const photoRoutes = fs.readFileSync(path.join(__dirname, 'routes/measurementPhotos.js'), 'utf8');
   const moduleSheet = fs.readFileSync(path.join(__dirname, 'modules/measurements/public/module-sheet.js'), 'utf8');
   const classicStair = fs.readFileSync(path.join(__dirname, 'modules/measurements/public/measurements.js'), 'utf8');
-  assert(server.includes('CREATE TABLE IF NOT EXISTS measurement_photo_files'), 'la migration doit etre non destructive');
-  assert(server.includes('UNIQUE(measurement_id, sha256)'), 'la base doit renforcer l anti-doublon');
+  assert(databaseSchema.includes('CREATE TABLE IF NOT EXISTS measurement_photo_files'), 'la migration doit etre non destructive');
+  assert(databaseSchema.includes('UNIQUE(measurement_id, sha256)'), 'la base doit renforcer l anti-doublon');
   assert(photoRoutes.includes("app.get('/api/measurements/:id/photos'"), 'la route de liste doit exister');
   assert(photoRoutes.includes("app.post('/api/measurements/:id/photos'"), 'la route d ajout doit exister');
   assert(photoRoutes.includes("app.patch('/api/measurements/:id/photos/:photoId'"), 'la route de legende doit exister');

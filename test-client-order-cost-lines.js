@@ -46,15 +46,16 @@ assert.strictEqual(costs.quoteLineToCostLine({ label: 'Tôle', qty: 4, cost_tota
 assert.strictEqual(costs.quoteLineToCostLine({ label: 'Fourniture inconnue', qty: 1 }).incomplete_cost, true);
 
 const server = fs.readFileSync('server.js', 'utf8');
+const databaseSchema = fs.readFileSync('database/schema.js', 'utf8');
 const profitabilityService = fs.readFileSync('services/clientOrderProfitabilityService.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 const profitabilityController = fs.readFileSync('controllers/clientOrderProfitabilityController.js', 'utf8');
 const clientOrdersController = fs.readFileSync('controllers/clientOrdersController.js', 'utf8');
 const profitabilityView = fs.readFileSync('views/clientOrderProfitabilityView.js', 'utf8');
 const css = fs.readFileSync('public/style.css', 'utf8');
-assert(server.includes('CREATE TABLE IF NOT EXISTS client_order_cost_lines'));
-assert(server.includes('idx_client_order_cost_lines_order_type'));
-assert(server.includes('idx_client_order_cost_lines_quote_source'));
+assert(databaseSchema.includes('CREATE TABLE IF NOT EXISTS client_order_cost_lines'));
+assert(databaseSchema.includes('idx_client_order_cost_lines_order_type'));
+assert(databaseSchema.includes('idx_client_order_cost_lines_quote_source'));
 for (const route of [
   "post('/orders/client/:orderId/cost-lines', 'createCostLine')",
   "post('/orders/client/:orderId/cost-lines/:lineId/edit', 'editCostLine')",

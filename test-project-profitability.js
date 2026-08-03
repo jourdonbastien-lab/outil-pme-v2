@@ -152,12 +152,14 @@ assert.strictEqual(actual.hourVariance, 12);
 assert.strictEqual(actual.hourVariancePct, 40);
 
 const server = fs.readFileSync('server.js', 'utf8');
+const databaseSchema = fs.readFileSync('database/schema.js', 'utf8');
+const databaseMigrations = fs.readFileSync('database/migrations.js', 'utf8');
 const clientOrderRoutes = fs.readFileSync('routes/clientOrders.js', 'utf8');
 for (const schema of ['quote_profitability_forecasts', 'project_profitability_forecasts', 'project_actual_costs']) {
-  assert(server.includes(`CREATE TABLE IF NOT EXISTS ${schema}`), `migration absente: ${schema}`);
+  assert(databaseSchema.includes(`CREATE TABLE IF NOT EXISTS ${schema}`), `migration absente: ${schema}`);
 }
-assert(server.includes("ensureColumn('chantier_hours', 'category'"));
-assert(server.includes("ensureColumn('client_orders', 'quote_id'"));
+assert(databaseMigrations.includes("ensureColumn('chantier_hours', 'category'"));
+assert(databaseMigrations.includes("ensureColumn('client_orders', 'quote_id'"));
 assert(
   fs.readFileSync('services/quoteAcceptanceService.js', 'utf8')
     .includes('saveProjectForecast({ ...quote, total_ht: totalWithMargin }, lines, clientOrderId)')
@@ -169,15 +171,15 @@ assert(quoteProfitabilityRoutes.includes("app.get('/api/devis/:id/profitability'
 assert(quoteProfitabilityRoutes.includes("app.post('/api/devis/:id/profitability', requireLogin"));
 assert(quoteAiAnalysisRoutes.includes("app.post('/api/devis/:id/profitability/analyze', requireLogin"));
 for (const column of ['analysis_json', 'manual_adjustments_json', 'reliability_level', 'analyzed_at', 'engine_version']) {
-  assert(server.includes(`ensureColumn('quote_profitability_forecasts', '${column}'`), `migration absente: ${column}`);
+  assert(databaseMigrations.includes(`ensureColumn('quote_profitability_forecasts', '${column}'`), `migration absente: ${column}`);
 }
 for (const column of ['cost_unit', 'cost_total', 'margin_pct', 'hours', 'hourly_cost', 'cost_category', 'cost_source']) {
-  assert(server.includes(`ensureColumn('quote_lines', '${column}'`), `migration ligne absente: ${column}`);
+  assert(databaseMigrations.includes(`ensureColumn('quote_lines', '${column}'`), `migration ligne absente: ${column}`);
 }
 assert(clientOrderRoutes.includes("post('/api/orders/:id/actual-costs', 'createActualCost')"));
 assert((server + fs.readFileSync('views/quoteDetailView.js', 'utf8')).includes('Rentabilité prévisionnelle'));
 assert(fs.readFileSync('views/clientOrderProfitabilityView.js', 'utf8').includes('Résultat de la commande'));
 assert(fs.readFileSync('views/quoteDetailView.js', 'utf8').includes('Réanalyser le devis'));
-assert(server.includes('idx_project_actual_costs_supplier_invoice'), 'anti-doublon facture fournisseur absent');
+assert(databaseSchema.includes('idx_project_actual_costs_supplier_invoice'), 'anti-doublon facture fournisseur absent');
 
 console.log('OK - rentabilité lots 1 à 5');

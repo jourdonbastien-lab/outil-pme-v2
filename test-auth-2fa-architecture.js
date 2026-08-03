@@ -5,6 +5,7 @@ const fs = require('fs');
 const server = fs.readFileSync('server.js', 'utf8');
 const route = fs.readFileSync('routes/auth.js', 'utf8');
 const controller = fs.readFileSync('controllers/authController.js', 'utf8');
+const databaseMigrations = fs.readFileSync('database/migrations.js', 'utf8');
 const serviceFiles = ['services/userService.js', 'services/authService.js', 'services/twoFactorService.js', 'services/authEmailService.js'];
 assert(server.includes('registerAuthRoutes(app, { requirePendingMfa, controller: authController })'));
 for (const inline of ["app.get('/login'", "app.post('/login'", "app.get('/login/email'", "app.post('/login/email'", "app.get('/login/code'", "app.post('/login/code'", "app.get('/logout'"]) assert(!server.includes(inline), `${inline} encore inline`);
@@ -22,6 +23,7 @@ for (const file of serviceFiles) {
 assert(!/\b(?:SELECT|INSERT|UPDATE|DELETE)\b/.test(controller), 'SQL présent dans le contrôleur Auth');
 assert(!/nodemailer|sendMail/.test(controller), 'SMTP direct présent dans le contrôleur Auth');
 for (const sessionMarker of ["name: 'outil-pme.sid'", 'resave: false', 'saveUninitialized: false', 'rolling: true', 'maxAge: SESSION_MAX_AGE_MS', 'secure: SESSION_COOKIE_SECURE', 'httpOnly: true', 'sameSite: SESSION_COOKIE_SAMESITE']) assert(server.includes(sessionMarker), `session modifiée: ${sessionMarker}`);
-for (const roleMarker of ["role = 'admin'", "role === 'atelier'", 'Accès réservé aux administrateurs']) assert(server.includes(roleMarker), `rôle/permission modifié: ${roleMarker}`);
+assert(databaseMigrations.includes("role = 'admin'"), 'normalisation du rôle admin modifiée');
+for (const roleMarker of ["role === 'atelier'", 'Accès réservé aux administrateurs']) assert(server.includes(roleMarker), `rôle/permission modifié: ${roleMarker}`);
 assert.strictEqual(crypto.createHash('sha1').update(fs.readFileSync('public/login.html')).digest('hex'), '7ad8300ab5677d91761172502afda37991a733f7', 'page login statique modifiée');
 console.log('OK - architecture Auth et 2FA');

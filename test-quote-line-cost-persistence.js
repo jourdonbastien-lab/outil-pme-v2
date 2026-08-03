@@ -6,12 +6,13 @@ const Database = require('better-sqlite3');
 const profitability = require('./lib/projectProfitability');
 
 const server = fs.readFileSync('server.js', 'utf8');
+const databaseMigrations = fs.readFileSync('database/migrations.js', 'utf8');
 const quoteDetailView = fs.readFileSync('views/quoteDetailView.js', 'utf8');
 for (const name of ['cost_unit', 'margin_pct']) {
   assert((server + quoteDetailView).includes(`name="${name}"`), `attribut HTML name absent: ${name}`);
 }
 for (const column of ['cost_unit', 'cost_total', 'margin_pct', 'coefficient', 'hours', 'hourly_cost']) {
-  assert(server.includes(`ensureColumn('quote_lines', '${column}'`), `migration absente: ${column}`);
+  assert(databaseMigrations.includes(`ensureColumn('quote_lines', '${column}'`), `migration absente: ${column}`);
 }
 
 const db = new Database(':memory:');
