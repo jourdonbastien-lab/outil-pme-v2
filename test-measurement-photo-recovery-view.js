@@ -1,0 +1,15 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const { renderMeasurementPhotoRecoveryView } = require('./views/measurementPhotoRecoveryView');
+const html = renderMeasurementPhotoRecoveryView();
+for (const expected of ['Fiche Portail #9 · devis #6 · 20/07/2026', 'photo-recovery-rescan', 'photo-recovery-download-all', 'photo-recovery-results', "id: 9, module: 'Portail', quoteId: 6, date: '2026-07-20'", 'Relire le stockage local', 'Tout télécharger', '/outils/prises-cotes/photo-recovery.js', '/outils/prises-cotes/portail?id=9&amp;from_quote=6']) assert(html.includes(expected));
+assert(html.includes('window.MeasurementPhotoRecovery.scanLocalStorage(window.localStorage'));
+assert(!/localStorage\.(?:setItem|removeItem)/.test(html));
+const backup = fs.readFileSync('backups/measurement-legacy-residuals-extraction-20260803-161820/server.js', 'utf8');
+const routeStart = backup.indexOf("app.get('/outils/prises-cotes/recuperation-photos'");
+const bodyStart = backup.indexOf('`', backup.indexOf('pageTemplate', routeStart)) + 1;
+const bodyEnd = backup.indexOf('`));', bodyStart);
+const historicalHtml = Function(`return \`${backup.slice(bodyStart, bodyEnd).replace(/`/g, '\\`')}\``)();
+assert.strictEqual(html, historicalHtml);
+console.log('OK - vue récupération photos');

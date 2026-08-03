@@ -56,9 +56,11 @@ const other = {
 }
 
 const server = fs.readFileSync('server.js', 'utf8');
+const legacyRoutes = fs.readFileSync('routes/measurementLegacy.js', 'utf8');
+const recoveryView = fs.readFileSync('views/measurementPhotoRecoveryView.js', 'utf8');
 const moduleSheet = fs.readFileSync('modules/measurements/public/module-sheet.js', 'utf8');
-assert.ok(server.includes("app.get('/outils/prises-cotes/recuperation-photos', requireAdmin"), 'recovery page must remain admin-only');
-assert.ok(server.includes('href="/outils/prises-cotes/portail?id=9&amp;from_quote=6"'), 'recovery page must return to Portail #9');
+assert.ok(legacyRoutes.includes("app.get('/outils/prises-cotes/recuperation-photos', requireAdmin"), 'recovery page must remain admin-only');
+assert.ok(recoveryView.includes('href="/outils/prises-cotes/portail?id=9&amp;from_quote=6"'), 'recovery page must return to Portail #9');
 assert.ok(moduleSheet.includes("moduleLabel !== 'Portail' || initialServerId !== 9"), 'button must be limited to target Portail record');
 assert.ok(moduleSheet.includes("link.href = '/outils/prises-cotes/recuperation-photos'"), 'button must use a relative same-app link');
 assert.ok(!moduleSheet.includes("link.target = '_blank'"), 'recovery link must stay in the same tab');

@@ -193,6 +193,19 @@ const { registerMeasurementStairV2ApiRoutes, registerMeasurementStairV2PageRoute
 const { createMeasurementTechnicalDrawingService } = require('./services/measurementTechnicalDrawingService');
 const { createMeasurementTechnicalDrawingController } = require('./controllers/measurementTechnicalDrawingController');
 const { registerMeasurementTechnicalDrawingApiRoutes, registerMeasurementTechnicalDrawingPageRoute } = require('./routes/measurementTechnicalDrawing');
+const { createSketchPngService } = require('./services/sketchPngService');
+const { createMeasurementLegacySketchService } = require('./services/measurementLegacySketchService');
+const { createMeasurementAssetsService } = require('./services/measurementAssetsService');
+const { createMeasurementPhotoRecoveryService } = require('./services/measurementPhotoRecoveryService');
+const { createMeasurementLegacyController } = require('./controllers/measurementLegacyController');
+const { renderMeasurementPhotoRecoveryView } = require('./views/measurementPhotoRecoveryView');
+const {
+  registerMeasurementRecoveryAccessRoute,
+  registerMeasurementLegacySketchRoutes,
+  registerMeasurementPhotoRecoveryPageRoute,
+  registerMeasurementLegacyModulePageRoute,
+  registerMeasurementLegacyAssetRoutes
+} = require('./routes/measurementLegacy');
 
 const envFilePath = path.join(__dirname, '.env');
 if (fs.existsSync(envFilePath)) {
@@ -2348,47 +2361,6 @@ function buildEscalierV2PhotoPublicSlots(measurementId, slots) {
   }));
 }
 
-function sketchPath(scope, id) {
-  return safeResolveInside(SKETCHES_DIR, scope, `${id}.png`);
-}
-
-function saveSketchPng(scope, id, dataUrl) {
-  const cleanId = Number(id);
-  if (!Number.isFinite(cleanId) || cleanId <= 0) {
-    const error = new Error('ID invalide');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const match = String(dataUrl || '').match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
-  if (!match) {
-    const error = new Error('Image PNG invalide');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const buffer = Buffer.from(match[1], 'base64');
-  if (!buffer.length || buffer.length > 10 * 1024 * 1024) {
-    const error = new Error('Croquis trop volumineux');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const dir = safeResolveInside(SKETCHES_DIR, scope);
-  ensureDir(dir);
-  const filePath = sketchPath(scope, cleanId);
-  fs.writeFileSync(filePath, buffer);
-  return filePath;
-}
-
-function sendSketch(scope, id, res) {
-  const cleanId = Number(id);
-  if (!Number.isFinite(cleanId) || cleanId <= 0) return res.status(400).send('ID invalide');
-  const filePath = sketchPath(scope, cleanId);
-  if (!fs.existsSync(filePath)) return res.status(404).send('Croquis introuvable');
-  return res.sendFile(filePath);
-}
-
 function renderSketchBlock({ scope, id, className = 'quote-work-card' }) {
   const cleanId = Number(id);
   const baseUrl = scope === 'quotes' ? `/sketches/quotes/${cleanId}.png` : `/sketches/measurements/${cleanId}.png`;
@@ -3087,22 +3059,23 @@ registerAgendaPageRoute(app, { requireLogin, controller: agendaController });
 /* ===================== PRISES DE COTES ===================== */
 
 const measurementTechnicalDrawingService = createMeasurementTechnicalDrawingService({ db, parseOptionalId, parseMeasurementData, randomUUID: () => crypto.randomUUID(), buildStairPhotoSlots: buildEscalierV2PhotoPublicSlots });
-const measurementsService = createMeasurementsService({ db, parseOptionalId, normalizeMeasurementLink, preserveTechnicalSketches: measurementTechnicalDrawingService.preserve, formatDateLabel, isoDate, measurementRoutes, removeStoragePathIfExists, sketchPath, safeResolveInside, measurementPhotoDir: MEASUREMENT_PHOTO_DIR });
+const sketchPngService = createSketchPngService({ fs, sketchesDir: SKETCHES_DIR, safeResolveInside, ensureDir });
+const measurementLegacySketchService = createMeasurementLegacySketchService({ db, parseOptionalId, sketchPngService });
+const measurementAssetsService = createMeasurementAssetsService({ path, publicDir: MEASUREMENTS_PUBLIC_DIR, sheets: MEASUREMENT_SHEETS, assets: MEASUREMENTS_ASSETS, technicalDrawingAssets: TECHNICAL_DRAWING_ASSETS, safeResolveInside });
+const measurementPhotoRecoveryService = createMeasurementPhotoRecoveryService({ parseOptionalId });
+const measurementLegacyController = createMeasurementLegacyController({ sketchService: measurementLegacySketchService, assetsService: measurementAssetsService, recoveryService: measurementPhotoRecoveryService, renderRecoveryView: renderMeasurementPhotoRecoveryView, pageTemplate });
+const measurementsService = createMeasurementsService({ db, parseOptionalId, normalizeMeasurementLink, preserveTechnicalSketches: measurementTechnicalDrawingService.preserve, formatDateLabel, isoDate, measurementRoutes, removeStoragePathIfExists, sketchPath: sketchPngService.getPath, safeResolveInside, measurementPhotoDir: MEASUREMENT_PHOTO_DIR });
 const measurementViewDependencies = { escHtml, clientPageIcon, measurementTitle, measurementLinkBadge, measurementRoutes, formatDateLabel, renderSketchBlock, renderMeasurementCards: (rows) => renderCommonMeasurementCards(rows, { escHtml, measurementTitle, measurementLinkBadge, measurementRoutes }) };
 const measurementsController = createMeasurementsController({ s: measurementsService, renderList: renderMeasurementsListView, renderDetail: renderMeasurementDetailShellView, pageTemplate, viewDeps: measurementViewDependencies, parseOptionalId, normalizeQuoteStatus, measurementRoutes, measurementTitle });
 registerMeasurementsListRoutes(app, { requireLogin, c: measurementsController });
 const measurementPhotoUpload = createMeasurementPhotoUpload({ multer, db, parseOptionalId, photoFiles: measurementPhotoFiles, photoDir: MEASUREMENT_PHOTO_DIR, ensureDir });
 registerMeasurementContextRoute(app, { requireLogin, c: measurementsController });
-app.get('/api/measurements/photo-recovery-access', requireLogin, (req, res) => {
-  const measurementId = parseOptionalId(req.query.id);
-  const isAdmin = req.session?.user?.role !== 'atelier';
-  return res.json({ ok: true, allowed: Boolean(isAdmin && measurementId === 9) });
-});
+registerMeasurementRecoveryAccessRoute(app, { requireLogin, controller: measurementLegacyController });
 
 const measurementPhotosService = createMeasurementPhotosService({ db, fs, path, crypto, photoFiles: measurementPhotoFiles, photoDir: MEASUREMENT_PHOTO_DIR });
 const measurementPhotosController = createMeasurementPhotosController({ s: measurementPhotosService, parseOptionalId, upload: (req, res, callback) => measurementPhotoUpload.array('photos', 20)(req, res, callback), fs, logger: console });
 registerMeasurementPhotoRoutes(app, { requireLogin, c: measurementPhotosController });
-const measurementStairV2Service = createMeasurementStairV2Service({ db, parseOptionalId, parseMeasurementData, buildPhotoSlots: buildEscalierV2PhotoPublicSlots, photoBaseDir: measurementEscalierV2PhotoBaseDir, safeResolveInside, photoRoot: ESCALIER_V2_PHOTO_DIR, path, removeStoragePathIfExists, sketchPath });
+const measurementStairV2Service = createMeasurementStairV2Service({ db, parseOptionalId, parseMeasurementData, buildPhotoSlots: buildEscalierV2PhotoPublicSlots, photoBaseDir: measurementEscalierV2PhotoBaseDir, safeResolveInside, photoRoot: ESCALIER_V2_PHOTO_DIR, path, removeStoragePathIfExists, sketchPath: sketchPngService.getPath });
 const measurementStairV2PhotosService = createMeasurementStairV2PhotosService({ db, fs, path, crypto, parseMeasurementData, normalizeCategory: normalizeEscalierV2Category, normalizeSlots: normalizeEscalierV2PhotoSlots, buildPublicSlots: buildEscalierV2PhotoPublicSlots, photoBaseDir: measurementEscalierV2PhotoBaseDir, safeResolveInside, ensureDir });
 const escalierV2PhotoUpload = createMeasurementStairV2Upload({ multer, path, parseOptionalId, getMeasurement: measurementStairV2Service.get, photoBaseDir: measurementEscalierV2PhotoBaseDir, ensureDir, safeSegment });
 const measurementStairV2Controller = createMeasurementStairV2Controller({ s: measurementStairV2Service, photos: measurementStairV2PhotosService, parseOptionalId, upload: (req, res, callback) => escalierV2PhotoUpload.array('photos', 30)(req, res, callback), fs, path, publicDir: MEASUREMENTS_PUBLIC_DIR, logger: console });
@@ -3110,183 +3083,16 @@ registerMeasurementStairV2ApiRoutes(app, { requireLogin, c: measurementStairV2Co
 registerMeasurementPersistenceRoutes(app, { requireLogin, c: measurementsController });
 const measurementTechnicalDrawingController = createMeasurementTechnicalDrawingController({ service: measurementTechnicalDrawingService, path, publicDir: MEASUREMENTS_PUBLIC_DIR });
 registerMeasurementTechnicalDrawingApiRoutes(app, { requireLogin, c: measurementTechnicalDrawingController });
-app.get('/sketches/measurements/:id.png', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  const measurement = id ? db.prepare('SELECT id FROM measurements WHERE id = ?').get(id) : null;
-  if (!measurement) return res.status(404).send('Prise de cote introuvable');
-  return sendSketch('measurements', id, res);
-});
-
-app.post('/api/measurements/:id/sketch', requireLogin, (req, res) => {
-  const id = parseOptionalId(req.params.id);
-  const measurement = id ? db.prepare('SELECT id FROM measurements WHERE id = ?').get(id) : null;
-  if (!measurement) return res.status(404).json({ ok: false, error: 'Prise de cote introuvable' });
-
-  try {
-    const filePath = saveSketchPng('measurements', id, req.body?.image);
-    return res.json({ ok: true, path: filePath });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ ok: false, error: error.message || 'Erreur sauvegarde croquis' });
-  }
-});
+registerMeasurementLegacySketchRoutes(app, { requireLogin, controller: measurementLegacyController });
 
 registerMeasurementDetailRoute(app, { requireLogin, c: measurementsController });
-app.get('/outils/prises-cotes/recuperation-photos', requireAdmin, (req, res) => {
-  res.send(pageTemplate(req, 'Récupération photos Portail', `
-    <div class="page-head app-dark-page-head">
-      <div>
-        <h1>Récupération temporaire des photos</h1>
-        <span>Fiche Portail #9 · devis #6 · 20/07/2026</span>
-      </div>
-    </div>
-    <section class="panel-soft">
-      <p><strong>Lecture locale uniquement.</strong> Cette page ne modifie ni le localStorage, ni la fiche, ni SQLite et n’envoie aucune photo au serveur.</p>
-      <div id="photo-recovery-status" role="status">Analyse du stockage local de cet appareil…</div>
-      <div class="nav-actions">
-        <button type="button" class="btn btn-secondary" id="photo-recovery-rescan">Relire le stockage local</button>
-        <button type="button" class="btn btn-primary" id="photo-recovery-download-all" hidden>Tout télécharger</button>
-        <a class="btn btn-secondary" href="/outils/prises-cotes/portail?id=9&amp;from_quote=6">Retour vers la fiche Portail #9</a>
-      </div>
-      <div id="photo-recovery-results"></div>
-    </section>
-    <script src="/outils/prises-cotes/photo-recovery.js"></script>
-    <script>
-    (function () {
-      'use strict';
-      const status = document.getElementById('photo-recovery-status');
-      const results = document.getElementById('photo-recovery-results');
-      const rescan = document.getElementById('photo-recovery-rescan');
-      const downloadAll = document.getElementById('photo-recovery-download-all');
-      let recoveredPhotos = [];
-
-      function addText(parent, tag, value) {
-        const element = document.createElement(tag);
-        element.textContent = String(value || '');
-        parent.appendChild(element);
-        return element;
-      }
-
-      function safeFileName(value, index) {
-        const clean = String(value || '').replace(/[\\/:*?"<>|]+/g, '-').trim();
-        return clean || 'photo-portail-' + (index + 1) + '.jpg';
-      }
-
-      function downloadPhoto(photo, index) {
-        const link = document.createElement('a');
-        link.href = photo.dataUrl;
-        link.download = safeFileName(photo.name, index);
-        link.rel = 'noopener';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      }
-
-      function render() {
-        results.replaceChildren();
-        recoveredPhotos = [];
-        let report;
-        try {
-          report = window.MeasurementPhotoRecovery.scanLocalStorage(window.localStorage, {
-            id: 9, module: 'Portail', quoteId: 6, date: '2026-07-20'
-          });
-        } catch (error) {
-          status.textContent = 'Impossible de lire le stockage local sur cet appareil : ' + (error.message || error);
-          downloadAll.hidden = true;
-          return;
-        }
-
-        const keys = document.createElement('section');
-        keys.className = 'measurement-detail';
-        addText(keys, 'h2', 'Clés trouvées');
-        addText(keys, 'p', report.foundKeys.length ? report.foundKeys.join(' · ') : 'Aucune clé historique connue trouvée.');
-        if (report.invalidKeys.length) addText(keys, 'p', 'Clés illisibles ignorées : ' + report.invalidKeys.join(' · '));
-        results.appendChild(keys);
-
-        report.records.forEach(function (record) {
-          const section = document.createElement('section');
-          section.className = 'panel-soft';
-          addText(section, 'h2', record.recordName || 'Fiche Portail locale');
-          addText(section, 'p', 'Clé : ' + record.key + ' · ID : ' + (record.id || 'non renseigné') + ' · Module : ' + (record.module || 'Portail') + ' · Devis : #' + (record.quoteId || 'non renseigné') + ' · Date : ' + (record.date || 'non renseignée'));
-          addText(section, 'p', record.photos.length + ' photo(s) récupérable(s)');
-
-          const gallery = document.createElement('div');
-          gallery.className = 'measurement-linked-grid';
-          record.photos.forEach(function (photo) {
-            const index = recoveredPhotos.push(photo) - 1;
-            const card = document.createElement('article');
-            card.className = 'measurement-linked-card';
-            const image = document.createElement('img');
-            image.src = photo.dataUrl;
-            image.alt = photo.caption || photo.name || 'Photo Portail récupérée';
-            image.loading = 'lazy';
-            image.style.cssText = 'display:block;width:100%;max-height:240px;object-fit:contain;border-radius:10px;';
-            card.appendChild(image);
-            addText(card, 'strong', photo.name || 'Photo sans nom');
-            addText(card, 'span', photo.caption || 'Sans légende');
-            const button = addText(card, 'button', 'Télécharger la photo');
-            button.type = 'button';
-            button.className = 'btn btn-primary';
-            button.addEventListener('click', function () { downloadPhoto(photo, index); });
-            gallery.appendChild(card);
-          });
-          section.appendChild(gallery);
-          results.appendChild(section);
-        });
-
-        if (!report.photoCount) {
-          const empty = document.createElement('section');
-          empty.className = 'empty-state';
-          addText(empty, 'strong', 'Aucune ancienne photo trouvée pour la fiche Portail #9 liée au devis #6 sur cet appareil.');
-          addText(empty, 'p', 'Ouvrez cette même page sur l’iPhone qui a servi à prendre les photos. Le stockage local est propre à chaque appareil et navigateur.');
-          results.appendChild(empty);
-        }
-
-        status.textContent = report.photoCount + ' photo(s) trouvée(s) pour la fiche ciblée. Aucune donnée n’a été envoyée ou modifiée.';
-        const userAgent = navigator.userAgent || '';
-        const isIOS = /iPad|iPhone|iPod/.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        const isSafari = /Safari/.test(userAgent) && !/Chrome|CriOS|Edg|OPR/.test(userAgent);
-        downloadAll.hidden = !report.photoCount || isIOS || isSafari;
-      }
-
-      rescan.addEventListener('click', render);
-      downloadAll.addEventListener('click', function () {
-        recoveredPhotos.forEach(function (photo, index) {
-          window.setTimeout(function () { downloadPhoto(photo, index); }, index * 250);
-        });
-      });
-      render();
-    })();
-    </script>
-  `));
-});
+registerMeasurementPhotoRecoveryPageRoute(app, { requireAdmin, controller: measurementLegacyController });
 
 registerMeasurementStairV2PageRoute(app, { requireLogin, c: measurementStairV2Controller });
-app.get('/outils/prises-cotes/:module', requireLogin, (req, res, next) => {
-  const moduleName = String(req.params.module || '').trim().toLowerCase();
-  const fileName = MEASUREMENT_SHEETS[moduleName];
-
-  if (!fileName) return next();
-
-  const filePath = path.join(MEASUREMENTS_PUBLIC_DIR, fileName);
-  return res.sendFile(filePath);
-});
+registerMeasurementLegacyModulePageRoute(app, { requireLogin, controller: measurementLegacyController });
 
 registerMeasurementTechnicalDrawingPageRoute(app, { requireLogin, c: measurementTechnicalDrawingController });
-app.get('/outils/prises-cotes/:asset', requireLogin, (req, res, next) => {
-  const asset = String(req.params.asset || '').trim();
-  if (!MEASUREMENTS_ASSETS.has(asset)) return next();
-
-  const filePath = path.join(MEASUREMENTS_PUBLIC_DIR, asset);
-  return res.sendFile(filePath);
-});
-
-app.get('/outils/prises-cotes/technical-drawing/:asset', requireLogin, (req, res, next) => {
-  const asset = String(req.params.asset || '').trim();
-  if (!TECHNICAL_DRAWING_ASSETS.has(asset)) return next();
-
-  const filePath = safeResolveInside(MEASUREMENTS_PUBLIC_DIR, 'technical-drawing', asset);
-  return res.sendFile(filePath);
-});
+registerMeasurementLegacyAssetRoutes(app, { requireLogin, controller: measurementLegacyController });
 
 /* ===================== GOOGLE OAUTH ROUTES ===================== */
 
@@ -3557,10 +3363,10 @@ const quoteAttachmentsController = createQuoteAttachmentsController({
 const quoteSketchesService = createQuoteSketchesService({
   db,
   quoteSketchPath(quoteId) {
-    return sketchPath('quotes', quoteId);
+    return sketchPngService.getPath('quotes', quoteId);
   },
   saveQuoteSketchPng(quoteId, image) {
-    return saveSketchPng('quotes', quoteId, image);
+    return sketchPngService.save('quotes', quoteId, image);
   },
   fileExists: fs.existsSync,
   removeStoragePath: removeStoragePathIfExists

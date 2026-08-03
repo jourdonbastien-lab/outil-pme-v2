@@ -1,0 +1,16 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const routesModule = require('./routes/measurementLegacy');
+const calls=[];const app={get:(p,...h)=>calls.push(['GET',p,...h]),post:(p,...h)=>calls.push(['POST',p,...h])};
+const requireLogin=()=>{},requireAdmin=()=>{};const controller={getPhotoRecoveryAccess(){},getLegacySketch(){},saveLegacySketch(){},showPhotoRecoveryPage(){},showModulePage(){},serveMeasurementAsset(){},serveTechnicalDrawingAsset(){}};
+routesModule.registerMeasurementRecoveryAccessRoute(app,{requireLogin,controller});
+routesModule.registerMeasurementLegacySketchRoutes(app,{requireLogin,controller});
+routesModule.registerMeasurementPhotoRecoveryPageRoute(app,{requireAdmin,controller});
+routesModule.registerMeasurementLegacyModulePageRoute(app,{requireLogin,controller});
+routesModule.registerMeasurementLegacyAssetRoutes(app,{requireLogin,controller});
+assert.deepStrictEqual(calls.map(x=>x.slice(0,2)),[['GET','/api/measurements/photo-recovery-access'],['GET','/sketches/measurements/:id.png'],['POST','/api/measurements/:id/sketch'],['GET','/outils/prises-cotes/recuperation-photos'],['GET','/outils/prises-cotes/:module'],['GET','/outils/prises-cotes/:asset'],['GET','/outils/prises-cotes/technical-drawing/:asset']]);
+assert.strictEqual(calls[3][2],requireAdmin);assert(calls.filter((_,i)=>i!==3).every(x=>x[2]===requireLogin));
+assert.strictEqual(new Set(calls.map(x=>x[0]+' '+x[1])).size,calls.length);
+assert(!/SELECT|INSERT|UPDATE|DELETE|<html|fs\.|path\./.test(fs.readFileSync('routes/measurementLegacy.js','utf8')));
+console.log('OK - routes résidus prises de cotes');
