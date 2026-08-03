@@ -1,0 +1,16 @@
+'use strict';
+const assert = require('assert');
+const Database = require('better-sqlite3');
+const { createSchemaHelpers } = require('./database/schemaHelpers');
+const db = new Database(':memory:');
+db.exec('CREATE TABLE example(id INTEGER PRIMARY KEY)');
+const logs = [];
+const { ensureColumn } = createSchemaHelpers(db, { logger: { log: (message) => logs.push(message) } });
+ensureColumn('example', 'value', 'TEXT DEFAULT \'x\'');
+assert.deepStrictEqual(db.prepare('PRAGMA table_info(example)').all().map((column) => column.name), ['id', 'value']);
+assert.strictEqual(logs.length, 1);
+ensureColumn('example', 'value', 'TEXT DEFAULT \'x\'');
+assert.strictEqual(logs.length, 1, 'une colonne existante ne doit être ni recréée ni journalisée');
+assert.throws(() => ensureColumn('absent', 'value', 'TEXT'), /no such table/i);
+db.close();
+console.log('OK - helpers schéma SQLite');

@@ -1,0 +1,14 @@
+'use strict';
+const assert = require('assert');
+const Database = require('better-sqlite3');
+const incomingDocuments = require('./lib/incomingDocuments');
+const { bootstrapDatabase } = require('./database/bootstrapDatabase');
+const db = new Database(':memory:');
+const dependencies = { incomingDocuments, logger: { log() {} }, dbPath: ':memory:' };
+const snapshot = () => ({ schema: db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all(), users: db.prepare('SELECT id,username,password,role FROM users ORDER BY id').all(), materials: db.prepare('SELECT * FROM materials ORDER BY id').all() });
+bootstrapDatabase(db, dependencies);
+const first = snapshot();
+bootstrapDatabase(db, dependencies);
+assert.deepStrictEqual(snapshot(), first);
+db.close();
+console.log('OK - idempotence bootstrap SQLite');

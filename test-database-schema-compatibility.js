@@ -1,0 +1,13 @@
+'use strict';
+const assert = require('assert');
+const crypto = require('crypto');
+const Database = require('better-sqlite3');
+const incomingDocuments = require('./lib/incomingDocuments');
+const { bootstrapDatabase } = require('./database/bootstrapDatabase');
+const db = new Database(':memory:');
+bootstrapDatabase(db, { incomingDocuments, logger: { log() {} }, dbPath: ':memory:' });
+const schema = db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all();
+const hash = crypto.createHash('sha256').update(JSON.stringify(schema)).digest('hex');
+assert.strictEqual(hash, '46bc6f31a500e4f06169f995beecfb0be5fd6cb510b650bfdae80ba3ec28d81c');
+db.close();
+console.log('OK - équivalence exacte du schéma SQLite historique');
